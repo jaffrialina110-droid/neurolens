@@ -226,10 +226,81 @@ if st.button("🔍 Explore My Pattern"):
 # ---------- Creator ----------
 st.markdown(
     '<div class="creator">'
+    
     '<b>NEUROLENS</b><br>'
     'Created & Research Lead: <b>Ayna Jaffri</b><br>'
     'Independent Researcher | Cognitive Neuroscience<br>'
     'Version 1.0'
     '</div>',
     unsafe_allow_html=True
+) 
+# 🎮 NEUROLENS COGNITIVE GAMES
+st.divider()
+st.header("🎮 Cognitive Games")
+
+game = st.selectbox(
+    "Choose a game",
+    [
+        "Select a game",
+        "Decision Challenge",
+        "Memory Challenge",
+        "Attention Challenge"
+    ]
+)
+
+if game == "Decision Challenge":
+    st.subheader("🧠 Quick Decision Challenge")
+    st.write("Choose the option you would prefer:")
+
+    choice = st.radio(
+        "Which would you choose?",
+        [
+            "Rs. 1,000 today",
+            "Rs. 1,500 after 30 days"
+        ]
+    )
+
+    if st.button("Analyze Decision"):
+        if choice == "Rs. 1,000 today":
+            st.success("Pattern: Immediate-reward preference")
+        else:
+            st.success("Pattern: Delayed-reward preference")
+
+        st.info(
+            "This educational task explores how people make choices "
+            "between immediate and delayed rewards."
+        )
+
+elif game == "Memory Challenge":
+    st.subheader("🧠 Memory Challenge")
+
+    sequence = "7 2 9 4 1 8"
+    st.write("Remember this sequence:")
+    st.markdown(f"## **{sequence}**")
+
+    answer = st.text_input("Enter the sequence from memory:")
+
+    if st.button("Check Memory"):
+        if answer.replace(" ", "") == "729418":
+            st.success("🎉 Correct!")
+            st.write("You recalled the sequence correctly.")
+        else:
+            st.error("Not quite. Try again.")
+
+elif game == "Attention Challenge":
+    st.subheader("🎯 Attention Challenge")
+
+    target = st.radio(
+        "Find the target letter: Which option contains **X**?",
+        ["A B C D", "A B X D", "A B C E", "A B C F"]
+    )
+
+    if st.button("Check Attention"):
+        if "X" in target:
+            st.success("🎯 Correct!")
+        else:
+            st.error("Try again!")
+
+st.caption(
+    "Educational cognitive tasks only — these games are not diagnostic tests."
 )
