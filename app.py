@@ -304,3 +304,66 @@ elif game == "Attention Challenge":
 st.caption(
     "Educational cognitive tasks only — these games are not diagnostic tests."
 )
+# =========================
+# 🤖 ASK AYNA AI
+# =========================
+
+st.divider()
+st.header("🤖 Ask Ayna 🧠")
+
+st.write(
+    "Ask questions about cognitive neuroscience, memory, attention, "
+    "learning, emotions, decision-making and the brain."
+)
+
+if "ayna_messages" not in st.session_state:
+    st.session_state.ayna_messages = []
+
+for message in st.session_state.ayna_messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+question = st.chat_input("Ask Ayna a neuroscience question...")
+
+if question:
+    st.session_state.ayna_messages.append(
+        {"role": "user", "content": question}
+    )
+
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=st.secrets["OPENAI_API_KEY"]
+        )
+
+        response = client.responses.create(
+            model="gpt-5.6-luna",
+            instructions="""
+You are Ask Ayna, an educational cognitive neuroscience assistant.
+
+Explain cognitive neuroscience clearly and scientifically.
+You can discuss memory, attention, learning, emotion,
+decision-making, reward, perception and cognitive control.
+
+Do not diagnose medical or psychological disorders.
+Do not claim that games measure actual brain activity.
+Clearly explain uncertainty when scientific evidence is limited.
+""",
+            input=question
+        )
+
+        answer = response.output_text
+
+        st.session_state.ayna_messages.append(
+            {"role": "assistant", "content": answer}
+        )
+
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+
+    except Exception as e:
+        st.error("Ask Ayna could not connect right now.")
