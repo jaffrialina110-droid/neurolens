@@ -358,12 +358,15 @@ Clearly explain uncertainty when scientific evidence is limited.
 
         answer = response.output_text
 
-        st.session_state.ayna_messages.append(
-            {"role": "assistant", "content": answer}
+        st.session_state.ayna_messages.append( 
+            {"role": "assistant", "content": answer} 
+    
         )
 
         with st.chat_message("assistant"):
             st.markdown(answer)
 
     except Exception as e:
-        st.error("Ask Ayna could not connect right now.")
+        st.error(f"Ask Ayna error: {e}")
+
+                 
