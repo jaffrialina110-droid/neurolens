@@ -364,9 +364,11 @@ Clearly explain uncertainty when scientific evidence is limited.
         ) 
 
         with st.chat_message("assistant"):
-            st.markdown(answer)
+            
+       
 
-    except Exception as e:
+
+except Exception as e:
     st.write("Error:", str(e))
 
                  
