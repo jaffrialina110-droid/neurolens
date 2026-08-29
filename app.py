@@ -367,7 +367,6 @@ Clearly explain uncertainty when scientific evidence is limited.
             st.markdown(answer)
 
     except Exception as e:
-    st.error("Ask Ayna could not connect.")
     st.write("Error:", str(e))
 
                  
