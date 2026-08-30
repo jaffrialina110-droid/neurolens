@@ -1,241 +1,30 @@
 import streamlit as st
+import random
 
-# -----------------------------
+# ============================================================
 # NEUROLENS
-# Cognitive Behavior Mapper
-# -----------------------------
+# Cognitive Neuroscience Educational App
+# ============================================================
 
 st.set_page_config(
-    page_title="NeuroLens",
+    page_title="NEUROLENS",
     page_icon="🧠",
-    layout="centered"
+    layout="wide"
 )
 
-# ---------- Styling ----------
-st.markdown("""
-<style>
-.main-title {
-    text-align: center;
-    font-size: 42px;
-    font-weight: 800;
-    letter-spacing: 2px;
-}
-.subtitle {
-    text-align: center;
-    font-size: 18px;
-    margin-bottom: 30px;
-}
-.card {
-    padding: 20px;
-    border-radius: 18px;
-    border: 1px solid #dddddd;
-    margin: 12px 0;
-    text-align: center;
-}
-.brain {
-    font-size: 80px;
-    text-align: center;
-    margin: 10px;
-}
-.flow {
-    text-align: center;
-    font-size: 20px;
-    padding: 12px;
-}
-.creator {
-    text-align: center;
-    margin-top: 40px;
-    font-size: 14px;
-}
-</style>
-""", unsafe_allow_html=True)
+# ============================================================
+# TITLE
+# ============================================================
 
-# ---------- Header ----------
-st.markdown(
-    '<div class="main-title">NEUROLENS</div>',
-    unsafe_allow_html=True
-)
+st.title("🧠 NEUROLENS")
+st.caption("Explore cognition, behavior & the brain")
 
-st.markdown(
-    '<div class="subtitle">Decode Behavior. Understand the Mind.</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown('<div class="brain">🧠</div>', unsafe_allow_html=True)
-
-st.write(
-    "Explore everyday behavior through a cognitive neuroscience lens."
-)
-
-st.info(
-    "Educational tool only — this does not diagnose mental or neurological disorders."
-)
-
-# ---------- Behavior ----------
-st.subheader("1. Choose a behavior")
-
-behavior = st.selectbox(
-    "What would you like to explore?",
-    [
-        "Decision-making",
-        "Overthinking",
-        "Attention",
-        "Memory",
-        "Reward & motivation",
-        "Fear response",
-        "Procrastination",
-        "Social behavior"
-    ]
-)
-
-# ---------- Questions ----------
-st.subheader("2. Explore your pattern")
-
-decision = st.radio(
-    "When you face an important decision, what usually happens?",
-    [
-        "I decide quickly",
-        "I overthink it",
-        "I avoid the decision",
-        "I ask other people",
-        "It depends on the situation"
-    ]
-)
-
-stress = st.slider(
-    "Current stress level",
-    min_value=1,
-    max_value=10,
-    value=5
-)
-
-mental_load = st.slider(
-    "How mentally overloaded do you feel?",
-    min_value=1,
-    max_value=10,
-    value=5
-)
-
-sleep = st.slider(
-    "How would you rate your recent sleep?",
-    min_value=1,
-    max_value=10,
-    value=5
-)
-
-# ---------- Analysis ----------
-if st.button("🔍 Explore My Pattern"):
-
-    if decision == "I overthink it":
-        pattern = "Decision delay / prolonged deliberation"
-        cognitive = "Executive control + uncertainty evaluation"
-    elif decision == "I avoid the decision":
-        pattern = "Decision avoidance"
-        cognitive = "Uncertainty processing + cognitive load"
-    elif decision == "I decide quickly":
-        pattern = "Rapid decision-making"
-        cognitive = "Efficient decision processing + response tendency"
-    elif decision == "I ask other people":
-        pattern = "Social decision support"
-        cognitive = "Social cognition + uncertainty evaluation"
-    else:
-        pattern = "Context-dependent decision-making"
-        cognitive = "Flexible cognitive processing"
-
-    # Simple educational scores
-    attention_score = max(1, 10 - mental_load + 1)
-    control_score = max(1, 11 - stress)
-    reward_score = 5
-    flexibility_score = max(1, 11 - mental_load)
-    emotional_score = stress
-
-    st.divider()
-
-    st.subheader("🧠 Your Cognitive Pattern")
-
-    st.markdown(
-        f'<div class="card">'
-        f'<h3>{pattern}</h3>'
-        f'<p>Possible cognitive processes: {cognitive}</p>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-
-    # ---------- Visual Brain → Behavior Map ----------
-    st.subheader("🔬 Brain → Cognition → Behavior")
-
-    st.markdown(
-        '<div class="flow">🧠 Brain systems</div>'
-        '<div class="flow">↓</div>'
-        '<div class="flow">💭 Cognitive processing</div>'
-        '<div class="flow">↓</div>'
-        '<div class="flow">❤️ Emotional/contextual state</div>'
-        '<div class="flow">↓</div>'
-        '<div class="flow">⚡ Behavior</div>',
-        unsafe_allow_html=True
-    )
-
-    # ---------- Profile ----------
-    st.subheader("📊 Your Cognitive Profile")
-
-    profile = {
-        "Attention": attention_score,
-        "Cognitive control": control_score,
-        "Reward": reward_score,
-        "Flexibility": flexibility_score,
-        "Emotional load": emotional_score
-    }
-
-    st.bar_chart(profile)
-
-    # ---------- Explanation ----------
-    st.subheader("🧩 What may be happening?")
-
-    st.write(
-        f"Your responses indicate a pattern of **{pattern.lower()}** "
-        f"in this self-report exercise."
-    )
-
-    st.write(
-        "Stress and mental workload can influence how people allocate "
-        "attention, evaluate uncertainty and make decisions. "
-        "This result is an educational interpretation of your answers, "
-        "not a measurement of brain activity."
-    )
-
-    # ---------- Research ----------
-    st.subheader("📚 Research Lens")
-
-    st.write(
-        "Neuroscience research commonly examines decision-making through "
-        "interacting processes involving cognitive control, valuation, "
-        "attention and emotional/contextual information."
-    )
-
-    st.caption(
-        "Future NeuroLens versions will connect individual modules "
-        "to specific peer-reviewed research references."
-    )
-
-    # ---------- Disclaimer ----------
-    st.warning(
-        "This tool is not a medical or psychological diagnostic test. "
-        "It does not directly measure brain activity."
-    )
-
-# ---------- Creator ----------
-st.markdown(
-    '<div class="creator">'
-    
-    '<b>NEUROLENS</b><br>'
-    'Created & Research Lead: <b>Ayna Jaffri</b><br>'
-    'Independent Researcher | Cognitive Neuroscience<br>'
-    'Version 1.0'
-    '</div>',
-    unsafe_allow_html=True
-) 
-# 🎮 NEUROLENS COGNITIVE GAMES
 st.divider()
+
+# ============================================================
+# COGNITIVE GAMES
+# ============================================================
+
 st.header("🎮 Cognitive Games")
 
 game = st.selectbox(
@@ -244,16 +33,24 @@ game = st.selectbox(
         "Select a game",
         "Decision Challenge",
         "Memory Challenge",
-        "Attention Challenge"
+        "Attention Challenge",
+        "Stroop Challenge",
+        "Pattern Challenge"
     ]
 )
 
+# ============================================================
+# DECISION CHALLENGE
+# ============================================================
+
 if game == "Decision Challenge":
+
     st.subheader("🧠 Quick Decision Challenge")
-    st.write("Choose the option you would prefer:")
+
+    st.write("Which option would you prefer?")
 
     choice = st.radio(
-        "Which would you choose?",
+        "Choose one:",
         [
             "Rs. 1,000 today",
             "Rs. 1,500 after 30 days"
@@ -261,114 +58,432 @@ if game == "Decision Challenge":
     )
 
     if st.button("Analyze Decision"):
+
         if choice == "Rs. 1,000 today":
             st.success("Pattern: Immediate-reward preference")
         else:
             st.success("Pattern: Delayed-reward preference")
 
         st.info(
-            "This educational task explores how people make choices "
-            "between immediate and delayed rewards."
+            "This educational task explores how people make "
+            "choices between immediate and delayed rewards."
         )
 
+
+# ============================================================
+# MEMORY CHALLENGE
+# ============================================================
+
 elif game == "Memory Challenge":
+
     st.subheader("🧠 Memory Challenge")
 
     sequence = "7 2 9 4 1 8"
+
     st.write("Remember this sequence:")
+
     st.markdown(f"## **{sequence}**")
 
-    answer = st.text_input("Enter the sequence from memory:")
+    answer = st.text_input(
+        "Enter the sequence from memory:"
+    )
 
     if st.button("Check Memory"):
+
         if answer.replace(" ", "") == "729418":
+
             st.success("🎉 Correct!")
-            st.write("You recalled the sequence correctly.")
+
+            st.write(
+                "You recalled the sequence correctly."
+            )
+
         else:
-            st.error("Not quite. Try again.")
+
+            st.error(
+                "Not quite. Try again."
+            )
+
+
+# ============================================================
+# ATTENTION CHALLENGE
+# ============================================================
 
 elif game == "Attention Challenge":
+
     st.subheader("🎯 Attention Challenge")
 
-    target = st.radio(
-        "Find the target letter: Which option contains **X**?",
-        ["A B C D", "A B X D", "A B C E", "A B C F"]
+    st.write(
+        "Find the letter X as quickly as possible."
+    )
+
+    target = st.selectbox(
+        "Which sequence contains X?",
+        [
+            "A B C D",
+            "A B X D",
+            "A B C E",
+            "A B C F"
+        ]
     )
 
     if st.button("Check Attention"):
+
         if "X" in target:
+
             st.success("🎯 Correct!")
+
+            st.info(
+                "This educational task explores attention "
+                "and visual search."
+            )
+
         else:
+
             st.error("Try again!")
 
-st.caption(
-    "Educational cognitive tasks only — these games are not diagnostic tests."
-)
-# =========================
-# 🤖 ASK AYNA AI
-# =========================
+
+# ============================================================
+# STROOP CHALLENGE
+# ============================================================
+
+elif game == "Stroop Challenge":
+
+    st.subheader("🎨 Stroop Challenge")
+
+    st.write(
+        "Ignore the meaning of the word and choose "
+        "its displayed color."
+    )
+
+    color_options = [
+        "RED",
+        "BLUE",
+        "GREEN",
+        "YELLOW"
+    ]
+
+    correct_color = random.choice(color_options)
+    word = random.choice(color_options)
+
+    st.markdown(
+        f"## **{word}**"
+    )
+
+    answer = st.selectbox(
+        "What color do you think the word represents?",
+        color_options
+    )
+
+    if st.button("Check Stroop"):
+
+        if answer == correct_color:
+
+            st.success(
+                "🎯 Correct! This task explores response control."
+            )
+
+        else:
+
+            st.info(
+                "Interesting! Stroop tasks explore attention "
+                "and interference control."
+            )
+
+
+# ============================================================
+# PATTERN CHALLENGE
+# ============================================================
+
+elif game == "Pattern Challenge":
+
+    st.subheader("🔢 Pattern Recognition")
+
+    st.write(
+        "What number comes next?"
+    )
+
+    st.markdown(
+        "### 2 → 4 → 8 → 16 → ?"
+    )
+
+    answer = st.number_input(
+        "Your answer",
+        min_value=0,
+        step=1
+    )
+
+    if st.button("Check Pattern"):
+
+        if answer == 32:
+
+            st.success(
+                "🎉 Correct! The pattern doubles each time."
+            )
+
+        else:
+
+            st.error(
+                "Try again. Look at how each number changes."
+            )
+
+
+# ============================================================
+# COGNITIVE VISUALIZATION
+# ============================================================
 
 st.divider()
+
+st.header("📊 Cognitive Visualization")
+
+st.write(
+    "Rate your current experience. These are self-reported "
+    "scores and are not measurements of brain activity."
+)
+
+mental_load = st.slider(
+    "Mental Load",
+    1,
+    10,
+    5
+)
+
+sleep_quality = st.slider(
+    "Sleep Quality",
+    1,
+    10,
+    5
+)
+
+attention_level = st.slider(
+    "Attention",
+    1,
+    10,
+    5
+)
+
+memory_confidence = st.slider(
+    "Memory Confidence",
+    1,
+    10,
+    5
+)
+
+visualization_data = {
+    "Cognitive Measure": [
+        "Mental Load",
+        "Sleep Quality",
+        "Attention",
+        "Memory Confidence"
+    ],
+    "Score": [
+        mental_load,
+        sleep_quality,
+        attention_level,
+        memory_confidence
+    ]
+}
+
+st.bar_chart(
+    visualization_data,
+    x="Cognitive Measure",
+    y="Score"
+)
+
+st.caption(
+    "These scores are self-reported educational measures, "
+    "not clinical or direct measurements of brain activity."
+)
+
+
+# ============================================================
+# BRAIN SYSTEM EXPLORER
+# ============================================================
+
+st.divider()
+
+st.header("🧠 Explore Brain Systems")
+
+brain_system = st.selectbox(
+    "Explore a cognitive system",
+    [
+        "Select a system",
+        "Prefrontal Cortex",
+        "Hippocampus",
+        "Striatum",
+        "Anterior Cingulate Cortex",
+        "Attention Networks"
+    ]
+)
+
+if brain_system == "Prefrontal Cortex":
+
+    st.info(
+        "The prefrontal cortex is involved in cognitive control, "
+        "planning, working memory and goal-directed behavior."
+    )
+
+elif brain_system == "Hippocampus":
+
+    st.info(
+        "The hippocampus plays an important role in memory "
+        "formation and spatial representation."
+    )
+
+elif brain_system == "Striatum":
+
+    st.info(
+        "The striatum is involved in action selection, "
+        "reward-related learning and habit-related processes."
+    )
+
+elif brain_system == "Anterior Cingulate Cortex":
+
+    st.info(
+        "The anterior cingulate cortex is involved in monitoring "
+        "conflict, performance and aspects of cognitive control."
+    )
+
+elif brain_system == "Attention Networks":
+
+    st.info(
+        "Attention networks help select relevant information "
+        "and regulate the allocation of cognitive resources."
+    )
+
+
+# ============================================================
+# ASK AYNA AI
+# ============================================================
+
+st.divider()
+
 st.header("🤖 Ask Ayna 🧠")
 
 st.write(
-    "Ask questions about cognitive neuroscience, memory, attention, "
-    "learning, emotions, decision-making and the brain."
+    "Ask questions about cognitive neuroscience, memory, "
+    "attention, learning, emotions, decision-making and the brain."
 )
 
+# Initialize chat
 if "ayna_messages" not in st.session_state:
     st.session_state.ayna_messages = []
 
+# Show previous messages
 for message in st.session_state.ayna_messages:
+
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-question = st.chat_input("Ask Ayna a neuroscience question...")
+
+question = st.chat_input(
+    "Ask Ayna a neuroscience question..."
+)
 
 if question:
+
+    # Show user message
     st.session_state.ayna_messages.append(
-        {"role": "user", "content": question}
+        {
+            "role": "user",
+            "content": question
+        }
     )
 
     with st.chat_message("user"):
         st.markdown(question)
 
+    # ========================================================
+    # OPENAI CONNECTION
+    # ========================================================
+
     try:
+
         from openai import OpenAI
 
-        client = OpenAI(
-            api_key=st.secrets["OPENAI_API_KEY"]
-        )
+        # Check Streamlit secret
+        if "OPENAI_API_KEY" not in st.secrets:
 
-        response = client.responses.create(
-            model="gpt-5.6-luna",
-            instructions="""
+            answer = (
+                "⚠️ OpenAI API key is not configured yet. "
+                "Please add OPENAI_API_KEY to Streamlit Secrets."
+            )
+
+        else:
+
+            client = OpenAI(
+                api_key=st.secrets["OPENAI_API_KEY"]
+            )
+
+            response = client.responses.create(
+                model="gpt-5.6-luna",
+                instructions="""
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
-Explain cognitive neuroscience clearly and scientifically.
-You can discuss memory, attention, learning, emotion,
-decision-making, reward, perception and cognitive control.
+Explain cognitive neuroscience clearly, accurately and simply.
+
+You can discuss:
+- memory
+- attention
+- learning
+- emotion
+- decision-making
+- reward
+- perception
+- cognitive control
+- brain systems
 
 Do not diagnose medical or psychological disorders.
+
 Do not claim that games measure actual brain activity.
+
 Clearly explain uncertainty when scientific evidence is limited.
+
+Keep answers educational and easy to understand.
 """,
-            input=question
+                input=question
+            )
+
+            answer = response.output_text
+
+    except Exception as e:
+
+        answer = (
+            "⚠️ Ask Ayna connection error.\n\n"
+            "Please check that the OpenAI API key is correctly "
+            "configured in Streamlit Secrets and that the "
+            "OpenAI package is installed.\n\n"
+            f"Technical error: `{str(e)}`"
         )
 
-        answer = response.output_text
+    # Save assistant message
+    st.session_state.ayna_messages.append(
+        {
+            "role": "assistant",
+            "content": answer
+        }
+    )
 
-        st.session_state.ayna_messages.append( 
-            {"role": "assistant", "content": answer} 
-    
-        ) 
-
-        with st.chat_message("assistant"):
-            
-       
+    # Display answer
+    with st.chat_message("assistant"):
+        st.markdown(answer)
 
 
-except Exception as e:
-    st.write("Error:", str(e))
+# ============================================================
+# SCIENCE NOTE
+# ============================================================
 
-                 
+st.divider()
+
+st.header("📚 Science Note")
+
+st.write(
+    "NEUROLENS provides educational cognitive tasks and "
+    "explanations. Game scores and self-reported ratings "
+    "should not be interpreted as clinical diagnoses or "
+    "direct measurements of brain activity."
+)
+
+st.caption(
+    "NEUROLENS • Cognitive Neuroscience Education • Created by Ayna"
+)
