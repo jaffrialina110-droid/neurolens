@@ -447,14 +447,11 @@ Keep answers educational and easy to understand.
             answer = response.output_text
 
     except Exception as e:
-
-        answer = (
-            "⚠️ Ask Ayna connection error.\n\n"
-            "Please check that the OpenAI API key is correctly "
-            "configured in Streamlit Secrets and that the "
-            "OpenAI package is installed.\n\n"
-            f"Technical error: `{str(e)}`"
-        )
+    answer = (
+        "⚠️ Ask Ayna error.\n\n"
+        f"Error type: {type(e).__name__}\n\n"
+        f"Error details: {repr(e)}"
+    )
 
     # Save assistant message
     st.session_state.ayna_messages.append(
