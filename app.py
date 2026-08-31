@@ -1,5 +1,14 @@
-import streamlit as st
+import os
 import random
+
+import streamlit as st
+
+# Optional OpenAI import
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
 
 # ============================================================
 # NEUROLENS
@@ -9,8 +18,9 @@ import random
 st.set_page_config(
     page_title="NEUROLENS",
     page_icon="🧠",
-    layout="wide"
+    layout="wide",
 )
+
 
 # ============================================================
 # TITLE
@@ -20,6 +30,7 @@ st.title("🧠 NEUROLENS")
 st.caption("Explore cognition, behavior & the brain")
 
 st.divider()
+
 
 # ============================================================
 # COGNITIVE GAMES
@@ -35,9 +46,10 @@ game = st.selectbox(
         "Memory Challenge",
         "Attention Challenge",
         "Stroop Challenge",
-        "Pattern Challenge"
-    ]
+        "Pattern Challenge",
+    ],
 )
+
 
 # ============================================================
 # DECISION CHALLENGE
@@ -53,8 +65,8 @@ if game == "Decision Challenge":
         "Choose one:",
         [
             "Rs. 1,000 today",
-            "Rs. 1,500 after 30 days"
-        ]
+            "Rs. 1,500 after 30 days",
+        ],
     )
 
     if st.button("Analyze Decision"):
@@ -90,7 +102,9 @@ elif game == "Memory Challenge":
 
     if st.button("Check Memory"):
 
-        if answer.replace(" ", "") == "729418":
+        cleaned_answer = answer.replace(" ", "")
+
+        if cleaned_answer == "729418":
 
             st.success("🎉 Correct!")
 
@@ -123,8 +137,8 @@ elif game == "Attention Challenge":
             "A B C D",
             "A B X D",
             "A B C E",
-            "A B C F"
-        ]
+            "A B C F",
+        ],
     )
 
     if st.button("Check Attention"):
@@ -160,11 +174,22 @@ elif game == "Stroop Challenge":
         "RED",
         "BLUE",
         "GREEN",
-        "YELLOW"
+        "YELLOW",
     ]
 
-    correct_color = random.choice(color_options)
-    word = random.choice(color_options)
+    # Keep the correct answer fixed during a Streamlit rerun
+    if "stroop_correct_color" not in st.session_state:
+        st.session_state.stroop_correct_color = random.choice(
+            color_options
+        )
+
+    if "stroop_word" not in st.session_state:
+        st.session_state.stroop_word = random.choice(
+            color_options
+        )
+
+    correct_color = st.session_state.stroop_correct_color
+    word = st.session_state.stroop_word
 
     st.markdown(
         f"## **{word}**"
@@ -172,7 +197,7 @@ elif game == "Stroop Challenge":
 
     answer = st.selectbox(
         "What color do you think the word represents?",
-        color_options
+        color_options,
     )
 
     if st.button("Check Stroop"):
@@ -210,7 +235,7 @@ elif game == "Pattern Challenge":
     answer = st.number_input(
         "Your answer",
         min_value=0,
-        step=1
+        step=1,
     )
 
     if st.button("Check Pattern"):
@@ -245,28 +270,28 @@ mental_load = st.slider(
     "Mental Load",
     1,
     10,
-    5
+    5,
 )
 
 sleep_quality = st.slider(
     "Sleep Quality",
     1,
     10,
-    5
+    5,
 )
 
 attention_level = st.slider(
     "Attention",
     1,
     10,
-    5
+    5,
 )
 
 memory_confidence = st.slider(
     "Memory Confidence",
     1,
     10,
-    5
+    5,
 )
 
 visualization_data = {
@@ -274,20 +299,20 @@ visualization_data = {
         "Mental Load",
         "Sleep Quality",
         "Attention",
-        "Memory Confidence"
+        "Memory Confidence",
     ],
     "Score": [
         mental_load,
         sleep_quality,
         attention_level,
-        memory_confidence
-    ]
+        memory_confidence,
+    ],
 }
 
 st.bar_chart(
     visualization_data,
     x="Cognitive Measure",
-    y="Score"
+    y="Score",
 )
 
 st.caption(
@@ -312,8 +337,8 @@ brain_system = st.selectbox(
         "Hippocampus",
         "Striatum",
         "Anterior Cingulate Cortex",
-        "Attention Networks"
-    ]
+        "Attention Networks",
+    ],
 )
 
 if brain_system == "Prefrontal Cortex":
@@ -365,64 +390,96 @@ st.write(
     "attention, learning, emotions, decision-making and the brain."
 )
 
-# Initialize chat
+
+# ============================================================
+# CHAT SESSION STATE
+# ============================================================
+
 if "ayna_messages" not in st.session_state:
     st.session_state.ayna_messages = []
 
-# Show previous messages
+
+# ============================================================
+# SHOW PREVIOUS MESSAGES
+# ============================================================
+
 for message in st.session_state.ayna_messages:
 
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 
-question = st.chat_input(
-    "Ask Ayna a neuroscience question..."
-)
+# ============================================================
+# OPENAI API HELPER
+# ============================================================
 
-if question:
+def get_openai_api_key():
+    """
+    Safely retrieve the OpenAI API key.
 
-    # Show user message
-    st.session_state.ayna_messages.append(
-        {
-            "role": "user",
-            "content": question
-        }
-    )
+    Priority:
+    1. Streamlit Secrets
+    2. Environment variable
+    """
 
-    with st.chat_message("user"):
-        st.markdown(question)
+    # Streamlit Secrets
+    try:
+        secret_key = st.secrets.get("OPENAI_API_KEY")
 
-    # ========================================================
-    # OPENAI CONNECTION
-    # ========================================================
+        if secret_key:
+            return str(secret_key).strip()
+
+    except Exception:
+        pass
+
+    # Environment variable fallback
+    env_key = os.getenv("OPENAI_API_KEY")
+
+    if env_key:
+        return env_key.strip()
+
+    return None
+
+
+def ask_ayna(question):
+    """
+    Send the user's question to OpenAI and return the answer.
+    """
+
+    if OpenAI is None:
+
+        return (
+            "⚠️ The OpenAI package is not installed.\n\n"
+            "Please add `openai` to your requirements.txt "
+            "and redeploy the Streamlit app."
+        )
+
+    api_key = get_openai_api_key()
+
+    if not api_key:
+
+        return (
+            "⚠️ Ask Ayna is not connected yet.\n\n"
+            "Please add your OpenAI API key to Streamlit "
+            "Secrets using the name `OPENAI_API_KEY`."
+        )
 
     try:
 
-        from openai import OpenAI
+        client = OpenAI(
+            api_key=api_key
+        )
 
-        # Check Streamlit secret
-        if "OPENAI_API_KEY" not in st.secrets:
-
-            answer = (
-                "⚠️ OpenAI API key is not configured yet. "
-                "Please add OPENAI_API_KEY to Streamlit Secrets."
-            )
-
-        else:
-
-            client = OpenAI(
-                api_key=st.secrets["OPENAI_API_KEY"]
-            )
-
-            response = client.responses.create(
-                model="gpt-5.6-luna",
-                instructions="""
+        response = client.responses.create(
+            model="gpt-5.6-luna",
+            instructions="""
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
-Explain cognitive neuroscience clearly, accurately and simply.
+Your purpose is to explain cognitive neuroscience clearly,
+accurately and in an easy-to-understand way.
 
-You can discuss:
+You can discuss topics including:
+
 - memory
 - attention
 - learning
@@ -432,38 +489,105 @@ You can discuss:
 - perception
 - cognitive control
 - brain systems
+- neuroplasticity
+- cognitive psychology
+- behavioral neuroscience
 
-Do not diagnose medical or psychological disorders.
+Important rules:
 
-Do not claim that games measure actual brain activity.
+1. Keep explanations educational and scientifically responsible.
 
-Clearly explain uncertainty when scientific evidence is limited.
+2. Do not diagnose medical, psychiatric or psychological disorders.
 
-Keep answers educational and easy to understand.
+3. Do not claim that a simple game measures actual brain activity.
+
+4. Do not present self-reported scores as clinical measurements.
+
+5. Clearly distinguish established scientific evidence from
+   hypotheses or uncertain findings.
+
+6. If a question is medical or requires diagnosis, encourage
+   the user to consult a qualified healthcare professional.
+
+7. Use simple language while maintaining scientific accuracy.
+
+8. Answer directly and avoid unnecessary repetition.
+
+9. If appropriate, use short examples to make neuroscience
+   concepts easier to understand.
+
+You are called "Ask Ayna".
 """,
-                input=question
-            )
-
-            answer = response.output_text
-
-        except Exception as e:
-        answer = (
-            "⚠️ Ask Ayna error.\n\n"
-            f"Error type: {type(e).__name__}\n\n"
-            f"Error details: {repr(e)}"
+            input=question,
         )
 
-    # Save assistant message
+        answer = response.output_text
+
+        if not answer:
+            return (
+                "⚠️ Ask Ayna received an empty response. "
+                "Please try your question again."
+            )
+
+        return answer.strip()
+
+    except Exception as e:
+
+        # Do not expose the API key or sensitive configuration.
+        error_name = type(e).__name__
+
+        return (
+            "⚠️ Ask Ayna could not connect to the AI service.\n\n"
+            f"Connection error type: `{error_name}`\n\n"
+            "Please check that your OpenAI API key is valid, "
+            "your API account has API access/available usage, "
+            "and the `openai` package is installed correctly."
+        )
+
+
+# ============================================================
+# ASK AYNA INPUT
+# ============================================================
+
+question = st.chat_input(
+    "Ask Ayna a neuroscience question..."
+)
+
+
+# ============================================================
+# PROCESS QUESTION
+# ============================================================
+
+if question:
+
+    # Save user message
     st.session_state.ayna_messages.append(
         {
-            "role": "assistant",
-            "content": answer
+            "role": "user",
+            "content": question,
         }
     )
 
-    # Display answer
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    # Generate AI response
     with st.chat_message("assistant"):
+
+        with st.spinner("🧠 Ayna is thinking..."):
+
+            answer = ask_ayna(question)
+
         st.markdown(answer)
+
+    # Save assistant response
+    st.session_state.ayna_messages.append(
+        {
+            "role": "assistant",
+            "content": answer,
+        }
+    )
 
 
 # ============================================================
