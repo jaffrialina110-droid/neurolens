@@ -446,12 +446,12 @@ Keep answers educational and easy to understand.
 
             answer = response.output_text
 
-    except Exception as e:
-    answer = (
-        "⚠️ Ask Ayna error.\n\n"
-        f"Error type: {type(e).__name__}\n\n"
-        f"Error details: {repr(e)}"
-    )
+        except Exception as e:
+        answer = (
+            "⚠️ Ask Ayna error.\n\n"
+            f"Error type: {type(e).__name__}\n\n"
+            f"Error details: {repr(e)}"
+        )
 
     # Save assistant message
     st.session_state.ayna_messages.append(
