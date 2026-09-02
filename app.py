@@ -182,11 +182,13 @@ elif game == "Stroop Challenge":
     ]
 
     if "stroop_correct_color" not in st.session_state:
+
         st.session_state.stroop_correct_color = random.choice(
             color_options
         )
 
     if "stroop_word" not in st.session_state:
+
         st.session_state.stroop_word = random.choice(
             color_options
         )
@@ -399,6 +401,7 @@ st.write(
 # ============================================================
 
 if "ayna_messages" not in st.session_state:
+
     st.session_state.ayna_messages = []
 
 
@@ -409,6 +412,7 @@ if "ayna_messages" not in st.session_state:
 for message in st.session_state.ayna_messages:
 
     with st.chat_message(message["role"]):
+
         st.markdown(message["content"])
 
 
@@ -418,35 +422,49 @@ for message in st.session_state.ayna_messages:
 
 def get_gemini_api_key():
 
-    # First: GEMINI_API_KEY from Streamlit Secrets
+    # Streamlit Secret
     try:
-        key = st.secrets.get("GEMINI_API_KEY")
 
-        if key:
-            return str(key).strip()
+        secret_key = st.secrets.get("GEMINI_API_KEY")
+
+        if secret_key:
+
+            return str(secret_key).strip()
+
     except Exception:
+
         pass
 
-    # Second: GOOGLE_API_KEY from Streamlit Secrets
-    try:
-        key = st.secrets.get("GOOGLE_API_KEY")
 
-        if key:
-            return str(key).strip()
+    # Alternative Google key name
+    try:
+
+        secret_key = st.secrets.get("GOOGLE_API_KEY")
+
+        if secret_key:
+
+            return str(secret_key).strip()
+
     except Exception:
+
         pass
 
-    # Third: environment variable
-    key = os.getenv("GEMINI_API_KEY")
 
-    if key:
-        return key.strip()
+    # Environment variable
+    env_key = os.getenv("GEMINI_API_KEY")
 
-    # Fourth: Google environment variable
-    key = os.getenv("GOOGLE_API_KEY")
+    if env_key:
 
-    if key:
-        return key.strip()
+        return env_key.strip()
+
+
+    # Alternative environment variable
+    env_key = os.getenv("GOOGLE_API_KEY")
+
+    if env_key:
+
+        return env_key.strip()
+
 
     return None
 
@@ -461,10 +479,11 @@ def ask_ayna(question):
     if genai is None:
 
         return (
-            "⚠️ Gemini package is missing.\n\n"
+            "⚠️ Gemini package is not installed.\n\n"
             "Please add `google-genai` to requirements.txt "
             "and redeploy the app."
         )
+
 
     # Get API key
     api_key = get_gemini_api_key()
@@ -474,18 +493,20 @@ def ask_ayna(question):
         return (
             "⚠️ Ask Ayna is not connected yet.\n\n"
             "Please add your Gemini API key to Streamlit "
-            "Secrets as `GEMINI_API_KEY`."
+            "Secrets using the name `GEMINI_API_KEY`."
         )
+
 
     try:
 
-        # Create Gemini client
+        # Gemini client
         client = genai.Client(
             api_key=api_key
         )
 
-        # System instructions
-        instructions = """
+
+        # Ask Ayna instructions
+        prompt = f"""
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
 Your purpose is to explain cognitive neuroscience clearly,
@@ -526,43 +547,50 @@ the user to consult a qualified healthcare professional.
 
 8. Answer directly and avoid unnecessary repetition.
 
-9. Use short examples when useful.
+9. Use short examples when they make neuroscience concepts easier.
 
 You are called "Ask Ayna".
+
+User question:
+
+{question}
 """
 
-        full_prompt = (
-            instructions
-            + "\n\nUser question:\n"
-            + question
-        )
 
-        # Gemini request
+        # ====================================================
+        # IMPORTANT:
+        # Updated Gemini model
+        # ====================================================
+
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=full_prompt,
+            model="gemini-3.6-flash",
+            contents=prompt,
         )
 
-        # Read response safely
-        answer = getattr(response, "text", None)
+
+        # Read response
+        answer = getattr(
+            response,
+            "text",
+            None
+        )
+
 
         if answer:
 
             return answer.strip()
 
+
         return (
-            "⚠️ Ask Ayna received no text response.\n\n"
+            "⚠️ Ask Ayna received an empty response.\n\n"
             "Please try your question again."
         )
 
+
     except Exception as e:
 
-        # Show actual error type and details
         error_name = type(e).__name__
         error_details = str(e)
-
-        if not error_details:
-            error_details = "No additional error details were provided."
 
         return (
             "⚠️ Ask Ayna could not connect to Gemini.\n\n"
@@ -596,9 +624,12 @@ if question:
         }
     )
 
-    # Display user message
+
+    # Show user message
     with st.chat_message("user"):
+
         st.markdown(question)
+
 
     # Generate answer
     with st.chat_message("assistant"):
@@ -608,6 +639,7 @@ if question:
             answer = ask_ayna(question)
 
         st.markdown(answer)
+
 
     # Save assistant response
     st.session_state.ayna_messages.append(
