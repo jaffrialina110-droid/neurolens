@@ -417,31 +417,36 @@ for message in st.session_state.ayna_messages:
 # ============================================================
 
 def get_gemini_api_key():
-    """
-    Safely retrieve the Gemini API key.
 
-    Priority:
-    1. Streamlit Secrets
-    2. Environment variable
-    """
-
+    # First: GEMINI_API_KEY from Streamlit Secrets
     try:
+        key = st.secrets.get("GEMINI_API_KEY")
 
-        secret_key = st.secrets.get("GEMINI_API_KEY")
-
-        if secret_key:
-
-            return str(secret_key).strip()
-
+        if key:
+            return str(key).strip()
     except Exception:
-
         pass
 
-    env_key = os.getenv("GEMINI_API_KEY")
+    # Second: GOOGLE_API_KEY from Streamlit Secrets
+    try:
+        key = st.secrets.get("GOOGLE_API_KEY")
 
-    if env_key:
+        if key:
+            return str(key).strip()
+    except Exception:
+        pass
 
-        return env_key.strip()
+    # Third: environment variable
+    key = os.getenv("GEMINI_API_KEY")
+
+    if key:
+        return key.strip()
+
+    # Fourth: Google environment variable
+    key = os.getenv("GOOGLE_API_KEY")
+
+    if key:
+        return key.strip()
 
     return None
 
@@ -451,18 +456,17 @@ def get_gemini_api_key():
 # ============================================================
 
 def ask_ayna(question):
-    """
-    Send the user's question to Gemini.
-    """
 
+    # Check package
     if genai is None:
 
         return (
-            "⚠️ The Gemini package is not installed.\n\n"
-            "Please make sure `google-genai` is present "
-            "in requirements.txt and redeploy the app."
+            "⚠️ Gemini package is missing.\n\n"
+            "Please add `google-genai` to requirements.txt "
+            "and redeploy the app."
         )
 
+    # Get API key
     api_key = get_gemini_api_key()
 
     if not api_key:
@@ -470,16 +474,18 @@ def ask_ayna(question):
         return (
             "⚠️ Ask Ayna is not connected yet.\n\n"
             "Please add your Gemini API key to Streamlit "
-            "Secrets using the name `GEMINI_API_KEY`."
+            "Secrets as `GEMINI_API_KEY`."
         )
 
     try:
 
+        # Create Gemini client
         client = genai.Client(
             api_key=api_key
         )
 
-        prompt = f"""
+        # System instructions
+        instructions = """
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
 Your purpose is to explain cognitive neuroscience clearly,
@@ -511,48 +517,59 @@ Important rules:
 4. Do not present self-reported scores as clinical measurements.
 
 5. Clearly distinguish established scientific evidence from
-   hypotheses or uncertain findings.
+hypotheses or uncertain findings.
 
 6. If a question is medical or requires diagnosis, encourage
-   the user to consult a qualified healthcare professional.
+the user to consult a qualified healthcare professional.
 
 7. Use simple language while maintaining scientific accuracy.
 
 8. Answer directly and avoid unnecessary repetition.
 
-9. Use short examples when they make neuroscience concepts easier.
+9. Use short examples when useful.
 
 You are called "Ask Ayna".
-
-User question:
-
-{question}
 """
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
+        full_prompt = (
+            instructions
+            + "\n\nUser question:\n"
+            + question
         )
 
-        answer = response.text
+        # Gemini request
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=full_prompt,
+        )
 
-        if not answer:
+        # Read response safely
+        answer = getattr(response, "text", None)
 
-            return (
-                "⚠️ Ask Ayna received an empty response. "
-                "Please try your question again."
-            )
+        if answer:
 
-        return answer.strip()
+            return answer.strip()
+
+        return (
+            "⚠️ Ask Ayna received no text response.\n\n"
+            "Please try your question again."
+        )
 
     except Exception as e:
 
+        # Show actual error type and details
         error_name = type(e).__name__
+        error_details = str(e)
+
+        if not error_details:
+            error_details = "No additional error details were provided."
 
         return (
-            "⚠️ Ask Ayna could not generate a response.\n\n"
-            f"Error type: `{error_name}`\n\n"
-            "Please check your Gemini API key and API access."
+            "⚠️ Ask Ayna could not connect to Gemini.\n\n"
+            f"**Error type:** `{error_name}`\n\n"
+            f"**Details:** `{error_details}`\n\n"
+            "Please check your Gemini API key, API access, "
+            "model availability and requirements.txt."
         )
 
 
@@ -571,6 +588,7 @@ question = st.chat_input(
 
 if question:
 
+    # Save user message
     st.session_state.ayna_messages.append(
         {
             "role": "user",
@@ -578,9 +596,11 @@ if question:
         }
     )
 
+    # Display user message
     with st.chat_message("user"):
         st.markdown(question)
 
+    # Generate answer
     with st.chat_message("assistant"):
 
         with st.spinner("🧠 Ayna is thinking..."):
@@ -589,6 +609,7 @@ if question:
 
         st.markdown(answer)
 
+    # Save assistant response
     st.session_state.ayna_messages.append(
         {
             "role": "assistant",
