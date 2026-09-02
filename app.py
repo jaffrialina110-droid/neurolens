@@ -3,11 +3,15 @@ import random
 
 import streamlit as st
 
-# Optional OpenAI import
+
+# ============================================================
+# GEMINI IMPORT
+# ============================================================
+
 try:
-    from openai import OpenAI
+    from google import genai
 except ImportError:
-    OpenAI = None
+    genai = None
 
 
 # ============================================================
@@ -177,7 +181,6 @@ elif game == "Stroop Challenge":
         "YELLOW",
     ]
 
-    # Keep the correct answer fixed during a Streamlit rerun
     if "stroop_correct_color" not in st.session_state:
         st.session_state.stroop_correct_color = random.choice(
             color_options
@@ -378,7 +381,7 @@ elif brain_system == "Attention Networks":
 
 
 # ============================================================
-# ASK AYNA AI
+# ASK AYNA AI — GEMINI
 # ============================================================
 
 st.divider()
@@ -410,75 +413,79 @@ for message in st.session_state.ayna_messages:
 
 
 # ============================================================
-# OPENAI API HELPER
+# GEMINI API KEY
 # ============================================================
 
-def get_openai_api_key():
+def get_gemini_api_key():
     """
-    Safely retrieve the OpenAI API key.
+    Safely retrieve the Gemini API key.
 
     Priority:
     1. Streamlit Secrets
     2. Environment variable
     """
 
-    # Streamlit Secrets
     try:
-        secret_key = st.secrets.get("OPENAI_API_KEY")
+
+        secret_key = st.secrets.get("GEMINI_API_KEY")
 
         if secret_key:
+
             return str(secret_key).strip()
 
     except Exception:
+
         pass
 
-    # Environment variable fallback
-    env_key = os.getenv("OPENAI_API_KEY")
+    env_key = os.getenv("GEMINI_API_KEY")
 
     if env_key:
+
         return env_key.strip()
 
     return None
 
 
+# ============================================================
+# ASK AYNA FUNCTION
+# ============================================================
+
 def ask_ayna(question):
     """
-    Send the user's question to OpenAI and return the answer.
+    Send the user's question to Gemini.
     """
 
-    if OpenAI is None:
+    if genai is None:
 
         return (
-            "⚠️ The OpenAI package is not installed.\n\n"
-            "Please add `openai` to your requirements.txt "
-            "and redeploy the Streamlit app."
+            "⚠️ The Gemini package is not installed.\n\n"
+            "Please make sure `google-genai` is present "
+            "in requirements.txt and redeploy the app."
         )
 
-    api_key = get_openai_api_key()
+    api_key = get_gemini_api_key()
 
     if not api_key:
 
         return (
             "⚠️ Ask Ayna is not connected yet.\n\n"
-            "Please add your OpenAI API key to Streamlit "
-            "Secrets using the name `OPENAI_API_KEY`."
+            "Please add your Gemini API key to Streamlit "
+            "Secrets using the name `GEMINI_API_KEY`."
         )
 
     try:
 
-        client = OpenAI(
+        client = genai.Client(
             api_key=api_key
         )
 
-        response = client.responses.create(
-            model="gpt-5.6-luna",
-            instructions="""
+        prompt = f"""
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
 Your purpose is to explain cognitive neuroscience clearly,
 accurately and in an easy-to-understand way.
 
-You can discuss topics including:
+You can discuss:
 
 - memory
 - attention
@@ -513,17 +520,24 @@ Important rules:
 
 8. Answer directly and avoid unnecessary repetition.
 
-9. If appropriate, use short examples to make neuroscience
-   concepts easier to understand.
+9. Use short examples when they make neuroscience concepts easier.
 
 You are called "Ask Ayna".
-""",
-            input=question,
+
+User question:
+
+{question}
+"""
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
         )
 
-        answer = response.output_text
+        answer = response.text
 
         if not answer:
+
             return (
                 "⚠️ Ask Ayna received an empty response. "
                 "Please try your question again."
@@ -533,15 +547,12 @@ You are called "Ask Ayna".
 
     except Exception as e:
 
-        # Do not expose the API key or sensitive configuration.
         error_name = type(e).__name__
 
         return (
-            "⚠️ Ask Ayna could not connect to the AI service.\n\n"
-            f"Connection error type: `{error_name}`\n\n"
-            "Please check that your OpenAI API key is valid, "
-            "your API account has API access/available usage, "
-            "and the `openai` package is installed correctly."
+            "⚠️ Ask Ayna could not generate a response.\n\n"
+            f"Error type: `{error_name}`\n\n"
+            "Please check your Gemini API key and API access."
         )
 
 
@@ -560,7 +571,6 @@ question = st.chat_input(
 
 if question:
 
-    # Save user message
     st.session_state.ayna_messages.append(
         {
             "role": "user",
@@ -568,11 +578,9 @@ if question:
         }
     )
 
-    # Display user message
     with st.chat_message("user"):
         st.markdown(question)
 
-    # Generate AI response
     with st.chat_message("assistant"):
 
         with st.spinner("🧠 Ayna is thinking..."):
@@ -581,13 +589,25 @@ if question:
 
         st.markdown(answer)
 
-    # Save assistant response
     st.session_state.ayna_messages.append(
         {
             "role": "assistant",
             "content": answer,
         }
     )
+
+
+# ============================================================
+# CLEAR CHAT
+# ============================================================
+
+if st.session_state.get("ayna_messages"):
+
+    if st.button("🗑️ Clear Ask Ayna Chat"):
+
+        st.session_state.ayna_messages = []
+
+        st.rerun()
 
 
 # ============================================================
