@@ -1,8 +1,7 @@
 import os
 import random
-import io
-
 import streamlit as st
+from PIL import Image
 
 try:
     from google import genai
@@ -10,14 +9,15 @@ except ImportError:
     genai = None
 
 try:
-    from PIL import Image
+    import plotly.graph_objects as go
 except ImportError:
-    Image = None
+    go = None
+
+import streamlit.components.v1 as components
 
 
 # ============================================================
 # NEUROLENS
-# Cognitive Neuroscience Educational App
 # ============================================================
 
 st.set_page_config(
@@ -26,20 +26,523 @@ st.set_page_config(
     layout="wide",
 )
 
-
-# ============================================================
-# TITLE
-# ============================================================
-
 st.title("🧠 NEUROLENS")
-st.caption("Explore cognition, behavior & the brain")
+st.caption("Explore cognition, behavior, brain systems & neural pathways")
 
 st.divider()
 
 
 # ============================================================
+# BRAIN IMAGE
+# ============================================================
+
+BRAIN_IMAGE = "brain.png"
+
+brain_image = None
+
+if os.path.exists(BRAIN_IMAGE):
+    try:
+        brain_image = Image.open(BRAIN_IMAGE)
+    except Exception:
+        brain_image = None
+
+
+# ============================================================
+# BRAIN PARTS
+# ============================================================
+
+brain_parts = {
+    "Prefrontal Cortex": {
+        "description": (
+            "The prefrontal cortex is involved in planning, "
+            "cognitive control, working memory and goal-directed behavior."
+        ),
+        "voice": (
+            "The prefrontal cortex helps us plan, control behavior, "
+            "hold information in working memory, and make goal-directed decisions."
+        ),
+    },
+
+    "Hippocampus": {
+        "description": (
+            "The hippocampus plays an important role in memory formation "
+            "and spatial representation."
+        ),
+        "voice": (
+            "The hippocampus plays an important role in memory formation "
+            "and spatial representation."
+        ),
+    },
+
+    "Amygdala": {
+        "description": (
+            "The amygdala is involved in processing emotionally significant "
+            "information and emotional learning."
+        ),
+        "voice": (
+            "The amygdala helps process emotionally significant information "
+            "and contributes to emotional learning."
+        ),
+    },
+
+    "Striatum": {
+        "description": (
+            "The striatum is involved in action selection, reward-related "
+            "learning and habit-related processes."
+        ),
+        "voice": (
+            "The striatum contributes to action selection, reward learning "
+            "and habit-related behavior."
+        ),
+    },
+
+    "Anterior Cingulate Cortex": {
+        "description": (
+            "The anterior cingulate cortex is involved in performance "
+            "monitoring, conflict processing and cognitive control."
+        ),
+        "voice": (
+            "The anterior cingulate cortex contributes to performance "
+            "monitoring, conflict processing and cognitive control."
+        ),
+    },
+
+    "Cerebellum": {
+        "description": (
+            "The cerebellum is important for coordination, motor learning, "
+            "timing and balance."
+        ),
+        "voice": (
+            "The cerebellum contributes to movement coordination, balance, "
+            "timing and motor learning."
+        ),
+    },
+}
+
+
+# ============================================================
+# INTERACTIVE BRAIN EXPLORER
+# ============================================================
+
+st.header("🧠 Interactive Brain Explorer")
+
+if brain_image is not None:
+
+    st.image(
+        brain_image,
+        caption="NEUROLENS Brain",
+        use_container_width=True,
+    )
+
+else:
+
+    st.warning(
+        "brain.png not found. Keep brain.png in the same folder as app.py."
+    )
+
+
+selected_part = st.selectbox(
+    "Choose a brain region",
+    list(brain_parts.keys()),
+)
+
+part_info = brain_parts[selected_part]
+
+st.subheader(f"🔬 {selected_part}")
+
+st.info(part_info["description"])
+
+
+# ============================================================
+# VOICE
+# ============================================================
+
+st.subheader("🔊 Listen to Explanation")
+
+voice_text = part_info["voice"]
+
+safe_text = (
+    voice_text
+    .replace("\\", "\\\\")
+    .replace("'", "\\'")
+    .replace("\n", " ")
+)
+
+components.html(
+    f"""
+    <div style="
+        padding:15px;
+        text-align:center;
+        border-radius:12px;
+        background:#f1f3f6;
+    ">
+
+    <button onclick="speakText()"
+        style="
+            padding:12px 20px;
+            border:none;
+            border-radius:10px;
+            font-size:16px;
+            cursor:pointer;
+        ">
+        🔊 Play
+    </button>
+
+    <button onclick="stopSpeech()"
+        style="
+            padding:12px 20px;
+            margin-left:8px;
+            border:none;
+            border-radius:10px;
+            font-size:16px;
+            cursor:pointer;
+        ">
+        ⏹ Stop
+    </button>
+
+    <script>
+
+    function speakText() {{
+        window.speechSynthesis.cancel();
+
+        const text = '{safe_text}';
+
+        const speech = new SpeechSynthesisUtterance(text);
+
+        speech.rate = 0.9;
+        speech.pitch = 1.0;
+
+        window.speechSynthesis.speak(speech);
+    }}
+
+    function stopSpeech() {{
+        window.speechSynthesis.cancel();
+    }}
+
+    </script>
+
+    </div>
+    """,
+    height=100,
+)
+
+
+# ============================================================
+# BRAIN PUZZLE
+# ============================================================
+
+st.divider()
+
+st.header("🧩 Full Brain Picture Puzzle")
+
+st.write(
+    "Solve the scrambled brain image by arranging the pieces "
+    "in the correct order."
+)
+
+if brain_image is not None:
+
+    difficulty = st.selectbox(
+        "Puzzle difficulty",
+        [
+            "Easy — 4 pieces",
+            "Medium — 9 pieces",
+            "Hard — 16 pieces",
+        ],
+    )
+
+    if difficulty.startswith("Easy"):
+        rows, cols = 2, 2
+
+    elif difficulty.startswith("Medium"):
+        rows, cols = 3, 3
+
+    else:
+        rows, cols = 4, 4
+
+
+    image = brain_image.convert("RGB")
+
+    width, height = image.size
+
+    piece_width = width // cols
+    piece_height = height // rows
+
+    pieces = []
+
+    for row in range(rows):
+
+        for col in range(cols):
+
+            left = col * piece_width
+            top = row * piece_height
+
+            right = (
+                (col + 1) * piece_width
+                if col < cols - 1
+                else width
+            )
+
+            bottom = (
+                (row + 1) * piece_height
+                if row < rows - 1
+                else height
+            )
+
+            piece = image.crop(
+                (left, top, right, bottom)
+            )
+
+            pieces.append(piece)
+
+
+    total = rows * cols
+
+
+    if (
+        "puzzle_order" not in st.session_state
+        or st.session_state.get("puzzle_total") != total
+    ):
+
+        st.session_state.puzzle_order = list(
+            range(total)
+        )
+
+        random.shuffle(
+            st.session_state.puzzle_order
+        )
+
+        st.session_state.puzzle_total = total
+
+
+    if st.button("🔀 New Puzzle"):
+
+        st.session_state.puzzle_order = list(
+            range(total)
+        )
+
+        random.shuffle(
+            st.session_state.puzzle_order
+        )
+
+        st.rerun()
+
+
+    st.subheader("🧩 Scrambled Pieces")
+
+    index = 0
+
+    for row in range(rows):
+
+        columns = st.columns(cols)
+
+        for col in range(cols):
+
+            piece_number = (
+                st.session_state.puzzle_order[index]
+            )
+
+            with columns[col]:
+
+                st.image(
+                    pieces[piece_number],
+                    use_container_width=True,
+                )
+
+                st.caption(
+                    f"Piece {piece_number + 1}"
+                )
+
+            index += 1
+
+
+    st.subheader("🧠 Your Solution")
+
+    st.write(
+        f"Enter the correct piece numbers from "
+        f"top-left to bottom-right."
+    )
+
+    example = " ".join(
+        str(i)
+        for i in range(1, total + 1)
+    )
+
+    answer = st.text_input(
+        f"Example: {example}"
+    )
+
+
+    if st.button("✅ Check Puzzle"):
+
+        try:
+
+            user_order = [
+                int(x)
+                for x in answer.split()
+            ]
+
+            correct_order = list(
+                range(1, total + 1)
+            )
+
+            if user_order == correct_order:
+
+                st.success(
+                    "🎉 Brain puzzle solved!"
+                )
+
+                st.balloons()
+
+                st.info(
+                    "This educational task explores visual-spatial "
+                    "organization and attention."
+                )
+
+            else:
+
+                st.error(
+                    "Not correct yet. Try again."
+                )
+
+        except ValueError:
+
+            st.error(
+                "Enter numbers separated by spaces."
+            )
+
+else:
+
+    st.info(
+        "Upload brain.png to activate the puzzle."
+    )
+
+
+# ============================================================
+# 3D NEURAL VISUALIZATION
+# ============================================================
+
+st.divider()
+
+st.header("🧬 3D Neural Visualization")
+
+st.write(
+    "Educational 3D-style visualization of neurons and their connections."
+)
+
+if go is not None:
+
+    points = [
+        (0, 0, 0),
+        (1, 1, 1),
+        (2, 0, 1),
+        (3, 1, 0),
+        (4, 0, 2),
+        (5, 1, 1),
+        (6, 0, 0),
+        (2, 2, 2),
+        (4, 2, 1),
+        (6, 2, 2),
+    ]
+
+    x = [p[0] for p in points]
+    y = [p[1] for p in points]
+    z = [p[2] for p in points]
+
+    connections = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 6),
+        (1, 7),
+        (3, 8),
+        (5, 9),
+    ]
+
+    fig = go.Figure()
+
+
+    for start, end in connections:
+
+        fig.add_trace(
+            go.Scatter3d(
+                x=[x[start], x[end]],
+                y=[y[start], y[end]],
+                z=[z[start], z[end]],
+                mode="lines",
+                line=dict(width=4),
+                showlegend=False,
+            )
+        )
+
+
+    fig.add_trace(
+        go.Scatter3d(
+            x=x,
+            y=y,
+            z=z,
+            mode="markers",
+            marker=dict(size=10),
+            text=[
+                "Neuron 1",
+                "Neuron 2",
+                "Neuron 3",
+                "Neuron 4",
+                "Neuron 5",
+                "Neuron 6",
+                "Neuron 7",
+                "Neuron 8",
+                "Neuron 9",
+                "Neuron 10",
+            ],
+            hovertemplate="%{text}<extra></extra>",
+            showlegend=False,
+        )
+    )
+
+
+    fig.update_layout(
+        title="Educational Neural Network",
+        height=600,
+        scene=dict(
+            xaxis_title="X",
+            yaxis_title="Y",
+            zaxis_title="Z",
+        ),
+        margin=dict(
+            l=0,
+            r=0,
+            b=0,
+            t=50,
+        ),
+    )
+
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+else:
+
+    st.warning(
+        "Plotly is missing. Add plotly to requirements.txt."
+    )
+
+
+st.caption(
+    "Educational visualization only; it does not represent actual "
+    "neural activity."
+)
+
+
+# ============================================================
 # COGNITIVE GAMES
 # ============================================================
+
+st.divider()
 
 st.header("🎮 Cognitive Games")
 
@@ -52,23 +555,16 @@ game = st.selectbox(
         "Attention Challenge",
         "Stroop Challenge",
         "Pattern Challenge",
-        "Brain Image Puzzle",
     ],
 )
 
 
-# ============================================================
-# DECISION CHALLENGE
-# ============================================================
-
 if game == "Decision Challenge":
 
-    st.subheader("🧠 Quick Decision Challenge")
-
-    st.write("Which option would you prefer?")
+    st.subheader("🧠 Decision Challenge")
 
     choice = st.radio(
-        "Choose one:",
+        "Which would you prefer?",
         [
             "Rs. 1,000 today",
             "Rs. 1,500 after 30 days",
@@ -78,19 +574,21 @@ if game == "Decision Challenge":
     if st.button("Analyze Decision"):
 
         if choice == "Rs. 1,000 today":
-            st.success("Pattern: Immediate-reward preference")
+
+            st.success(
+                "Immediate-reward preference"
+            )
+
         else:
-            st.success("Pattern: Delayed-reward preference")
+
+            st.success(
+                "Delayed-reward preference"
+            )
 
         st.info(
-            "This educational task explores choices between "
-            "immediate and delayed rewards."
+            "This is an educational decision-making task."
         )
 
-
-# ============================================================
-# MEMORY CHALLENGE
-# ============================================================
 
 elif game == "Memory Challenge":
 
@@ -98,34 +596,30 @@ elif game == "Memory Challenge":
 
     sequence = "7 2 9 4 1 8"
 
-    st.write("Remember this sequence:")
+    st.write("Remember:")
 
-    st.markdown(f"## **{sequence}**")
+    st.markdown(
+        f"## **{sequence}**"
+    )
 
     answer = st.text_input(
-        "Enter the sequence from memory:"
+        "Enter the sequence:"
     )
 
     if st.button("Check Memory"):
 
-        cleaned_answer = answer.replace(" ", "")
+        if answer.replace(" ", "") == "729418":
 
-        if cleaned_answer == "729418":
             st.success("🎉 Correct!")
-            st.write("You recalled the sequence correctly.")
+
         else:
+
             st.error("Not quite. Try again.")
 
-
-# ============================================================
-# ATTENTION CHALLENGE
-# ============================================================
 
 elif game == "Attention Challenge":
 
     st.subheader("🎯 Attention Challenge")
-
-    st.write("Find the letter X.")
 
     target = st.selectbox(
         "Which sequence contains X?",
@@ -140,79 +634,72 @@ elif game == "Attention Challenge":
     if st.button("Check Attention"):
 
         if "X" in target:
+
             st.success("🎯 Correct!")
+
             st.info(
-                "This educational task explores attention "
-                "and visual search."
+                "This task explores visual search and attention."
             )
+
         else:
+
             st.error("Try again!")
 
-
-# ============================================================
-# STROOP CHALLENGE
-# ============================================================
 
 elif game == "Stroop Challenge":
 
     st.subheader("🎨 Stroop Challenge")
 
-    st.write(
-        "Ignore the meaning of the word and choose "
-        "its displayed color."
-    )
-
-    color_options = [
+    colors = [
         "RED",
         "BLUE",
         "GREEN",
         "YELLOW",
     ]
 
-    if "stroop_correct_color" not in st.session_state:
-        st.session_state.stroop_correct_color = random.choice(
-            color_options
+    if "stroop_color" not in st.session_state:
+
+        st.session_state.stroop_color = random.choice(
+            colors
         )
 
     if "stroop_word" not in st.session_state:
+
         st.session_state.stroop_word = random.choice(
-            color_options
+            colors
         )
 
-    correct_color = st.session_state.stroop_correct_color
-    word = st.session_state.stroop_word
-
-    st.markdown(f"## **{word}**")
+    st.markdown(
+        f"## **{st.session_state.stroop_word}**"
+    )
 
     answer = st.selectbox(
-        "What color do you think the word represents?",
-        color_options,
+        "Choose the displayed color:",
+        colors,
     )
 
     if st.button("Check Stroop"):
 
-        if answer == correct_color:
+        if answer == st.session_state.stroop_color:
+
             st.success(
-                "🎯 Correct! This task explores response control."
+                "🎯 Correct! This explores response control."
             )
+
         else:
+
             st.info(
-                "Stroop tasks explore attention "
-                "and interference control."
+                "Stroop tasks explore attention and interference."
             )
 
-
-# ============================================================
-# PATTERN CHALLENGE
-# ============================================================
 
 elif game == "Pattern Challenge":
 
     st.subheader("🔢 Pattern Recognition")
 
-    st.write("What number comes next?")
-
-    st.markdown("### 2 → 4 → 8 → 16 → ?")
+    st.markdown(
+        "### 2 → 4 → 8 → 16 → ?"
+    )
 
     answer = st.number_input(
         "Your answer",
@@ -223,387 +710,29 @@ elif game == "Pattern Challenge":
     if st.button("Check Pattern"):
 
         if answer == 32:
+
             st.success(
-                "🎉 Correct! The pattern doubles each time."
+                "🎉 Correct!"
             )
+
         else:
+
             st.error(
-                "Try again. Look at how each number changes."
+                "Try again."
             )
 
 
 # ============================================================
-# BRAIN IMAGE PUZZLE
-# ============================================================
-
-elif game == "Brain Image Puzzle":
-
-    st.subheader("🧠 Brain Image Puzzle")
-    st.write(
-        "Arrange the brain image pieces in the correct order."
-    )
-
-    if Image is None:
-
-        st.error(
-            "Pillow is not installed. Add `Pillow` to "
-            "requirements.txt."
-        )
-
-    else:
-
-        # ----------------------------------------------------
-        # Load brain image
-        # ----------------------------------------------------
-
-        brain_image = None
-
-        # First look for brain.png in the project folder
-        possible_files = [
-            "brain.png",
-            "brain.jpg",
-            "brain.jpeg",
-            "brain.webp",
-        ]
-
-        for filename in possible_files:
-
-            if os.path.exists(filename):
-
-                try:
-                    brain_image = Image.open(filename).convert("RGB")
-                    break
-                except Exception:
-                    pass
-
-        # If image is not found, allow upload
-        if brain_image is None:
-
-            uploaded_brain = st.file_uploader(
-                "Upload your brain image",
-                type=["png", "jpg", "jpeg", "webp"],
-                key="brain_image_upload",
-            )
-
-            if uploaded_brain is not None:
-
-                try:
-                    brain_image = Image.open(
-                        uploaded_brain
-                    ).convert("RGB")
-
-                except Exception:
-
-                    st.error(
-                        "The selected file could not be opened."
-                    )
-
-        if brain_image is None:
-
-            st.warning(
-                "Please upload your brain image above, "
-                "or place a file named `brain.png` in your project."
-            )
-
-        else:
-
-            st.success("🧠 Brain image loaded!")
-
-            # ------------------------------------------------
-            # Puzzle settings
-            # ------------------------------------------------
-
-            puzzle_size = st.selectbox(
-                "Puzzle difficulty",
-                [
-                    "Easy — 2 × 2",
-                    "Medium — 3 × 3",
-                    "Hard — 4 × 4",
-                ],
-            )
-
-            if puzzle_size == "Easy — 2 × 2":
-                grid_size = 2
-            elif puzzle_size == "Medium — 3 × 3":
-                grid_size = 3
-            else:
-                grid_size = 4
-
-            # ------------------------------------------------
-            # Prepare image
-            # ------------------------------------------------
-
-            image_size = 600
-
-            brain_image.thumbnail(
-                (image_size, image_size)
-            )
-
-            canvas = Image.new(
-                "RGB",
-                (image_size, image_size),
-                "white",
-            )
-
-            x_offset = (
-                image_size - brain_image.width
-            ) // 2
-
-            y_offset = (
-                image_size - brain_image.height
-            ) // 2
-
-            canvas.paste(
-                brain_image,
-                (x_offset, y_offset),
-            )
-
-            # ------------------------------------------------
-            # Create puzzle pieces
-            # ------------------------------------------------
-
-            piece_width = image_size // grid_size
-            piece_height = image_size // grid_size
-
-            pieces = []
-
-            for row in range(grid_size):
-
-                for col in range(grid_size):
-
-                    left = col * piece_width
-                    upper = row * piece_height
-
-                    right = (
-                        (col + 1) * piece_width
-                    )
-
-                    lower = (
-                        (row + 1) * piece_height
-                    )
-
-                    piece = canvas.crop(
-                        (
-                            left,
-                            upper,
-                            right,
-                            lower,
-                        )
-                    )
-
-                    pieces.append(piece)
-
-            total_pieces = len(pieces)
-
-            # ------------------------------------------------
-            # Create shuffled puzzle
-            # ------------------------------------------------
-
-            if (
-                "brain_puzzle_order" not in st.session_state
-                or
-                st.session_state.get(
-                    "brain_puzzle_size"
-                ) != grid_size
-            ):
-
-                puzzle_order = list(
-                    range(total_pieces)
-                )
-
-                random.shuffle(puzzle_order)
-
-                # Make sure it isn't accidentally already solved
-                if puzzle_order == list(
-                    range(total_pieces)
-                ):
-
-                    random.shuffle(
-                        puzzle_order
-                    )
-
-                st.session_state.brain_puzzle_order = (
-                    puzzle_order
-                )
-
-                st.session_state.brain_puzzle_size = (
-                    grid_size
-                )
-
-                st.session_state.brain_selected = None
-
-            # ------------------------------------------------
-            # Reset puzzle
-            # ------------------------------------------------
-
-            if st.button("🔄 New Puzzle"):
-
-                puzzle_order = list(
-                    range(total_pieces)
-                )
-
-                random.shuffle(puzzle_order)
-
-                if puzzle_order == list(
-                    range(total_pieces)
-                ):
-
-                    random.shuffle(
-                        puzzle_order
-                    )
-
-                st.session_state.brain_puzzle_order = (
-                    puzzle_order
-                )
-
-                st.session_state.brain_selected = None
-
-                st.rerun()
-
-            st.write(
-                "Click one piece, then click another piece "
-                "to swap them."
-            )
-
-            # ------------------------------------------------
-            # Puzzle display
-            # ------------------------------------------------
-
-            order = st.session_state.brain_puzzle_order
-
-            for row in range(grid_size):
-
-                cols = st.columns(grid_size)
-
-                for col in range(grid_size):
-
-                    position = (
-                        row * grid_size + col
-                    )
-
-                    piece_index = order[position]
-
-                    with cols[col]:
-
-                        st.image(
-                            pieces[piece_index],
-                            use_container_width=True,
-                        )
-
-                        if st.button(
-                            f"Select {position + 1}",
-                            key=f"brain_piece_{position}",
-                        ):
-
-                            selected = (
-                                st.session_state.brain_selected
-                            )
-
-                            if selected is None:
-
-                                st.session_state.brain_selected = (
-                                    position
-                                )
-
-                            else:
-
-                                first = selected
-                                second = position
-
-                                order[first], order[second] = (
-                                    order[second],
-                                    order[first],
-                                )
-
-                                st.session_state.brain_puzzle_order = (
-                                    order
-                                )
-
-                                st.session_state.brain_selected = (
-                                    None
-                                )
-
-                                st.rerun()
-
-            # ------------------------------------------------
-            # Selected piece
-            # ------------------------------------------------
-
-            selected = st.session_state.get(
-                "brain_selected"
-            )
-
-            if selected is not None:
-
-                st.info(
-                    f"Piece {selected + 1} selected. "
-                    "Now select another piece to swap."
-                )
-
-            # ------------------------------------------------
-            # Check solution
-            # ------------------------------------------------
-
-            st.divider()
-
-            if st.button(
-                "🧩 Check Brain Puzzle",
-                type="primary",
-            ):
-
-                correct_order = list(
-                    range(total_pieces)
-                )
-
-                if order == correct_order:
-
-                    st.success(
-                        "🎉 Brain Puzzle Solved!"
-                    )
-
-                    st.balloons()
-
-                    st.info(
-                        "Excellent! You reconstructed the "
-                        "brain image correctly."
-                    )
-
-                else:
-
-                    correct_count = sum(
-                        1
-                        for i, value in enumerate(order)
-                        if i == value
-                    )
-
-                    st.warning(
-                        f"Not solved yet. "
-                        f"{correct_count}/{total_pieces} "
-                        "pieces are currently in the correct position."
-                    )
-
-            # ------------------------------------------------
-            # Educational note
-            # ------------------------------------------------
-
-            st.caption(
-                "This is an educational visual puzzle. "
-                "Puzzle performance is not a clinical measurement "
-                "of memory, intelligence or brain function."
-            )
-
-
-# ============================================================
-# COGNITIVE VISUALIZATION
+# COGNITIVE SELF REPORT
 # ============================================================
 
 st.divider()
 
-st.header("📊 Cognitive Visualization")
+st.header("📊 Cognitive Self-Report")
 
-st.write(
-    "Rate your current experience. These are self-reported "
-    "scores and are not measurements of brain activity."
+st.caption(
+    "These are self-reported educational ratings, "
+    "not measurements of brain activity."
 )
 
 mental_load = st.slider(
@@ -634,91 +763,18 @@ memory_confidence = st.slider(
     5,
 )
 
-visualization_data = {
-    "Cognitive Measure": [
-        "Mental Load",
-        "Sleep Quality",
-        "Attention",
-        "Memory Confidence",
-    ],
-    "Score": [
-        mental_load,
-        sleep_quality,
-        attention_level,
-        memory_confidence,
-    ],
-}
-
 st.bar_chart(
-    visualization_data,
-    x="Cognitive Measure",
-    y="Score",
-)
-
-st.caption(
-    "These scores are self-reported educational measures, "
-    "not clinical or direct measurements of brain activity."
+    {
+        "Mental Load": mental_load,
+        "Sleep Quality": sleep_quality,
+        "Attention": attention_level,
+        "Memory Confidence": memory_confidence,
+    }
 )
 
 
 # ============================================================
-# BRAIN SYSTEM EXPLORER
-# ============================================================
-
-st.divider()
-
-st.header("🧠 Explore Brain Systems")
-
-brain_system = st.selectbox(
-    "Explore a cognitive system",
-    [
-        "Select a system",
-        "Prefrontal Cortex",
-        "Hippocampus",
-        "Striatum",
-        "Anterior Cingulate Cortex",
-        "Attention Networks",
-    ],
-)
-
-if brain_system == "Prefrontal Cortex":
-
-    st.info(
-        "The prefrontal cortex is involved in cognitive control, "
-        "planning, working memory and goal-directed behavior."
-    )
-
-elif brain_system == "Hippocampus":
-
-    st.info(
-        "The hippocampus plays an important role in memory "
-        "formation and spatial representation."
-    )
-
-elif brain_system == "Striatum":
-
-    st.info(
-        "The striatum is involved in action selection, "
-        "reward-related learning and habit-related processes."
-    )
-
-elif brain_system == "Anterior Cingulate Cortex":
-
-    st.info(
-        "The anterior cingulate cortex is involved in monitoring "
-        "conflict, performance and aspects of cognitive control."
-    )
-
-elif brain_system == "Attention Networks":
-
-    st.info(
-        "Attention networks help select relevant information "
-        "and regulate the allocation of cognitive resources."
-    )
-
-
-# ============================================================
-# ASK AYNA AI — GEMINI
+# ASK AYNA
 # ============================================================
 
 st.divider()
@@ -726,94 +782,80 @@ st.divider()
 st.header("🤖 Ask Ayna 🧠")
 
 st.write(
-    "Ask questions about cognitive neuroscience, memory, "
-    "attention, learning, emotions, decision-making and the brain."
+    "Ask Ayna about memory, attention, learning, "
+    "behavior, cognition, brain systems and neuroscience."
 )
 
 
-# ============================================================
-# CHAT SESSION STATE
-# ============================================================
-
 if "ayna_messages" not in st.session_state:
+
     st.session_state.ayna_messages = []
 
 
-# ============================================================
-# DAILY ASK AYNA LIMIT
-# ============================================================
-
-from datetime import date
-
-TODAY = str(date.today())
-
-if (
-    "ayna_date" not in st.session_state
-    or st.session_state.ayna_date != TODAY
-):
-
-    st.session_state.ayna_date = TODAY
-    st.session_state.ayna_daily_count = 0
-
-if "ayna_daily_count" not in st.session_state:
-    st.session_state.ayna_daily_count = 0
-
-DAILY_LIMIT = 10
-
-
-# ============================================================
-# SHOW PREVIOUS MESSAGES
-# ============================================================
-
 for message in st.session_state.ayna_messages:
 
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
 
 
 # ============================================================
-# GEMINI API KEY
+# GEMINI KEY
 # ============================================================
 
 def get_gemini_api_key():
 
     try:
 
-        secret_key = st.secrets.get(
+        key = st.secrets.get(
             "GEMINI_API_KEY"
         )
 
-        if secret_key:
-            return str(secret_key).strip()
+        if key:
+
+            return str(key).strip()
 
     except Exception:
+
         pass
+
 
     try:
 
-        secret_key = st.secrets.get(
+        key = st.secrets.get(
             "GOOGLE_API_KEY"
         )
 
-        if secret_key:
-            return str(secret_key).strip()
+        if key:
+
+            return str(key).strip()
 
     except Exception:
+
         pass
 
-    env_key = os.getenv(
+
+    key = os.getenv(
         "GEMINI_API_KEY"
     )
 
-    if env_key:
-        return env_key.strip()
+    if key:
 
-    env_key = os.getenv(
+        return key.strip()
+
+
+    key = os.getenv(
         "GOOGLE_API_KEY"
     )
 
-    if env_key:
-        return env_key.strip()
+    if key:
+
+        return key.strip()
+
 
     return None
 
@@ -827,20 +869,20 @@ def ask_ayna(question):
     if genai is None:
 
         return (
-            "⚠️ Gemini package is not installed.\n\n"
-            "Please add `google-genai` to requirements.txt "
-            "and redeploy the app."
+            "⚠️ Gemini package is not installed. "
+            "Check requirements.txt."
         )
+
 
     api_key = get_gemini_api_key()
 
     if not api_key:
 
         return (
-            "⚠️ Ask Ayna is not connected yet.\n\n"
-            "Please add your Gemini API key to Streamlit "
-            "Secrets using the name `GEMINI_API_KEY`."
+            "⚠️ Ask Ayna is not connected. "
+            "Add GEMINI_API_KEY to Streamlit Secrets."
         )
+
 
     try:
 
@@ -848,12 +890,13 @@ def ask_ayna(question):
             api_key=api_key
         )
 
+
         prompt = f"""
 You are Ask Ayna, an educational cognitive neuroscience assistant.
 
-Explain neuroscience clearly, accurately and responsibly.
+Explain neuroscience accurately and clearly.
 
-Topics include:
+You can discuss:
 
 - memory
 - attention
@@ -865,45 +908,32 @@ Topics include:
 - cognitive control
 - brain systems
 - neuroplasticity
-- cognitive psychology
-- behavioral neuroscience
 - neurons
 - synapses
-- neural circuits
-- brain anatomy
+- neural networks
+- behavioral neuroscience
 
 Rules:
 
-1. Keep explanations educational and scientifically responsible.
-
-2. Do not diagnose medical, psychiatric or psychological disorders.
-
-3. Do not claim that a simple game measures actual brain activity.
-
-4. Do not present self-reported scores as clinical measurements.
-
-5. Distinguish established evidence from hypotheses.
-
-6. For medical questions requiring diagnosis, recommend a qualified
-healthcare professional.
-
-7. Use simple language while maintaining scientific accuracy.
-
-8. Answer directly.
-
-9. Use examples when useful.
-
-10. You are called "Ask Ayna".
+1. Do not diagnose medical or psychiatric disorders.
+2. Do not claim simple games measure brain activity.
+3. Do not present self-reported ratings as clinical measurements.
+4. Distinguish established evidence from hypotheses.
+5. Use simple but scientifically accurate language.
+6. If a question requires medical diagnosis, recommend a qualified professional.
+7. Answer directly.
 
 User question:
 
 {question}
 """
 
+
         response = client.models.generate_content(
             model="gemini-3.6-flash",
             contents=prompt,
         )
+
 
         answer = getattr(
             response,
@@ -911,62 +941,36 @@ User question:
             None,
         )
 
+
         if answer:
+
             return answer.strip()
 
+
         return (
-            "⚠️ Ask Ayna received an empty response. "
-            "Please try again."
+            "⚠️ Ask Ayna received an empty response."
         )
+
 
     except Exception as e:
 
-        error_name = type(e).__name__
-
-        error_text = str(e)
-
-        # Hide potentially sensitive information
-        safe_error = error_text[:500]
-
         return (
-            "⚠️ Ask Ayna could not generate a response.\n\n"
-            f"**Error:** `{error_name}`\n\n"
-            f"`{safe_error}`\n\n"
-            "Please try again in a moment."
+            "⚠️ Ask Ayna could not connect to Gemini.\n\n"
+            f"Error: `{type(e).__name__}`\n\n"
+            f"Details: `{str(e)}`"
         )
 
 
 # ============================================================
-# ASK AYNA INPUT
+# CHAT
 # ============================================================
 
-if st.session_state.ayna_daily_count < DAILY_LIMIT:
+question = st.chat_input(
+    "Ask Ayna a neuroscience question..."
+)
 
-    question = st.chat_input(
-        "Ask Ayna a neuroscience question..."
-    )
-
-else:
-
-    question = None
-
-    st.warning(
-        "🌙 You have reached today's Ask Ayna limit "
-        f"of {DAILY_LIMIT} questions."
-    )
-
-    st.info(
-        "Your app limit automatically resets on the next day."
-    )
-
-
-# ============================================================
-# PROCESS QUESTION
-# ============================================================
 
 if question:
-
-    st.session_state.ayna_daily_count += 1
 
     st.session_state.ayna_messages.append(
         {
@@ -975,8 +979,11 @@ if question:
         }
     )
 
+
     with st.chat_message("user"):
+
         st.markdown(question)
+
 
     with st.chat_message("assistant"):
 
@@ -984,9 +991,12 @@ if question:
             "🧠 Ayna is thinking..."
         ):
 
-            answer = ask_ayna(question)
+            answer = ask_ayna(
+                question
+            )
 
         st.markdown(answer)
+
 
     st.session_state.ayna_messages.append(
         {
@@ -995,17 +1005,14 @@ if question:
         }
     )
 
-    st.caption(
-        f"Ask Ayna usage today: "
-        f"{st.session_state.ayna_daily_count}/{DAILY_LIMIT}"
-    )
-
 
 # ============================================================
 # CLEAR CHAT
 # ============================================================
 
-if st.session_state.get("ayna_messages"):
+if st.session_state.get(
+    "ayna_messages"
+):
 
     if st.button(
         "🗑️ Clear Ask Ayna Chat"
@@ -1025,14 +1032,11 @@ st.divider()
 st.header("📚 Science Note")
 
 st.write(
-    "NEUROLENS provides educational cognitive tasks, "
-    "visual puzzles and neuroscience explanations. "
-    "Game scores and self-reported ratings should not "
-    "be interpreted as clinical diagnoses or direct "
-    "measurements of brain activity."
+    "NEUROLENS is an educational cognitive neuroscience tool. "
+    "Its games, self-reported ratings and visualizations are "
+    "not clinical assessments or direct measurements of brain activity."
 )
 
 st.caption(
-    "NEUROLENS • Cognitive Neuroscience Education "
-    "• Ask Ayna • Created by Ayna"
+    "NEUROLENS • Cognitive Neuroscience Education • Created by Ayna"
 )
