@@ -1,6 +1,5 @@
 import os
 import random
-import base64
 import streamlit as st
 from PIL import Image
 import streamlit.components.v1 as components
@@ -17,17 +16,22 @@ except ImportError:
 
 
 # ============================================================
-# NEUROLENS
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
     page_title="NEUROLENS",
     page_icon="🧠",
-    layout="wide",
+    layout="wide"
 )
 
+
+# ============================================================
+# HEADER
+# ============================================================
+
 st.title("🧠 NEUROLENS")
-st.caption("Explore cognition, behavior, brain systems & neural pathways")
+st.caption("Explore cognition, behavior & the brain")
 
 st.divider()
 
@@ -42,16 +46,17 @@ brain_image = None
 
 if os.path.exists(BRAIN_IMAGE):
     try:
-        brain_image = Image.open(BRAIN_IMAGE)
+        brain_image = Image.open(BRAIN_IMAGE).convert("RGB")
     except Exception:
         brain_image = None
 
 
 # ============================================================
-# BRAIN PARTS
+# BRAIN REGIONS
 # ============================================================
 
 brain_parts = {
+
     "Prefrontal Cortex": {
         "description": (
             "The prefrontal cortex contributes to planning, "
@@ -106,8 +111,9 @@ brain_parts = {
 
     "Anterior Cingulate Cortex": {
         "description": (
-            "The anterior cingulate cortex contributes to performance "
-            "monitoring, conflict processing and cognitive control."
+            "The anterior cingulate cortex contributes to "
+            "performance monitoring, conflict processing "
+            "and cognitive control."
         ),
         "behavior": (
             "Conflict monitoring, error processing and cognitive control."
@@ -119,8 +125,8 @@ brain_parts = {
 
     "Cerebellum": {
         "description": (
-            "The cerebellum contributes to coordination, timing, "
-            "balance and motor learning."
+            "The cerebellum contributes to coordination, "
+            "timing, balance and motor learning."
         ),
         "behavior": (
             "Coordination, timing, balance and motor learning."
@@ -133,13 +139,29 @@ brain_parts = {
 
 
 # ============================================================
-# HELPER
+# NAVIGATION
 # ============================================================
 
-def go_to(level, region):
+def navigate(level, region):
+
     st.query_params["level"] = level
     st.query_params["region"] = region
+
     st.rerun()
+
+
+level = st.query_params.get(
+    "level",
+    "brain"
+)
+
+region = st.query_params.get(
+    "region",
+    "Prefrontal Cortex"
+)
+
+if region not in brain_parts:
+    region = "Prefrontal Cortex"
 
 
 # ============================================================
@@ -153,46 +175,69 @@ if brain_image is not None:
     st.image(
         brain_image,
         caption="NEUROLENS Brain",
-        use_container_width=True,
+        use_container_width=True
     )
 
 else:
 
     st.warning(
-        "brain.png not found. Keep brain.png in the same folder as app.py."
+        "⚠️ brain.png not found. "
+        "Make sure brain.png is in the same folder as app.py."
     )
 
 
 selected_part = st.selectbox(
     "🔍 Choose a brain region",
     list(brain_parts.keys()),
-    key="brain_region_select",
+    index=list(brain_parts.keys()).index(region),
+    key="brain_region"
 )
 
-info = brain_parts[selected_part]
+selected_info = brain_parts[selected_part]
+
 
 col1, col2 = st.columns(2)
 
+
 with col1:
 
-    st.subheader(f"🔬 {selected_part}")
+    st.subheader(
+        f"🔬 {selected_part}"
+    )
 
     st.info(
-        info["description"]
+        selected_info["description"]
     )
 
-    st.markdown("**Behavioral role**")
+    st.markdown(
+        "**Behavioral Role**"
+    )
 
     st.write(
-        info["behavior"]
+        selected_info["behavior"]
     )
+
 
 with col2:
 
-    st.subheader("🔗 Circuit")
+    st.subheader(
+        "🔗 Neural Circuit"
+    )
 
     st.code(
-        info["circuit"]
+        selected_info["circuit"]
+    )
+
+
+if st.button(
+    "🔎 Explore This Region",
+    use_container_width=True,
+    key="explore_selected_region"
+):
+
+    navigate(
+        "region",
+        selected_part
     )
 
 
@@ -205,641 +250,524 @@ st.divider()
 st.header("🧬 Nerve Explorer")
 
 st.write(
-    "Tap a brain region and progressively zoom from the whole brain "
-    "to neurons, axons, synapses and neurotransmitters."
+    "Explore the nervous system progressively — "
+    "from the whole brain to regions, neurons, axons, "
+    "synapses and neurotransmitters."
 )
-
-
-level = st.query_params.get(
-    "level",
-    "brain",
-)
-
-region = st.query_params.get(
-    "region",
-    selected_part,
-)
-
-if region not in brain_parts:
-
-    region = selected_part
-
-
-level_names = {
-
-    "brain": "Whole Brain",
-
-    "region": "Brain Region",
-
-    "neuron": "Neuron",
-
-    "axon": "Axon & Myelin",
-
-    "synapse": "Synapse",
-
-    "nt": "Neurotransmitter",
-}
 
 
 st.markdown(
     """
-    ### 🔎 Exploration Path
+### 🔎 Exploration Path
 
-    🧠 Brain  
-    ↓  
-    🔬 Brain Region  
-    ↓  
-    🧬 Neuron  
-    ↓  
-    ⚡ Axon & Myelin  
-    ↓  
-    🔗 Synapse  
-    ↓  
-    🧪 Neurotransmitter
-    """
+**🧠 Whole Brain**
+
+↓
+
+**🔬 Brain Region**
+
+↓
+
+**🧬 Neuron**
+
+↓
+
+**⚡ Axon & Myelin**
+
+↓
+
+**🔗 Synapse**
+
+↓
+
+**🧪 Neurotransmitter**
+"""
 )
 
+
 st.caption(
-    f"Current level: **{level_names.get(level, 'Whole Brain')}**"
+    f"Current level: **{level.title()}**"
 )
 
 
 # ============================================================
-# WHOLE BRAIN — CLICKABLE REGIONS
+# WHOLE BRAIN
 # ============================================================
 
 if level == "brain":
 
     st.subheader(
-        "🧠 Tap a region to zoom in"
+        "🧠 Whole Brain"
     )
 
     if brain_image is not None:
 
-        with open(
-            BRAIN_IMAGE,
-            "rb"
-        ) as image_file:
+        st.image(
+            brain_image,
+            use_container_width=True
+        )
 
-            image_base64 = base64.b64encode(
-                image_file.read()
-            ).decode()
+    st.markdown(
+        "### 🔍 Select a region to zoom in"
+    )
 
-        html = f"""
-
-        <div class="brain-container">
-
-            <img
-                src="data:image/png;base64,{image_base64}"
-                class="brain-image"
-            >
-
-            <button
-                class="spot pfc"
-                onclick="openRegion('Prefrontal Cortex')"
-            >
-                +
-            </button>
-
-            <button
-                class="spot hippo"
-                onclick="openRegion('Hippocampus')"
-            >
-                +
-            </button>
-
-            <button
-                class="spot amygdala"
-                onclick="openRegion('Amygdala')"
-            >
-                +
-            </button>
-
-            <button
-                class="spot striatum"
-                onclick="openRegion('Striatum')"
-            >
-                +
-            </button>
-
-            <button
-                class="spot acc"
-                onclick="openRegion('Anterior Cingulate Cortex')"
-            >
-                +
-            </button>
-
-            <button
-                class="spot cerebellum"
-                onclick="openRegion('Cerebellum')"
-            >
-                +
-            </button>
-
-        </div>
+    st.caption(
+        "Choose a brain region below. The explorer will move to the next level."
+    )
 
 
-        <style>
-
-        .brain-container {{
-            position:relative;
-            width:100%;
-            max-width:900px;
-            margin:auto;
-            overflow:hidden;
-            border-radius:20px;
-        }}
-
-        .brain-image {{
-            width:100%;
-            display:block;
-        }}
-
-        .spot {{
-            position:absolute;
-
-            transform:translate(-50%,-50%);
-
-            width:48px;
-            height:48px;
-
-            border-radius:50%;
-
-            border:3px solid white;
-
-            background:rgba(75,90,255,0.55);
-
-            color:white;
-
-            font-size:28px;
-
-            font-weight:bold;
-
-            cursor:pointer;
-
-            box-shadow:
-                0 0 0 6px rgba(75,90,255,0.15),
-                0 0 25px rgba(75,90,255,0.65);
-
-            animation:pulse 1.7s infinite;
-
-            z-index:5;
-        }}
-
-        .spot:hover {{
-            transform:
-                translate(-50%,-50%)
-                scale(1.15);
-
-            background:
-                rgba(75,90,255,0.85);
-        }}
-
-        .pfc {{
-            left:20%;
-            top:38%;
-        }}
-
-        .acc {{
-            left:40%;
-            top:30%;
-        }}
-
-        .striatum {{
-            left:48%;
-            top:44%;
-        }}
-
-        .amygdala {{
-            left:56%;
-            top:50%;
-        }}
-
-        .hippo {{
-            left:53%;
-            top:62%;
-        }}
-
-        .cerebellum {{
-            left:78%;
-            top:72%;
-        }}
-
-        @keyframes pulse {{
-
-            0%,100% {{
-                box-shadow:
-                    0 0 0 5px
-                    rgba(75,90,255,0.15),
-                    0 0 20px
-                    rgba(75,90,255,0.35);
-            }}
-
-            50% {{
-                box-shadow:
-                    0 0 0 12px
-                    rgba(75,90,255,0.05),
-                    0 0 35px
-                    rgba(75,90,255,0.75);
-            }}
-
-        }}
-
-        </style>
+    col1, col2, col3 = st.columns(3)
 
 
-        <script>
+    with col1:
 
-        function openRegion(region) {{
+        if st.button(
+            "🧠 Prefrontal Cortex",
+            use_container_width=True,
+            key="pfc_button"
+        ):
 
-            const url =
-                new URL(
-                    window.parent.location.href
-                );
-
-            url.searchParams.set(
-                "level",
-                "region"
-            );
-
-            url.searchParams.set(
+            navigate(
                 "region",
-                region
-            );
+                "Prefrontal Cortex"
+            )
 
-            window.parent.location.href =
-                url.toString();
 
-        }}
+        if st.button(
+            "🧠 Hippocampus",
+            use_container_width=True,
+            key="hippocampus_button"
+        ):
 
-        </script>
+            navigate(
+                "region",
+                "Hippocampus"
+            )
 
-        """
 
-        components.html(
-            html,
-            height=650,
-        )
+    with col2:
 
-    else:
+        if st.button(
+            "🧠 Amygdala",
+            use_container_width=True,
+            key="amygdala_button"
+        ):
 
-        st.info(
-            "Add brain.png to activate clickable brain exploration."
-        )
+            navigate(
+                "region",
+                "Amygdala"
+            )
+
+
+        if st.button(
+            "🧠 Striatum",
+            use_container_width=True,
+            key="striatum_button"
+        ):
+
+            navigate(
+                "region",
+                "Striatum"
+            )
+
+
+    with col3:
+
+        if st.button(
+            "🧠 Anterior Cingulate Cortex",
+            use_container_width=True,
+            key="acc_button"
+        ):
+
+            navigate(
+                "region",
+                "Anterior Cingulate Cortex"
+            )
+
+
+        if st.button(
+            "🧠 Cerebellum",
+            use_container_width=True,
+            key="cerebellum_button"
+        ):
+
+            navigate(
+                "region",
+                "Cerebellum"
+            )
 
 
 # ============================================================
-# REGION LEVEL
+# REGION
 # ============================================================
 
 elif level == "region":
 
-    st.subheader(
-        f"🔬 Zoomed Brain Region — {region}"
-    )
-
     data = brain_parts[region]
 
+
+    st.subheader(
+        f"🔬 {region}"
+    )
+
+
+    st.success(
+        "Zoomed into brain region"
+    )
+
+
     col1, col2 = st.columns(2)
+
 
     with col1:
 
         st.markdown(
-            f"## 🧠 {region}"
+            "### 🧠 Function"
         )
 
-        st.info(
+        st.write(
             data["description"]
         )
 
         st.markdown(
-            "### 🧠 Behavioral Role"
+            "### 🧠 Behavior"
         )
 
         st.write(
             data["behavior"]
         )
 
+
     with col2:
 
         st.markdown(
-            "### 🔗 Circuit"
+            "### 🔗 Connected Circuit"
         )
 
         st.code(
             data["circuit"]
         )
 
-        st.markdown(
-            "### 🔎 Next Level"
-        )
 
-        if st.button(
-            "🧬 Zoom into Neuron",
-            use_container_width=True,
-        ):
+    st.divider()
 
-            go_to(
-                "neuron",
-                region,
-            )
+    st.subheader(
+        "🔬 Go deeper"
+    )
+
 
     if st.button(
-        "🔙 Back to Brain",
+        "🧬 Zoom into Neuron",
         use_container_width=True,
+        key="region_to_neuron"
     ):
 
-        go_to(
+        navigate(
+            "neuron",
+            region
+        )
+
+
+    if st.button(
+        "🔙 Back to Whole Brain",
+        use_container_width=True,
+        key="region_back"
+    ):
+
+        navigate(
             "brain",
-            region,
+            region
         )
 
 
 # ============================================================
-# NEURON LEVEL
+# NEURON
 # ============================================================
 
 elif level == "neuron":
 
     st.subheader(
-        f"🧬 Neuron — {region}"
+        f"🧬 Neuron inside {region}"
     )
 
+
+    st.success(
+        "You are now inside the selected brain region."
+    )
+
+
     neuron_part = st.selectbox(
-        "🔍 Explore a neuron part",
+        "🔍 Explore neuron component",
         [
             "Dendrites",
             "Cell Body (Soma)",
             "Nucleus",
             "Axon",
-            "Axon Terminal",
+            "Axon Terminal"
         ],
-        key="neuron_part",
+        key="neuron_component"
     )
+
 
     neuron_info = {
 
         "Dendrites":
-            "Dendrites receive incoming signals and contribute to integrating information.",
+            "Dendrites receive incoming information from other neurons and contribute to signal integration.",
 
         "Cell Body (Soma)":
-            "The soma contains the nucleus and supports the neuron's metabolic functions.",
+            "The soma supports the neuron's metabolic functions and contains the nucleus.",
 
         "Nucleus":
-            "The nucleus contains genetic material and regulates many cellular activities.",
+            "The nucleus contains the neuron's genetic material and regulates cellular activity.",
 
         "Axon":
             "The axon carries electrical signals away from the cell body toward other targets.",
 
         "Axon Terminal":
-            "Axon terminals are specialized regions where neurons communicate with other cells.",
+            "The axon terminal is involved in communication with another neuron or target cell."
     }
 
-    st.success(
+
+    st.info(
         neuron_info[neuron_part]
     )
 
+
+    # --------------------------------------------------------
+    # NEURON VISUAL
+    # --------------------------------------------------------
 
     neuron_html = """
 
     <div class="neuron">
 
-        <div class="branch b1"></div>
-        <div class="branch b2"></div>
-        <div class="branch b3"></div>
-        <div class="branch b4"></div>
+        <div class="dendrite d1"></div>
+        <div class="dendrite d2"></div>
+        <div class="dendrite d3"></div>
+        <div class="dendrite d4"></div>
 
         <div class="soma">
             ●
         </div>
 
-        <div class="axon">
+        <div class="axon"></div>
 
-            <div class="myelin m1"></div>
-            <div class="myelin m2"></div>
-            <div class="myelin m3"></div>
+        <div class="myelin m1"></div>
+        <div class="myelin m2"></div>
+        <div class="myelin m3"></div>
 
-        </div>
-
-        <div class="terminal t1"></div>
-        <div class="terminal t2"></div>
+        <div class="terminal"></div>
 
     </div>
 
 
     <style>
 
-    .neuron {{
+    .neuron {
 
-        position:relative;
+        position: relative;
 
-        height:360px;
+        width: 100%;
 
-        max-width:900px;
+        max-width: 900px;
 
-        margin:auto;
+        height: 360px;
+
+        margin: auto;
 
         background:
             linear-gradient(
                 135deg,
                 #f7f9ff,
-                #eef2ff
+                #edf2ff
             );
 
-        border-radius:25px;
+        border-radius: 25px;
 
-        overflow:hidden;
+        overflow: hidden;
 
-    }}
+    }
 
 
-    .soma {{
+    .soma {
 
-        position:absolute;
+        position: absolute;
 
-        left:34%;
+        left: 28%;
 
-        top:40%;
+        top: 38%;
 
-        width:100px;
+        width: 100px;
 
-        height:100px;
+        height: 100px;
 
-        border-radius:50%;
+        border-radius: 50%;
 
-        background:#e7b1cf;
+        background: #e5b0ce;
 
-        border:
-            5px solid
-            #8c4d78;
+        border: 5px solid #8b527b;
 
-        display:flex;
+        display: flex;
 
-        align-items:center;
+        align-items: center;
 
-        justify-content:center;
+        justify-content: center;
 
-        font-size:35px;
+        font-size: 35px;
 
-    }}
+    }
 
 
-    .axon {{
+    .axon {
 
-        position:absolute;
+        position: absolute;
 
-        left:45%;
+        left: 38%;
 
-        top:49%;
+        top: 51%;
 
-        width:45%;
+        width: 52%;
 
-        height:16px;
+        height: 15px;
 
-        background:#8b6b50;
+        background: #8a6a50;
 
-        border-radius:20px;
+        border-radius: 20px;
 
-    }}
+    }
 
 
-    .myelin {{
+    .myelin {
 
-        position:absolute;
+        position: absolute;
 
-        top:-12px;
+        top: 47%;
 
-        width:80px;
+        width: 80px;
 
-        height:40px;
+        height: 40px;
 
-        border-radius:25px;
+        border-radius: 25px;
 
-        background:#dce7f4;
+        background: #dce7f4;
 
-        border:
-            3px solid
-            #8da1ba;
+        border: 3px solid #8da1ba;
 
-    }}
+        z-index: 3;
 
+    }
 
-    .m1 {{
-        left:40px;
-    }}
 
-    .m2 {{
-        left:145px;
-    }}
+    .m1 {
+        left: 48%;
+    }
 
-    .m3 {{
-        left:250px;
-    }}
+    .m2 {
+        left: 62%;
+    }
 
+    .m3 {
+        left: 76%;
+    }
 
-    .branch {{
 
-        position:absolute;
+    .dendrite {
 
-        left:15%;
+        position: absolute;
 
-        top:50%;
+        left: 8%;
 
-        width:190px;
+        top: 50%;
 
-        height:10px;
+        width: 190px;
 
-        background:#8b6b50;
+        height: 9px;
 
-        border-radius:10px;
+        background: #8a6a50;
 
-        transform-origin:right center;
+        border-radius: 20px;
 
-    }}
+        transform-origin: right center;
 
+    }
 
-    .b1 {{
-        transform:rotate(-60deg);
-    }}
 
-    .b2 {{
-        transform:rotate(-25deg);
-    }}
+    .d1 {
+        transform: rotate(-60deg);
+    }
 
-    .b3 {{
-        transform:rotate(25deg);
-    }}
+    .d2 {
+        transform: rotate(-25deg);
+    }
 
-    .b4 {{
-        transform:rotate(60deg);
-    }}
+    .d3 {
+        transform: rotate(25deg);
+    }
 
+    .d4 {
+        transform: rotate(60deg);
+    }
 
-    .terminal {{
 
-        position:absolute;
+    .terminal {
 
-        right:7%;
+        position: absolute;
 
-        top:44%;
+        right: 3%;
 
-        width:45px;
+        top: 45%;
 
-        height:45px;
+        width: 45px;
 
-        border-radius:50%;
+        height: 45px;
 
-        background:#b486c4;
+        border-radius: 50%;
 
-        border:
-            4px solid
-            #70477b;
+        background: #aa7fbc;
 
-    }}
+        border: 4px solid #70477b;
 
-
-    .t1 {{
-        transform:translateY(-35px);
-    }}
-
-    .t2 {{
-        transform:translateY(35px);
-    }}
+    }
 
     </style>
-
     """
+
 
     components.html(
         neuron_html,
-        height=390,
+        height=390
     )
+
+
+    st.divider()
 
 
     if st.button(
         "⚡ Zoom into Axon & Myelin",
         use_container_width=True,
+        key="neuron_to_axon"
     ):
 
-        go_to(
+        navigate(
             "axon",
-            region,
+            region
         )
 
 
     if st.button(
-        "🔙 Back to Region",
+        "🔙 Back to Brain Region",
         use_container_width=True,
+        key="neuron_back"
     ):
 
-        go_to(
+        navigate(
             "region",
-            region,
+            region
         )
 
 
 # ============================================================
-# AXON & MYELIN
+# AXON
 # ============================================================
 
 elif level == "axon":
@@ -848,25 +776,29 @@ elif level == "axon":
         f"⚡ Axon & Myelin — {region}"
     )
 
+
     st.info(
-        "The axon provides a pathway for electrical signaling. "
-        "Myelin insulates many axons and supports rapid signal conduction."
+        "The axon carries electrical signals. "
+        "Myelin provides insulation around many axons "
+        "and supports rapid signal conduction."
     )
 
 
     st.markdown(
-        "### ⚡ Neural Signal"
+        "### ⚡ Neural Signal Traveling"
     )
 
 
-    signal_html = """
+    axon_html = """
 
-    <div class="track">
+    <div class="axon-track">
 
-        <div class="myelin2 one"></div>
-        <div class="myelin2 two"></div>
-        <div class="myelin2 three"></div>
-        <div class="myelin2 four"></div>
+        <div class="axon-line"></div>
+
+        <div class="myelin-piece p1"></div>
+        <div class="myelin-piece p2"></div>
+        <div class="myelin-piece p3"></div>
+        <div class="myelin-piece p4"></div>
 
         <div class="signal"></div>
 
@@ -875,163 +807,160 @@ elif level == "axon":
 
     <style>
 
-    .track {{
+    .axon-track {
 
-        position:relative;
+        position: relative;
 
-        height:140px;
+        height: 150px;
 
-        max-width:900px;
+        width: 100%;
 
-        margin:auto;
+        background: #f4f6fa;
 
-        background:#f4f6fa;
+        border-radius: 25px;
 
-        border-radius:25px;
+        overflow: hidden;
 
-        border:
-            3px solid
-            #cbd5e1;
+        border: 2px solid #d6dce5;
 
-        overflow:hidden;
-
-    }}
+    }
 
 
-    .track:before {{
+    .axon-line {
 
-        content:"";
+        position: absolute;
 
-        position:absolute;
+        left: 3%;
 
-        left:4%;
+        right: 3%;
 
-        right:4%;
+        top: 68px;
 
-        top:62px;
+        height: 14px;
 
-        height:16px;
+        background: #8a6a50;
 
-        background:#8b6b50;
+        border-radius: 20px;
 
-        border-radius:20px;
-
-    }}
+    }
 
 
-    .myelin2 {{
+    .myelin-piece {
 
-        position:absolute;
+        position: absolute;
 
-        top:47px;
+        top: 53px;
 
-        width:115px;
+        width: 105px;
 
-        height:44px;
+        height: 44px;
 
-        border-radius:25px;
+        background: #dce7f4;
 
-        background:#dce7f4;
+        border: 3px solid #8da1ba;
 
-        border:
-            3px solid
-            #8da1ba;
+        border-radius: 25px;
 
-    }}
+        z-index: 2;
 
-
-    .one {{
-        left:10%;
-    }}
-
-    .two {{
-        left:31%;
-    }}
-
-    .three {{
-        left:52%;
-    }}
-
-    .four {{
-        left:73%;
-    }}
+    }
 
 
-    .signal {{
+    .p1 {
+        left: 8%;
+    }
 
-        position:absolute;
+    .p2 {
+        left: 31%;
+    }
 
-        top:55px;
+    .p3 {
+        left: 54%;
+    }
 
-        left:4%;
+    .p4 {
+        left: 77%;
+    }
 
-        width:30px;
 
-        height:30px;
+    .signal {
 
-        border-radius:50%;
+        position: absolute;
 
-        background:#705cff;
+        top: 58px;
+
+        left: 2%;
+
+        width: 32px;
+
+        height: 32px;
+
+        border-radius: 50%;
+
+        background: #6f5cff;
 
         box-shadow:
-            0 0 25px
-            #705cff;
+            0 0 25px #6f5cff;
 
         animation:
-            moveSignal
-            2.2s
+            signalMove
+            2.5s
             linear
             infinite;
 
-    }}
+        z-index: 5;
+
+    }
 
 
-    @keyframes moveSignal {{
+    @keyframes signalMove {
 
-        from {{
-            left:4%;
-        }}
+        from {
+            left: 2%;
+        }
 
-        to {{
-            left:94%;
-        }}
+        to {
+            left: 96%;
+        }
 
-    }}
+    }
 
     </style>
-
     """
 
+
     components.html(
-        signal_html,
-        height=180,
+        axon_html,
+        height=180
     )
 
 
     st.success(
-        "⚡ The signal is traveling along the educational axon model."
+        "⚡ Signal animation represents an educational model of neural signaling."
     )
 
 
     if st.button(
-        "🔗 Continue to Synapse",
+        "🔗 Zoom into Synapse",
         use_container_width=True,
+        key="axon_to_synapse"
     ):
 
-        go_to(
+        navigate(
             "synapse",
-            region,
+            region
         )
 
 
     if st.button(
         "🔙 Back to Neuron",
         use_container_width=True,
+        key="axon_back"
     ):
 
-        go_to(
+        navigate(
             "neuron",
-            region,
+            region
         )
 
 
@@ -1045,6 +974,7 @@ elif level == "synapse":
         f"🔗 Synapse — {region}"
     )
 
+
     st.write(
         "A synapse is a specialized communication point "
         "between a neuron and another cell."
@@ -1052,34 +982,34 @@ elif level == "synapse":
 
 
     synapse_part = st.selectbox(
-        "🔍 Explore a synaptic component",
+        "🔍 Explore synapse component",
         [
             "Presynaptic Terminal",
             "Synaptic Vesicles",
             "Synaptic Cleft",
             "Postsynaptic Membrane",
-            "Receptors",
+            "Receptors"
         ],
-        key="synapse_part",
+        key="synapse_component"
     )
 
 
     synapse_info = {
 
         "Presynaptic Terminal":
-            "The presynaptic terminal is the sending side of many chemical synapses.",
+            "The presynaptic terminal is the sending side of a chemical synapse.",
 
         "Synaptic Vesicles":
-            "Synaptic vesicles can store neurotransmitters and release them into the synaptic cleft.",
+            "Synaptic vesicles can store neurotransmitters before release.",
 
         "Synaptic Cleft":
-            "The synaptic cleft is the small extracellular space between communicating cells.",
+            "The synaptic cleft is the small space between communicating cells.",
 
         "Postsynaptic Membrane":
-            "The postsynaptic membrane contains molecular machinery that detects incoming signals.",
+            "The postsynaptic membrane receives incoming chemical signals.",
 
         "Receptors":
-            "Receptors are proteins that detect specific signaling molecules and can change cellular responses.",
+            "Receptors detect specific signaling molecules and can alter cellular responses."
     }
 
 
@@ -1102,9 +1032,9 @@ elif level == "synapse":
         <div class="ves v2"></div>
         <div class="ves v3"></div>
 
-        <div class="nt n1"></div>
-        <div class="nt n2"></div>
-        <div class="nt n3"></div>
+        <div class="chemical c1"></div>
+        <div class="chemical c2"></div>
+        <div class="chemical c3"></div>
 
         <div class="receptor r1"></div>
         <div class="receptor r2"></div>
@@ -1115,232 +1045,233 @@ elif level == "synapse":
 
     <style>
 
-    .synapse {{
+    .synapse {
 
-        position:relative;
+        position: relative;
 
-        height:300px;
+        width: 100%;
 
-        max-width:900px;
+        max-width: 900px;
 
-        margin:auto;
+        height: 300px;
 
-        background:#f8fafc;
+        margin: auto;
 
-        border-radius:25px;
+        background: #f8fafc;
 
-        overflow:hidden;
+        border-radius: 25px;
 
-        border:
-            2px solid
-            #dbe2ea;
+        overflow: hidden;
 
-    }}
+        border: 2px solid #d8dee8;
+
+    }
 
 
     .pre,
-    .post {{
+    .post {
 
-        position:absolute;
+        position: absolute;
 
-        top:45%;
+        top: 38%;
 
-        width:34%;
+        height: 100px;
 
-        height:80px;
+        width: 34%;
 
-        border-radius:35px;
+        border-radius: 35px;
 
-    }}
-
-
-    .pre {{
-
-        left:7%;
-
-        background:#d8a8c8;
-
-    }}
+    }
 
 
-    .post {{
+    .pre {
 
-        right:7%;
+        left: 5%;
 
-        background:#a8c8df;
+        background: #d9a9c9;
 
-    }}
+    }
 
 
-    .cleft {{
+    .post {
 
-        position:absolute;
+        right: 5%;
 
-        left:43%;
+        background: #a7c7df;
 
-        width:14%;
+    }
 
-        top:20%;
 
-        height:60%;
+    .cleft {
 
-        background:white;
+        position: absolute;
 
-        border-left:
-            3px dashed
-            #b7c0ca;
+        left: 44%;
 
-        border-right:
-            3px dashed
-            #b7c0ca;
+        top: 15%;
 
-    }}
+        width: 12%;
+
+        height: 70%;
+
+        background: white;
+
+        border-left: 3px dashed #aeb8c5;
+
+        border-right: 3px dashed #aeb8c5;
+
+    }
 
 
     .ves,
-    .nt {{
+    .chemical {
 
-        position:absolute;
+        position: absolute;
 
-        border-radius:50%;
+        border-radius: 50%;
 
-    }}
-
-
-    .ves {{
-
-        width:18px;
-
-        height:18px;
-
-        background:#9b6bb0;
-
-    }}
+    }
 
 
-    .v1 {{
-        left:31%;
-        top:44%;
-    }}
+    .ves {
 
-    .v2 {{
-        left:35%;
-        top:54%;
-    }}
+        width: 18px;
 
-    .v3 {{
-        left:38%;
-        top:40%;
-    }}
+        height: 18px;
+
+        background: #9c6db0;
+
+    }
 
 
-    .nt {{
+    .v1 {
+        left: 31%;
+        top: 39%;
+    }
 
-        width:14px;
+    .v2 {
+        left: 35%;
+        top: 52%;
+    }
 
-        height:14px;
+    .v3 {
+        left: 39%;
+        top: 43%;
+    }
 
-        background:#6c63ff;
+
+    .chemical {
+
+        width: 14px;
+
+        height: 14px;
+
+        background: #6e61ff;
 
         box-shadow:
-            0 0 12px
-            #6c63ff;
+            0 0 15px #6e61ff;
 
         animation:
-            release
+            chemicalMove
             2s
+            linear
             infinite;
 
-    }}
+    }
 
 
-    .n1 {{
-        left:45%;
-        top:42%;
-    }}
+    .c1 {
+        left: 44%;
+        top: 42%;
+    }
 
-    .n2 {{
-        left:49%;
-        top:51%;
-    }}
+    .c2 {
+        left: 47%;
+        top: 52%;
+    }
 
-    .n3 {{
-        left:53%;
-        top:45%;
-    }}
-
-
-    .receptor {{
-
-        position:absolute;
-
-        right:29%;
-
-        width:14px;
-
-        height:35px;
-
-        background:#587fa3;
-
-        border-radius:8px;
-
-    }}
+    .c3 {
+        left: 51%;
+        top: 46%;
+    }
 
 
-    .r1 {{
-        top:38%;
-    }}
+    .receptor {
 
-    .r2 {{
-        top:48%;
-    }}
+        position: absolute;
 
-    .r3 {{
-        top:58%;
-    }}
+        right: 28%;
+
+        width: 14px;
+
+        height: 35px;
+
+        background: #557fa5;
+
+        border-radius: 8px;
+
+    }
 
 
-    @keyframes release {{
+    .r1 {
+        top: 38%;
+    }
 
-        from {{
-            transform:translateX(0);
-        }}
+    .r2 {
+        top: 49%;
+    }
 
-        to {{
-            transform:translateX(55px);
-        }}
+    .r3 {
+        top: 60%;
+    }
 
-    }}
+
+    @keyframes chemicalMove {
+
+        from {
+            transform: translateX(0);
+        }
+
+        to {
+            transform: translateX(55px);
+        }
+
+    }
 
     </style>
-
     """
+
 
     components.html(
         synapse_html,
-        height=330,
+        height=330
     )
+
+
+    st.divider()
 
 
     if st.button(
         "🧪 Explore Neurotransmitters",
         use_container_width=True,
+        key="synapse_to_nt"
     ):
 
-        go_to(
+        navigate(
             "nt",
-            region,
+            region
         )
 
 
     if st.button(
         "🔙 Back to Axon",
         use_container_width=True,
+        key="synapse_back"
     ):
 
-        go_to(
+        navigate(
             "axon",
-            region,
+            region
         )
 
 
@@ -1361,32 +1292,33 @@ elif level == "nt":
             "Participates in reward learning, motivation, movement and several cognitive processes.",
 
         "Serotonin":
-            "Participates in mood regulation, sleep, appetite and many physiological and cognitive processes.",
+            "Participates in mood regulation, sleep, appetite and many physiological processes.",
 
         "GABA":
-            "The major inhibitory neurotransmitter in the central nervous system.",
+            "A major inhibitory neurotransmitter in the central nervous system.",
 
         "Glutamate":
-            "The major excitatory neurotransmitter in the central nervous system and is important for learning.",
+            "A major excitatory neurotransmitter and an important contributor to learning and synaptic plasticity.",
 
         "Acetylcholine":
-            "Contributes to attention, learning, memory and neuromuscular communication.",
+            "Contributes to attention, learning, memory and neuromuscular communication."
     }
 
 
-    nt = st.selectbox(
-        "🧪 Choose a neurotransmitter",
+    selected_nt = st.selectbox(
+        "🧪 Select neurotransmitter",
         list(neurotransmitters.keys()),
-        key="nt_select",
+        key="neurotransmitter"
     )
 
 
     st.markdown(
-        f"## 🧪 {nt}"
+        f"## 🧪 {selected_nt}"
     )
 
+
     st.info(
-        neurotransmitters[nt]
+        neurotransmitters[selected_nt]
     )
 
 
@@ -1395,7 +1327,7 @@ elif level == "nt":
     )
 
 
-    signal_html = """
+    nt_html = """
 
     <div class="nt-track">
 
@@ -1410,118 +1342,114 @@ elif level == "nt":
 
     <style>
 
-    .nt-track {{
+    .nt-track {
 
-        position:relative;
+        position: relative;
 
-        height:150px;
+        width: 100%;
+
+        height: 150px;
 
         background:
             linear-gradient(
                 90deg,
-                #f2e9ff,
-                #eef8ff
+                #f3eaff,
+                #edf8ff
             );
 
-        border-radius:25px;
+        border-radius: 25px;
 
-        overflow:hidden;
+        overflow: hidden;
 
-    }}
+    }
 
 
-    .nt-dot {{
+    .nt-dot {
 
-        position:absolute;
+        position: absolute;
 
-        width:24px;
+        width: 24px;
 
-        height:24px;
+        height: 24px;
 
-        border-radius:50%;
+        border-radius: 50%;
 
-        background:#755cff;
+        background: #705cff;
 
         box-shadow:
-            0 0 20px
-            #755cff;
+            0 0 20px #705cff;
 
         animation:
             fly
-            2.4s
+            2.5s
             linear
             infinite;
 
-    }}
+    }
 
 
-    .d1 {{
-        top:30%;
-        animation-delay:0s;
-    }}
+    .d1 {
+        top: 25%;
+        animation-delay: 0s;
+    }
 
-    .d2 {{
-        top:55%;
-        animation-delay:.35s;
-    }}
+    .d2 {
+        top: 50%;
+        animation-delay: .3s;
+    }
 
-    .d3 {{
-        top:40%;
-        animation-delay:.7s;
-    }}
+    .d3 {
+        top: 35%;
+        animation-delay: .6s;
+    }
 
-    .d4 {{
-        top:65%;
-        animation-delay:1.05s;
-    }}
+    .d4 {
+        top: 65%;
+        animation-delay: .9s;
+    }
 
-    .d5 {{
-        top:25%;
-        animation-delay:1.4s;
-    }}
+    .d5 {
+        top: 20%;
+        animation-delay: 1.2s;
+    }
 
 
-    @keyframes fly {{
+    @keyframes fly {
 
-        from {{
-            left:-5%;
-        }}
+        from {
+            left: -5%;
+        }
 
-        to {{
-            left:105%;
-        }}
+        to {
+            left: 105%;
+        }
 
-    }}
+    }
 
     </style>
-
     """
 
+
     components.html(
-        signal_html,
-        height=180,
+        nt_html,
+        height=180
+    )
+
+
+    st.success(
+        "🧪 This animation is an educational visualization of chemical signaling."
     )
 
 
     if st.button(
-        "🔙 Back to Synapse",
+        "🏠 Return to Brain",
         use_container_width=True,
+        key="nt_home"
     ):
 
-        go_to(
-            "synapse",
-            region,
-        )
-
-
-    if st.button(
-        "🏠 Start Again at Brain",
-        use_container_width=True,
-    ):
-
-        go_to(
+        navigate(
             "brain",
-            region,
+            region
         )
 
 
@@ -1531,45 +1459,43 @@ elif level == "nt":
 
 st.divider()
 
-st.header("🤖 Ask Ayna 🧠")
+st.header("🤖 Ask Ayna")
 
 st.write(
-    "Ask Ayna about memory, attention, learning, behavior, "
-    "brain systems, neurons, synapses and neuroscience."
+    "Ask questions about cognition, behavior, neurons, "
+    "brain regions, neural circuits, synapses and neurotransmitters."
 )
 
 
 def get_gemini_api_key():
 
-    for name in [
+    for key_name in [
         "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
+        "GOOGLE_API_KEY"
     ]:
 
         try:
 
-            key = st.secrets.get(
-                name
+            value = st.secrets.get(
+                key_name
             )
 
-            if key:
+            if value:
 
-                return str(
-                    key
-                ).strip()
+                return str(value).strip()
 
         except Exception:
 
             pass
 
 
-        key = os.getenv(
-            name
+        value = os.getenv(
+            key_name
         )
 
-        if key:
+        if value:
 
-            return key.strip()
+            return value.strip()
 
 
     return None
@@ -1580,17 +1506,18 @@ def ask_ayna(question):
     if genai is None:
 
         return (
-            "⚠️ Gemini package is not installed. "
+            "⚠️ google-genai is not installed. "
             "Check requirements.txt."
         )
 
 
     api_key = get_gemini_api_key()
 
+
     if not api_key:
 
         return (
-            "⚠️ Add GEMINI_API_KEY to Streamlit Secrets."
+            "⚠️ GEMINI_API_KEY is not configured in Streamlit Secrets."
         )
 
 
@@ -1602,41 +1529,45 @@ def ask_ayna(question):
 
 
         prompt = f"""
-You are Ask Ayna, an educational cognitive neuroscience assistant
+You are Ask Ayna, the educational neuroscience assistant
 inside NEUROLENS.
 
-Explain neuroscience clearly and accurately.
+Explain cognitive neuroscience in a clear and scientifically
+responsible way.
 
-Topics include:
+Topics can include:
 
-memory
-attention
-learning
-emotion
-decision-making
-reward
-perception
-cognitive control
-brain systems
-neural circuits
-neurons
-dendrites
-axons
-myelin
-synapses
-neurotransmitters
-neuroplasticity
-behavioral neuroscience
+- memory
+- attention
+- learning
+- perception
+- emotion
+- decision-making
+- reward
+- cognitive control
+- brain regions
+- neural circuits
+- neurons
+- dendrites
+- axons
+- myelin
+- synapses
+- neurotransmitters
+- neuroplasticity
+- behavior
 
 Rules:
 
 1. Do not diagnose medical or psychiatric disorders.
-2. Do not claim simple games measure brain activity.
-3. Do not present self-reported ratings as clinical measurements.
-4. Distinguish established evidence from hypotheses.
-5. Use simple but scientifically accurate language.
-6. If medical diagnosis is requested, recommend a qualified professional.
-7. Do not invent scientific evidence.
+2. Do not claim that simple games measure brain activity.
+3. Do not present self-report scores as clinical measurements.
+4. Distinguish established findings from hypotheses.
+5. Use understandable language.
+6. Do not invent scientific evidence.
+
+Current NEUROLENS region:
+
+{region}
 
 User question:
 
@@ -1646,14 +1577,14 @@ User question:
 
         response = client.models.generate_content(
             model="gemini-3.6-flash",
-            contents=prompt,
+            contents=prompt
         )
 
 
         answer = getattr(
             response,
             "text",
-            None,
+            None
         )
 
 
@@ -1663,16 +1594,16 @@ User question:
 
 
         return (
-            "⚠️ Ask Ayna received an empty response."
+            "⚠️ No answer was returned."
         )
 
 
-    except Exception as e:
+    except Exception as error:
 
         return (
             "⚠️ Ask Ayna could not connect to Gemini.\n\n"
-            f"Error: `{type(e).__name__}`\n\n"
-            f"Details: `{str(e)}`"
+            f"Error: `{type(error).__name__}`\n\n"
+            f"`{str(error)}`"
         )
 
 
@@ -1702,7 +1633,7 @@ if question:
     st.session_state.ayna_messages.append(
         {
             "role": "user",
-            "content": question,
+            "content": question
         }
     )
 
@@ -1733,7 +1664,7 @@ if question:
     st.session_state.ayna_messages.append(
         {
             "role": "assistant",
-            "content": answer,
+            "content": answer
         }
     )
 
@@ -1744,7 +1675,7 @@ if st.session_state.get(
 
     if st.button(
         "🗑️ Clear Ask Ayna Chat",
-        key="clear_ayna",
+        key="clear_chat"
     ):
 
         st.session_state.ayna_messages = []
@@ -1760,6 +1691,7 @@ st.divider()
 
 st.header("🎮 Cognitive Games")
 
+
 game = st.selectbox(
     "Choose a game",
     [
@@ -1768,11 +1700,15 @@ game = st.selectbox(
         "Memory Challenge",
         "Attention Challenge",
         "Stroop Challenge",
-        "Pattern Challenge",
+        "Pattern Challenge"
     ],
-    key="cognitive_game",
+    key="game_select"
 )
 
+
+# ------------------------------------------------------------
+# DECISION
+# ------------------------------------------------------------
 
 if game == "Decision Challenge":
 
@@ -1780,38 +1716,43 @@ if game == "Decision Challenge":
         "🧠 Decision Challenge"
     )
 
+
     choice = st.radio(
-        "Which would you prefer?",
+        "Which would you choose?",
         [
             "Rs. 1,000 today",
-            "Rs. 1,500 after 30 days",
+            "Rs. 1,500 after 30 days"
         ],
-        key="decision_choice",
+        key="decision"
     )
 
 
     if st.button(
         "Analyze Decision",
-        key="analyze_decision",
+        key="decision_check"
     ):
 
         if choice == "Rs. 1,000 today":
 
             st.success(
-                "Immediate-reward preference"
+                "Immediate reward preference selected."
             )
 
         else:
 
             st.success(
-                "Delayed-reward preference"
+                "Delayed reward preference selected."
             )
 
 
         st.info(
-            "This is an educational decision-making task."
+            "Educational task related to decision-making and reward."
         )
 
+
+# ------------------------------------------------------------
+# MEMORY
+# ------------------------------------------------------------
 
 elif game == "Memory Challenge":
 
@@ -1819,31 +1760,31 @@ elif game == "Memory Challenge":
         "🧠 Memory Challenge"
     )
 
-    sequence = "7 2 9 4 1 8"
 
     st.write(
-        "Remember:"
+        "Remember this sequence:"
     )
 
+
     st.markdown(
-        f"## **{sequence}**"
+        "## **7 2 9 4 1 8**"
     )
 
 
     answer = st.text_input(
-        "Enter the sequence:",
-        key="memory_answer",
+        "Enter the sequence",
+        key="memory_input"
     )
 
 
     if st.button(
         "Check Memory",
-        key="check_memory",
+        key="memory_check"
     ):
 
         if answer.replace(
             " ",
-            "",
+            ""
         ) == "729418":
 
             st.success(
@@ -1856,6 +1797,10 @@ elif game == "Memory Challenge":
                 "Not quite. Try again."
             )
 
+
+# ------------------------------------------------------------
+# ATTENTION
+# ------------------------------------------------------------
 
 elif game == "Attention Challenge":
 
@@ -1870,15 +1815,15 @@ elif game == "Attention Challenge":
             "A B C D",
             "A B X D",
             "A B C E",
-            "A B C F",
+            "A B C F"
         ],
-        key="attention_target",
+        key="attention"
     )
 
 
     if st.button(
         "Check Attention",
-        key="check_attention",
+        key="attention_check"
     ):
 
         if "X" in target:
@@ -1887,16 +1832,16 @@ elif game == "Attention Challenge":
                 "🎯 Correct!"
             )
 
-            st.info(
-                "This task explores visual search and attention."
-            )
-
         else:
 
             st.error(
-                "Try again!"
+                "Try again."
             )
 
+
+# ------------------------------------------------------------
+# STROOP
+# ------------------------------------------------------------
 
 elif game == "Stroop Challenge":
 
@@ -1906,14 +1851,10 @@ elif game == "Stroop Challenge":
 
 
     colors = {
-
         "RED": "#e53935",
-
         "BLUE": "#1e88e5",
-
         "GREEN": "#43a047",
-
-        "YELLOW": "#d8b400",
+        "YELLOW": "#d8b400"
     }
 
 
@@ -1929,8 +1870,8 @@ elif game == "Stroop Challenge":
 
 
     if st.button(
-        "🔄 New Stroop Trial",
-        key="new_stroop",
+        "🔄 New Trial",
+        key="new_stroop"
     ):
 
         st.session_state.stroop_word = random.choice(
@@ -1961,26 +1902,26 @@ elif game == "Stroop Challenge":
         {word}
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
 
     answer = st.selectbox(
         "What COLOR is the word displayed in?",
         list(colors.keys()),
-        key="stroop_answer",
+        key="stroop_answer"
     )
 
 
     if st.button(
         "Check Stroop",
-        key="check_stroop",
+        key="stroop_check"
     ):
 
         if answer == color:
 
             st.success(
-                "🎯 Correct! This explores response control."
+                "🎯 Correct!"
             )
 
         else:
@@ -1990,15 +1931,19 @@ elif game == "Stroop Challenge":
             )
 
 
+# ------------------------------------------------------------
+# PATTERN
+# ------------------------------------------------------------
+
 elif game == "Pattern Challenge":
 
     st.subheader(
-        "🔢 Pattern Recognition"
+        "🔢 Pattern Challenge"
     )
 
 
     st.markdown(
-        "### 2 → 4 → 8 → 16 → ?"
+        "## 2 → 4 → 8 → 16 → ?"
     )
 
 
@@ -2006,13 +1951,13 @@ elif game == "Pattern Challenge":
         "Your answer",
         min_value=0,
         step=1,
-        key="pattern_answer",
+        key="pattern"
     )
 
 
     if st.button(
         "Check Pattern",
-        key="check_pattern",
+        key="pattern_check"
     ):
 
         if answer == 32:
@@ -2038,9 +1983,10 @@ st.header(
     "📊 Cognitive Self-Report"
 )
 
+
 st.caption(
     "These are self-reported educational ratings, "
-    "not measurements of brain activity."
+    "not direct measurements of brain activity."
 )
 
 
@@ -2049,7 +1995,7 @@ mental_load = st.slider(
     1,
     10,
     5,
-    key="mental_load",
+    key="mental_load_slider"
 )
 
 
@@ -2058,7 +2004,7 @@ sleep_quality = st.slider(
     1,
     10,
     5,
-    key="sleep_quality",
+    key="sleep_slider"
 )
 
 
@@ -2067,7 +2013,7 @@ attention_level = st.slider(
     1,
     10,
     5,
-    key="attention_level",
+    key="attention_slider"
 )
 
 
@@ -2076,7 +2022,7 @@ memory_confidence = st.slider(
     1,
     10,
     5,
-    key="memory_confidence",
+    key="memory_slider"
 )
 
 
@@ -2085,7 +2031,7 @@ st.bar_chart(
         "Mental Load": mental_load,
         "Sleep Quality": sleep_quality,
         "Attention": attention_level,
-        "Memory Confidence": memory_confidence,
+        "Memory Confidence": memory_confidence
     }
 )
 
@@ -2106,62 +2052,47 @@ if go is not None:
     points = [
 
         (0, 0, 0),
-
         (1, 1, 1),
-
         (2, 0, 1),
-
         (3, 1, 0),
-
         (4, 0, 2),
-
         (5, 1, 1),
-
         (6, 0, 0),
-
         (2, 2, 2),
-
         (4, 2, 1),
-
-        (6, 2, 2),
+        (6, 2, 2)
     ]
 
 
     x = [
-        p[0]
-        for p in points
+        point[0]
+        for point in points
     ]
+
 
     y = [
-        p[1]
-        for p in points
+        point[1]
+        for point in points
     ]
 
+
     z = [
-        p[2]
-        for p in points
+        point[2]
+        for point in points
     ]
 
 
     connections = [
 
         (0, 1),
-
         (1, 2),
-
         (2, 3),
-
         (3, 4),
-
         (4, 5),
-
         (5, 6),
-
         (1, 7),
-
         (3, 8),
-
-        (5, 9),
+        (5, 9)
     ]
 
 
@@ -2174,17 +2105,17 @@ if go is not None:
             go.Scatter3d(
                 x=[
                     x[start],
-                    x[end],
+                    x[end]
                 ],
 
                 y=[
                     y[start],
-                    y[end],
+                    y[end]
                 ],
 
                 z=[
                     z[start],
-                    z[end],
+                    z[end]
                 ],
 
                 mode="lines",
@@ -2193,15 +2124,18 @@ if go is not None:
                     width=4
                 ),
 
-                showlegend=False,
+                showlegend=False
             )
         )
 
 
     fig.add_trace(
         go.Scatter3d(
+
             x=x,
+
             y=y,
+
             z=z,
 
             mode="markers",
@@ -2212,21 +2146,23 @@ if go is not None:
 
             text=[
                 f"Neuron {i}"
-                for i in range(1, 11)
+                for i in range(
+                    1,
+                    11
+                )
             ],
 
             hovertemplate=
                 "%{text}<extra></extra>",
 
-            showlegend=False,
+            showlegend=False
         )
     )
 
 
     fig.update_layout(
 
-        title=
-            "Educational Neural Network",
+        title="Educational Neural Network",
 
         height=600,
 
@@ -2236,32 +2172,28 @@ if go is not None:
 
             yaxis_title="Y",
 
-            zaxis_title="Z",
+            zaxis_title="Z"
         ),
 
         margin=dict(
-
             l=0,
-
             r=0,
-
             b=0,
-
-            t=50,
-        ),
+            t=50
+        )
     )
 
 
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        use_container_width=True
     )
 
 
 else:
 
     st.warning(
-        "Plotly is missing. Add plotly to requirements.txt."
+        "Plotly is not installed."
     )
 
 
@@ -2272,7 +2204,7 @@ else:
 st.divider()
 
 st.header(
-    "🧩 Full Brain Picture Puzzle"
+    "🧩 Brain Picture Puzzle"
 )
 
 
@@ -2283,44 +2215,37 @@ if brain_image is not None:
         [
             "Easy — 4 pieces",
             "Medium — 9 pieces",
-            "Hard — 16 pieces",
+            "Hard — 16 pieces"
         ],
-        key="puzzle_difficulty",
+        key="puzzle_level"
     )
 
 
-    if difficulty.startswith(
-        "Easy"
-    ):
+    if difficulty.startswith("Easy"):
 
-        rows, cols = 2, 2
+        rows = 2
+        cols = 2
 
-    elif difficulty.startswith(
-        "Medium"
-    ):
+    elif difficulty.startswith("Medium"):
 
-        rows, cols = 3, 3
+        rows = 3
+        cols = 3
 
     else:
 
-        rows, cols = 4, 4
+        rows = 4
+        cols = 4
 
 
-    image = brain_image.convert(
-        "RGB"
-    )
+    total = rows * cols
 
 
-    width, height = image.size
+    image_width, image_height = brain_image.size
 
 
-    piece_width = (
-        width // cols
-    )
+    piece_width = image_width // cols
 
-    piece_height = (
-        height // rows
-    )
+    piece_height = image_height // rows
 
 
     pieces = []
@@ -2330,58 +2255,38 @@ if brain_image is not None:
 
         for col in range(cols):
 
-            left = (
-                col * piece_width
-            )
+            left = col * piece_width
 
-            top = (
-                row * piece_height
-            )
-
+            top = row * piece_height
 
             right = (
-
-                (col + 1)
-                * piece_width
-
+                (col + 1) * piece_width
                 if col < cols - 1
-
-                else width
+                else image_width
             )
 
-
             bottom = (
-
-                (row + 1)
-                * piece_height
-
+                (row + 1) * piece_height
                 if row < rows - 1
-
-                else height
+                else image_height
             )
 
 
             pieces.append(
-                image.crop(
+                brain_image.crop(
                     (
                         left,
                         top,
                         right,
-                        bottom,
+                        bottom
                     )
                 )
             )
 
 
-    total = (
-        rows * cols
-    )
-
-
     if (
         "puzzle_order"
         not in st.session_state
-
         or
         st.session_state.get(
             "puzzle_total"
@@ -2401,7 +2306,7 @@ if brain_image is not None:
 
     if st.button(
         "🔀 New Puzzle",
-        key="new_puzzle",
+        key="new_puzzle"
     ):
 
         st.session_state.puzzle_order = list(
@@ -2420,7 +2325,7 @@ if brain_image is not None:
 
     for row in range(rows):
 
-        columns = st.columns(
+        puzzle_columns = st.columns(
             cols
         )
 
@@ -2433,11 +2338,11 @@ if brain_image is not None:
             )
 
 
-            with columns[col]:
+            with puzzle_columns[col]:
 
                 st.image(
                     pieces[piece_number],
-                    use_container_width=True,
+                    use_container_width=True
                 )
 
                 st.caption(
@@ -2448,7 +2353,12 @@ if brain_image is not None:
             index += 1
 
 
-    example = " ".join(
+    st.markdown(
+        "### 🧩 Reconstruct the brain"
+    )
+
+
+    correct_order = " ".join(
         str(i)
         for i in range(
             1,
@@ -2458,25 +2368,25 @@ if brain_image is not None:
 
 
     answer = st.text_input(
-        f"Enter order: {example}",
-        key="puzzle_answer",
+        f"Enter order: {correct_order}",
+        key="puzzle_answer"
     )
 
 
     if st.button(
         "✅ Check Puzzle",
-        key="check_puzzle",
+        key="puzzle_check"
     ):
 
         try:
 
             user_order = [
-                int(x)
-                for x in answer.split()
+                int(number)
+                for number in answer.split()
             ]
 
 
-            correct_order = list(
+            expected = list(
                 range(
                     1,
                     total + 1
@@ -2484,18 +2394,13 @@ if brain_image is not None:
             )
 
 
-            if user_order == correct_order:
+            if user_order == expected:
 
                 st.success(
-                    "🎉 Brain puzzle solved!"
+                    "🎉 Puzzle solved!"
                 )
 
                 st.balloons()
-
-                st.info(
-                    "This educational task explores "
-                    "visual-spatial organization and attention."
-                )
 
             else:
 
@@ -2512,7 +2417,7 @@ if brain_image is not None:
 
 
 # ============================================================
-# SCIENCE NOTE
+# FOOTER
 # ============================================================
 
 st.divider()
@@ -2522,9 +2427,9 @@ st.header(
 )
 
 st.write(
-    "NEUROLENS is an educational cognitive neuroscience tool. "
-    "Its games, self-reported ratings and visualizations are "
-    "not clinical assessments or direct measurements of brain activity."
+    "NEUROLENS is an educational cognitive neuroscience platform. "
+    "Its games, self-report ratings and visualizations are "
+    "not clinical assessments and do not directly measure brain activity."
 )
 
 st.caption(
