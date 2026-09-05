@@ -1,8 +1,8 @@
 import os
 import base64
 import streamlit as st
-from PIL import Image
 from google import genai
+
 
 # =========================================================
 # PAGE
@@ -14,46 +14,53 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🧠 NEUROLENS")
-st.caption("Explore cognition, behavior & the brain")
 
 # =========================================================
 # GEMINI
 # =========================================================
 
-def get_gemini_api_key():
+def get_api_key():
     try:
         if "GEMINI_API_KEY" in st.secrets:
             return st.secrets["GEMINI_API_KEY"]
 
         if "GOOGLE_API_KEY" in st.secrets:
             return st.secrets["GOOGLE_API_KEY"]
+
     except Exception:
         pass
 
-    return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    return (
+        os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+    )
 
 
 def ask_ayna(question):
-    key = get_gemini_api_key()
 
-    if not key:
+    api_key = get_api_key()
+
+    if not api_key:
         return "Gemini API key nahi mili."
 
     try:
-        client = genai.Client(api_key=key)
+
+        client = genai.Client(
+            api_key=api_key
+        )
 
         prompt = f"""
-You are Ayna, an educational cognitive neuroscience guide
-inside the NEUROLENS platform.
+You are Ayna, the educational neuroscience guide
+inside NEUROLENS.
 
-Answer the user's question clearly and scientifically.
+Explain neuroscience in simple but scientifically
+accurate language.
 
-Do not diagnose medical conditions.
-Do not claim that simple games measure actual brain activity.
-Use simple language suitable for students and curious learners.
+Do not diagnose.
+Do not claim that simple cognitive games measure
+actual brain activity.
 
-Question:
+User question:
 {question}
 """
 
@@ -65,308 +72,389 @@ Question:
         return response.text
 
     except Exception as e:
-        return f"Ask Ayna temporarily unavailable: {e}"
+
+        return f"Ask Ayna error: {e}"
 
 
 # =========================================================
 # BRAIN IMAGE
 # =========================================================
 
-BRAIN_PATH = "brain.png"
+BRAIN_FILE = "brain.png"
 
-if not os.path.exists(BRAIN_PATH):
-    st.error("brain.png nahi mili. GitHub repo mein app.py ke saath brain.png upload karo.")
+if not os.path.exists(BRAIN_FILE):
+
+    st.error(
+        "❌ brain.png nahi mili. "
+        "GitHub mein app.py ke saath brain.png upload karo."
+    )
+
     st.stop()
 
-with open(BRAIN_PATH, "rb") as f:
-    brain_bytes = f.read()
 
-brain_base64 = base64.b64encode(brain_bytes).decode("utf-8")
+with open(BRAIN_FILE, "rb") as file:
 
-brain_data_uri = f"data:image/png;base64,{brain_base64}"
+    brain_bytes = file.read()
+
+
+brain_base64 = base64.b64encode(
+    brain_bytes
+).decode("utf-8")
 
 
 # =========================================================
-# BRAIN INFORMATION
+# BRAIN REGIONS
 # =========================================================
 
 REGIONS = {
 
     "frontal": {
         "name": "Prefrontal Cortex",
-        "description": """
-The prefrontal cortex is strongly involved in planning,
-decision-making, working memory, attention and cognitive control.
-"""
+        "text": (
+            "Planning, decision-making, working memory, "
+            "attention and cognitive control."
+        )
     },
 
     "temporal": {
         "name": "Hippocampus",
-        "description": """
-The hippocampus plays an important role in memory formation,
-spatial navigation and contextual learning.
-"""
+        "text": (
+            "Important for memory formation, "
+            "learning and spatial navigation."
+        )
     },
 
     "amygdala": {
         "name": "Amygdala",
-        "description": """
-The amygdala helps process emotional significance,
-especially threat, fear and emotionally important information.
-"""
+        "text": (
+            "Helps process emotional significance, "
+            "especially threat and fear-related information."
+        )
     },
 
     "striatum": {
         "name": "Striatum",
-        "description": """
-The striatum is involved in action selection,
-reward processing, motivation and habit learning.
-"""
+        "text": (
+            "Involved in reward, motivation, "
+            "action selection and habit learning."
+        )
     },
 
     "acc": {
         "name": "Anterior Cingulate Cortex",
-        "description": """
-The anterior cingulate cortex contributes to conflict monitoring,
-error processing, attention and decision-making.
-"""
+        "text": (
+            "Contributes to conflict monitoring, "
+            "error processing, attention and decision-making."
+        )
     }
 }
 
 
 # =========================================================
-# STREAMLIT V2 COMPONENT
+# HTML
 # =========================================================
 
 HTML = """
-<div class="nl-root">
 
-    <div class="nl-header">
+<div class="nl">
+
+    <div class="top">
+
         <div>
-            <div class="nl-title">NEURAL JOURNEY</div>
-            <div class="nl-subtitle">
+            <div class="title">
+                NEURAL JOURNEY
+            </div>
+
+            <div class="sub">
                 Travel inside the brain
             </div>
         </div>
 
-        <div id="stageLabel" class="nl-stage">
+        <div id="stage">
             WHOLE BRAIN
         </div>
+
     </div>
 
 
-    <div class="viewport">
+    <div class="screen">
 
         <div id="world">
 
-            <!-- ACTUAL BRAIN IMAGE -->
-            <div id="brainLayer">
+
+            <!-- =========================================
+                 REAL BRAIN
+            ========================================== -->
+
+            <div id="brain">
 
                 <img
-                    id="brainImage"
+                    id="brainImg"
                     src=""
                     draggable="false"
-                />
+                >
 
-                <!-- invisible / glowing navigation points -->
+
+                <!-- BRAIN HOTSPOTS -->
+
                 <button
-                    class="hotspot frontal"
-                    data-region="frontal"
-                    title="Explore frontal region">
+                    class="spot frontal"
+                    data-region="frontal">
                 </button>
 
                 <button
-                    class="hotspot temporal"
-                    data-region="temporal"
-                    title="Explore temporal region">
+                    class="spot temporal"
+                    data-region="temporal">
                 </button>
 
                 <button
-                    class="hotspot amygdala"
-                    data-region="amygdala"
-                    title="Explore amygdala">
+                    class="spot amygdala"
+                    data-region="amygdala">
                 </button>
 
                 <button
-                    class="hotspot striatum"
-                    data-region="striatum"
-                    title="Explore striatum">
+                    class="spot striatum"
+                    data-region="striatum">
                 </button>
 
                 <button
-                    class="hotspot acc"
-                    data-region="acc"
-                    title="Explore ACC">
+                    class="spot acc"
+                    data-region="acc">
                 </button>
 
             </div>
 
 
-            <!-- PATHWAY -->
-            <div id="pathway"></div>
+            <!-- =========================================
+                 TRAVEL PATH
+            ========================================== -->
+
+            <div id="travelPath"></div>
 
 
-            <!-- TISSUE -->
+            <!-- =========================================
+                 TISSUE
+            ========================================== -->
+
             <div id="tissue">
 
-                <div class="cell">
-                    <div class="cell-nucleus"></div>
+                <div class="cell cell1">
+                    <div class="nucleus"></div>
                 </div>
 
-                <div class="cell c2">
-                    <div class="cell-nucleus"></div>
+                <div class="cell cell2">
+                    <div class="nucleus"></div>
                 </div>
 
-                <div class="cell c3">
-                    <div class="cell-nucleus"></div>
+                <div class="cell cell3">
+                    <div class="nucleus"></div>
                 </div>
 
             </div>
 
 
-            <!-- NEURON -->
+            <!-- =========================================
+                 NEURON
+            ========================================== -->
+
             <div id="neuronWorld">
 
                 <svg
-                    id="neuron"
-                    viewBox="0 0 800 500"
-                    preserveAspectRatio="xMidYMid meet">
+                    viewBox="0 0 900 500"
+                    id="neuron">
 
                     <g class="dendrites">
 
-                        <path d="M390 250 C320 200 250 170 180 100"/>
-                        <path d="M390 250 C320 250 230 250 120 210"/>
-                        <path d="M390 250 C320 300 230 330 120 370"/>
-                        <path d="M390 250 C320 190 280 120 250 60"/>
-                        <path d="M390 250 C320 320 280 400 240 450"/>
+                        <path d="M420 250 C330 180 250 120 130 70"/>
+                        <path d="M420 250 C320 220 220 210 90 180"/>
+                        <path d="M420 250 C320 280 210 310 90 360"/>
+                        <path d="M420 250 C350 330 300 400 210 450"/>
 
                     </g>
 
-                    <circle
-                        class="soma"
-                        cx="410"
-                        cy="250"
-                        r="75"/>
 
                     <circle
-                        class="nucleus"
-                        cx="410"
+                        cx="430"
                         cy="250"
-                        r="25"/>
+                        r="78"
+                        class="soma"
+                    />
+
+
+                    <circle
+                        cx="430"
+                        cy="250"
+                        r="28"
+                        class="nucleus2"
+                    />
+
 
                     <path
                         id="axon"
-                        d="M485 250 C570 250 650 250 760 250"/>
+                        d="M505 250 C620 250 730 250 870 250"
+                    />
+
 
                     <g class="myelin">
 
-                        <rect x="525" y="232" width="45" height="36" rx="18"/>
-                        <rect x="590" y="232" width="45" height="36" rx="18"/>
-                        <rect x="655" y="232" width="45" height="36" rx="18"/>
-                        <rect x="720" y="232" width="35" height="36" rx="18"/>
+                        <rect x="555" y="228"
+                              width="55" height="44"
+                              rx="20"/>
+
+                        <rect x="630" y="228"
+                              width="55" height="44"
+                              rx="20"/>
+
+                        <rect x="705" y="228"
+                              width="55" height="44"
+                              rx="20"/>
+
+                        <rect x="780" y="228"
+                              width="55" height="44"
+                              rx="20"/>
 
                     </g>
 
+
                     <circle
                         id="signal"
-                        cx="500"
+                        cx="510"
                         cy="250"
-                        r="10"/>
+                        r="11"
+                    />
 
                 </svg>
 
             </div>
 
 
-            <!-- SYNAPSE -->
+            <!-- =========================================
+                 SYNAPSE
+            ========================================== -->
+
             <div id="synapseWorld">
 
-                <div class="synapse-title">
+                <div class="synapseLabel">
                     SYNAPTIC CONNECTION
                 </div>
 
+
                 <div class="synapse">
 
-                    <div class="pre-terminal">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                    <div class="preNeuron">
+
+                        <div class="vesicle v1"></div>
+                        <div class="vesicle v2"></div>
+                        <div class="vesicle v3"></div>
+                        <div class="vesicle v4"></div>
+
                     </div>
 
-                    <div class="synaptic-gap"></div>
 
-                    <div class="post-terminal"></div>
+                    <div class="gap"></div>
 
-                    <div class="neurotransmitter nt1"></div>
-                    <div class="neurotransmitter nt2"></div>
-                    <div class="neurotransmitter nt3"></div>
-                    <div class="neurotransmitter nt4"></div>
+
+                    <div class="postNeuron">
+
+                        <div class="receptor r1"></div>
+                        <div class="receptor r2"></div>
+                        <div class="receptor r3"></div>
+
+                    </div>
+
+
+                    <div class="chemical c1"></div>
+                    <div class="chemical c2"></div>
+                    <div class="chemical c3"></div>
+                    <div class="chemical c4"></div>
 
                 </div>
 
             </div>
 
 
-            <!-- NEUROTRANSMITTER -->
+            <!-- =========================================
+                 NEUROTRANSMITTER
+            ========================================== -->
+
             <div id="chemicalWorld">
 
-                <div class="chemical-orbit">
+                <div class="molecule">
 
-                    <div class="chemical c1">D</div>
-                    <div class="chemical c2">S</div>
-                    <div class="chemical c3">G</div>
-                    <div class="chemical c4">A</div>
+                    <div class="mol m1">
+                        D
+                    </div>
+
+                    <div class="mol m2">
+                        S
+                    </div>
+
+                    <div class="mol m3">
+                        G
+                    </div>
+
+                    <div class="mol m4">
+                        A
+                    </div>
 
                 </div>
 
-                <div class="chemical-name">
+
+                <div class="chemicalText">
                     NEUROTRANSMITTER SIGNAL
                 </div>
 
             </div>
+
 
         </div>
 
     </div>
 
 
-    <!-- CONTROLS -->
+    <!-- =========================================
+         CONTROLS
+    ========================================== -->
 
     <div class="controls">
 
-        <button id="backBtn" class="control">
+        <button id="back">
             ← BACK
         </button>
 
-        <button id="travelBtn" class="primary">
+        <button id="travel">
             ENTER BRAIN
         </button>
 
-        <button id="voiceBtn" class="control">
+        <button id="voice">
             🔊 VOICE
         </button>
 
-        <button id="askBtn" class="control">
+        <button id="ask">
             💬 ASK AYNA
         </button>
 
     </div>
 
 
-    <div class="journey-status">
+    <div class="status">
 
-        <span class="dot"></span>
+        <span class="statusDot"></span>
 
         <span id="statusText">
-            Select a brain region to begin your journey.
+            Select a brain region to begin.
         </span>
 
     </div>
 
 </div>
+
 """
 
+
+# =========================================================
+# CSS
+# =========================================================
 
 CSS = """
 
@@ -374,135 +462,129 @@ CSS = """
     box-sizing: border-box;
 }
 
-.nl-root {
+
+.nl {
+
     width: 100%;
-    min-height: 760px;
-    background:
-        radial-gradient(
-            circle at center,
-            #17283b 0%,
-            #08111c 55%,
-            #03070b 100%
-        );
+
+    min-height: 720px;
+
+    overflow: hidden;
 
     border-radius: 22px;
-    overflow: hidden;
 
     color: white;
 
+    background:
+        radial-gradient(
+            circle at center,
+            #182b40,
+            #07111d 60%,
+            #02060a
+        );
+
     font-family:
-        Inter,
-        system-ui,
+        Arial,
         sans-serif;
+
 }
 
 
 /* HEADER */
 
-.nl-header {
+.top {
 
     height: 75px;
 
     display: flex;
 
-    justify-content: space-between;
     align-items: center;
+
+    justify-content: space-between;
 
     padding: 18px 25px;
 
-    background:
-        linear-gradient(
-            180deg,
-            rgba(255,255,255,.06),
-            rgba(255,255,255,0)
-        );
-
     border-bottom:
-        1px solid rgba(255,255,255,.08);
+        1px solid rgba(255,255,255,.1);
+
 }
 
 
-.nl-title {
+.title {
 
     font-size: 18px;
-    font-weight: 700;
 
-    letter-spacing: 2px;
+    font-weight: bold;
+
+    letter-spacing: 3px;
+
 }
 
 
-.nl-subtitle {
+.sub {
+
+    margin-top: 4px;
 
     font-size: 12px;
 
-    opacity: .6;
+    opacity: .55;
 
-    margin-top: 3px;
 }
 
 
-.nl-stage {
+#stage {
 
     font-size: 11px;
 
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
 
-    opacity: .75;
+    opacity: .7;
+
 }
 
 
-/* VIEWPORT */
+/* SCREEN */
 
-.viewport {
+.screen {
 
-    height: 570px;
+    height: 540px;
 
     position: relative;
 
     overflow: hidden;
 
-    perspective: 1300px;
-
-    background:
-        radial-gradient(
-            ellipse at center,
-            rgba(60,110,160,.13),
-            transparent 60%
-        );
 }
 
-
-/* WORLD */
 
 #world {
 
     position: absolute;
 
     width: 100%;
+
     height: 100%;
 
-    left: 0;
-    top: 0;
-
-    transform-origin:
-        50% 50%;
+    transform-origin: 50% 50%;
 
     transition:
-        transform 2.5s cubic-bezier(.22,.75,.15,1);
+        transform 2.8s
+        cubic-bezier(.2,.8,.15,1);
 
 }
 
 
 /* BRAIN */
 
-#brainLayer {
+#brain {
 
     position: absolute;
 
     width: 760px;
-    height: 520px;
+
+    height: 500px;
 
     left: 50%;
+
     top: 50%;
 
     transform:
@@ -511,11 +593,10 @@ CSS = """
 }
 
 
-#brainImage {
-
-    position: absolute;
+#brainImg {
 
     width: 100%;
+
     height: 100%;
 
     object-fit: contain;
@@ -524,7 +605,8 @@ CSS = """
 
     filter:
         drop-shadow(
-            0 30px 60px rgba(0,0,0,.5)
+            0 30px 50px
+            rgba(0,0,0,.5)
         );
 
 }
@@ -532,61 +614,61 @@ CSS = """
 
 /* HOTSPOTS */
 
-.hotspot {
+.spot {
 
     position: absolute;
 
-    width: 90px;
-    height: 90px;
+    width: 65px;
+
+    height: 65px;
 
     border-radius: 50%;
 
     border:
-        1px solid rgba(100,220,255,.25);
+        2px solid
+        rgba(90,220,255,.4);
 
     background:
         radial-gradient(
             circle,
-            rgba(80,210,255,.14),
+            rgba(90,220,255,.22),
             transparent 70%
         );
 
     cursor: pointer;
 
-    transition:
-        .3s;
-
     animation:
-        pulse 2.5s infinite;
+        pulse 2s infinite;
 
 }
 
 
-.hotspot:hover {
+.spot:hover {
+
+    transform:
+        scale(1.25);
 
     background:
         radial-gradient(
             circle,
-            rgba(80,210,255,.4),
+            rgba(90,220,255,.45),
             transparent 70%
         );
-
-    transform: scale(1.15);
 
 }
 
 
 .frontal {
 
-    left: 70%;
-    top: 26%;
+    left: 69%;
+    top: 25%;
 
 }
 
 
 .temporal {
 
-    left: 51%;
+    left: 50%;
     top: 65%;
 
 }
@@ -595,7 +677,7 @@ CSS = """
 .amygdala {
 
     left: 56%;
-    top: 49%;
+    top: 48%;
 
 }
 
@@ -603,15 +685,15 @@ CSS = """
 .striatum {
 
     left: 62%;
-    top: 43%;
+    top: 40%;
 
 }
 
 
 .acc {
 
-    left: 64%;
-    top: 34%;
+    left: 65%;
+    top: 31%;
 
 }
 
@@ -619,29 +701,39 @@ CSS = """
 @keyframes pulse {
 
     0%,100% {
+
         box-shadow:
-            0 0 0 0 rgba(80,210,255,.1);
+            0 0 0 0
+            rgba(80,210,255,.15);
+
     }
 
     50% {
+
         box-shadow:
-            0 0 0 20px rgba(80,210,255,0);
+            0 0 0 18px
+            rgba(80,210,255,0);
+
     }
 
 }
 
 
-/* PATHWAY */
+/* TRAVEL PATH */
 
-#pathway {
+#travelPath {
 
     position: absolute;
 
+    left: 50%;
+
+    top: 50%;
+
     width: 5px;
+
     height: 0;
 
-    left: 50%;
-    top: 50%;
+    opacity: 0;
 
     transform:
         translate(-50%,-50%);
@@ -650,17 +742,15 @@ CSS = """
         linear-gradient(
             to bottom,
             transparent,
-            #65ddff,
-            #ffffff,
-            #65ddff,
+            #72e4ff,
+            white,
+            #72e4ff,
             transparent
         );
 
     box-shadow:
-        0 0 20px #65ddff,
-        0 0 50px rgba(70,210,255,.5);
-
-    opacity: 0;
+        0 0 20px #5edcff,
+        0 0 55px rgba(70,210,255,.5);
 
     transition:
         height 2s,
@@ -680,10 +770,10 @@ CSS = """
     opacity: 0;
 
     transform:
-        scale(.1);
+        scale(.05);
 
     transition:
-        2s;
+        2.5s;
 
 }
 
@@ -692,71 +782,80 @@ CSS = """
 
     position: absolute;
 
-    width: 250px;
-    height: 250px;
+    width: 230px;
 
-    border-radius: 48%;
-
-    left: 42%;
-    top: 30%;
-
-    background:
-        radial-gradient(
-            circle,
-            #e9b2d5 0 15%,
-            #ba74aa 16% 40%,
-            #703f75 41% 60%,
-            #34213f 61%
-        );
-
-    box-shadow:
-        0 0 70px rgba(210,100,210,.35);
-
-}
-
-
-.c2 {
-
-    left: 10%;
-    top: 20%;
-
-    transform: scale(.7);
-
-}
-
-
-.c3 {
-
-    left: 68%;
-    top: 65%;
-
-    transform: scale(.55);
-
-}
-
-
-.cell-nucleus {
-
-    position: absolute;
-
-    width: 60px;
-    height: 60px;
-
-    left: 95px;
-    top: 95px;
+    height: 230px;
 
     border-radius: 50%;
 
     background:
         radial-gradient(
             circle,
-            #fff,
-            #8edfff 40%,
-            #2e80a5
+            #f1c0dc 0 12%,
+            #b46ca7 25%,
+            #704172 55%,
+            #28182f 100%
         );
 
     box-shadow:
-        0 0 30px #65ddff;
+        0 0 60px
+        rgba(220,110,220,.35);
+
+}
+
+
+.cell1 {
+
+    left: 38%;
+    top: 28%;
+
+}
+
+
+.cell2 {
+
+    left: 8%;
+    top: 20%;
+
+    transform: scale(.65);
+
+}
+
+
+.cell3 {
+
+    right: 8%;
+    bottom: 10%;
+
+    transform: scale(.55);
+
+}
+
+
+.nucleus {
+
+    position: absolute;
+
+    width: 55px;
+
+    height: 55px;
+
+    left: 87px;
+
+    top: 87px;
+
+    border-radius: 50%;
+
+    background:
+        radial-gradient(
+            circle,
+            white,
+            #6de0ff 45%,
+            #24677f
+        );
+
+    box-shadow:
+        0 0 25px #6de0ff;
 
 }
 
@@ -783,6 +882,7 @@ CSS = """
 #neuron {
 
     width: 100%;
+
     height: 100%;
 
 }
@@ -792,15 +892,15 @@ CSS = """
 
     fill: none;
 
-    stroke: #9be8ff;
+    stroke: #8ee8ff;
 
-    stroke-width: 7;
+    stroke-width: 8;
 
     stroke-linecap: round;
 
     filter:
         drop-shadow(
-            0 0 7px #4bd8ff
+            0 0 8px #52d9ff
         );
 
 }
@@ -808,34 +908,27 @@ CSS = """
 
 .soma {
 
-    fill:
-        radial-gradient(
-            circle,
-            white,
-            #8e6cae
-        );
+    fill: #835c9f;
 
-    fill: #8e6cae;
-
-    stroke: #d9b6ff;
+    stroke: #dcbcff;
 
     stroke-width: 5;
 
     filter:
         drop-shadow(
-            0 0 20px #a979d6
+            0 0 20px #a875d8
         );
 
 }
 
 
-.nucleus {
+.nucleus2 {
 
-    fill: #62dcff;
+    fill: #63dcff;
 
     filter:
         drop-shadow(
-            0 0 15px #62dcff
+            0 0 15px #63dcff
         );
 
 }
@@ -845,9 +938,9 @@ CSS = """
 
     fill: none;
 
-    stroke: #75dcff;
+    stroke: #6bdfff;
 
-    stroke-width: 12;
+    stroke-width: 13;
 
     stroke-linecap: round;
 
@@ -856,13 +949,11 @@ CSS = """
 
 .myelin rect {
 
-    fill: #d4edf3;
+    fill: #d8eff4;
 
-    stroke: #8ad6e8;
+    stroke: #8bd8e9;
 
     stroke-width: 3;
-
-    opacity: .85;
 
 }
 
@@ -873,7 +964,7 @@ CSS = """
 
     filter:
         drop-shadow(
-            0 0 12px white
+            0 0 14px white
         );
 
 }
@@ -898,21 +989,21 @@ CSS = """
 }
 
 
-.synapse-title {
+.synapseLabel {
 
     position: absolute;
 
-    top: 20%;
-
     width: 100%;
+
+    top: 18%;
 
     text-align: center;
 
-    font-size: 16px;
-
     letter-spacing: 3px;
 
-    opacity: .7;
+    font-size: 14px;
+
+    opacity: .65;
 
 }
 
@@ -921,10 +1012,12 @@ CSS = """
 
     position: absolute;
 
-    width: 600px;
-    height: 280px;
+    width: 650px;
+
+    height: 300px;
 
     left: 50%;
+
     top: 50%;
 
     transform:
@@ -933,135 +1026,209 @@ CSS = """
 }
 
 
-.pre-terminal {
+.preNeuron {
 
     position: absolute;
 
-    width: 250px;
-    height: 180px;
+    left: 20px;
 
-    left: 30px;
     top: 50px;
 
+    width: 270px;
+
+    height: 190px;
+
     border-radius:
-        50% 20% 20% 50%;
+        55% 20% 20% 55%;
 
     background:
         radial-gradient(
             circle at 70% 50%,
-            #c67ad1,
-            #693b75
+            #c77ad1,
+            #61356f
         );
 
 }
 
 
-.post-terminal {
+.postNeuron {
 
     position: absolute;
 
-    width: 250px;
-    height: 180px;
+    right: 20px;
 
-    right: 30px;
     top: 50px;
 
+    width: 270px;
+
+    height: 190px;
+
     border-radius:
-        20% 50% 50% 20%;
+        20% 55% 55% 20%;
 
     background:
         radial-gradient(
             circle at 30% 50%,
-            #75cbe2,
-            #28516d
+            #6bcce5,
+            #27526d
         );
 
 }
 
 
-.synaptic-gap {
+.gap {
 
     position: absolute;
 
-    left: 285px;
-    top: 45px;
+    left: 305px;
 
-    width: 30px;
-    height: 190px;
+    top: 40px;
+
+    width: 35px;
+
+    height: 210px;
 
     background:
         linear-gradient(
             90deg,
             transparent,
-            rgba(255,255,255,.7),
+            rgba(255,255,255,.8),
             transparent
         );
 
 }
 
 
-.neurotransmitter {
+.vesicle {
 
     position: absolute;
 
-    width: 16px;
-    height: 16px;
+    width: 20px;
+
+    height: 20px;
 
     border-radius: 50%;
 
-    background: #fff;
+    background: #ffeaff;
 
     box-shadow:
-        0 0 15px #65ddff;
-
-    animation:
-        neurotransmit 2s infinite linear;
+        0 0 12px #ffb8ff;
 
 }
 
 
-.nt1 {
-    left: 220px;
+.v1 {
+    right: 35px;
+    top: 35px;
+}
+
+.v2 {
+    right: 50px;
+    top: 75px;
+}
+
+.v3 {
+    right: 35px;
+    top: 120px;
+}
+
+.v4 {
+    right: 55px;
+    top: 160px;
+}
+
+
+.receptor {
+
+    position: absolute;
+
+    left: 15px;
+
+    width: 30px;
+
+    height: 45px;
+
+    border-radius: 10px;
+
+    background: #b9f4ff;
+
+    box-shadow:
+        0 0 12px #61dcff;
+
+}
+
+
+.r1 {
+    top: 40px;
+}
+
+.r2 {
+    top: 85px;
+}
+
+.r3 {
+    top: 130px;
+}
+
+
+.chemical {
+
+    position: absolute;
+
+    width: 15px;
+
+    height: 15px;
+
+    border-radius: 50%;
+
+    background: white;
+
+    box-shadow:
+        0 0 14px #6ce0ff;
+
+    animation:
+        crossGap 2s infinite linear;
+
+}
+
+
+.c1 {
+    left: 250px;
     top: 80px;
 }
 
+.c2 {
+    left: 255px;
+    top: 125px;
+    animation-delay: .4s;
+}
 
-.nt2 {
-    left: 220px;
-    top: 130px;
-    animation-delay: .5s;
+.c3 {
+    left: 250px;
+    top: 165px;
+    animation-delay: .8s;
+}
+
+.c4 {
+    left: 265px;
+    top: 105px;
+    animation-delay: 1.2s;
 }
 
 
-.nt3 {
-    left: 220px;
-    top: 170px;
-    animation-delay: 1s;
-}
+@keyframes crossGap {
 
-
-.nt4 {
-    left: 220px;
-    top: 110px;
-    animation-delay: 1.5s;
-}
-
-
-@keyframes neurotransmit {
-
-    from {
-        transform:
-            translateX(0);
+    0% {
+        transform: translateX(0);
         opacity: 0;
     }
 
-    30% {
+    25% {
         opacity: 1;
     }
 
-    to {
-        transform:
-            translateX(160px);
+    100% {
+        transform: translateX(150px);
         opacity: 0;
     }
 
@@ -1087,21 +1254,24 @@ CSS = """
 }
 
 
-.chemical-orbit {
+.molecule {
 
     position: absolute;
 
-    width: 400px;
-    height: 400px;
+    width: 390px;
+
+    height: 390px;
 
     left: 50%;
-    top: 50%;
+
+    top: 48%;
 
     transform:
         translate(-50%,-50%);
 
     border:
-        1px solid rgba(120,220,255,.2);
+        1px solid
+        rgba(100,220,255,.25);
 
     border-radius: 50%;
 
@@ -1111,74 +1281,73 @@ CSS = """
 }
 
 
-.chemical {
+.mol {
 
     position: absolute;
 
-    width: 80px;
-    height: 80px;
+    width: 75px;
+
+    height: 75px;
 
     display: flex;
 
-    justify-content: center;
     align-items: center;
+
+    justify-content: center;
 
     border-radius: 50%;
 
     background:
         radial-gradient(
-            circle at 35% 30%,
+            circle at 30% 25%,
             white,
-            #63d8ff 30%,
-            #226b8d
+            #61d9ff 35%,
+            #246b8c
         );
 
-    color: white;
-
-    font-weight: 800;
-
     box-shadow:
-        0 0 30px #54d8ff;
+        0 0 30px #5edcff;
+
+    font-weight: bold;
 
 }
 
 
-.c1 {
-    left: 160px;
-    top: -40px;
+.m1 {
+    left: 157px;
+    top: -38px;
 }
 
-
-.c2 {
-    right: -40px;
-    top: 160px;
+.m2 {
+    right: -38px;
+    top: 157px;
 }
 
-
-.c3 {
-    left: 160px;
-    bottom: -40px;
+.m3 {
+    left: 157px;
+    bottom: -38px;
 }
 
-
-.c4 {
-    left: -40px;
-    top: 160px;
+.m4 {
+    left: -38px;
+    top: 157px;
 }
 
 
 @keyframes rotate {
 
     to {
+
         transform:
             translate(-50%,-50%)
             rotate(360deg);
+
     }
 
 }
 
 
-.chemical-name {
+.chemicalText {
 
     position: absolute;
 
@@ -1205,24 +1374,26 @@ CSS = """
 
     justify-content: center;
 
-    gap: 12px;
+    gap: 10px;
 
-    padding: 18px;
+    padding: 17px;
 
 }
 
 
-.control,
-.primary {
+.controls button {
+
+    padding:
+        11px 17px;
 
     border-radius: 10px;
 
-    padding: 11px 18px;
-
-    border: 1px solid rgba(255,255,255,.15);
+    border:
+        1px solid
+        rgba(255,255,255,.15);
 
     background:
-        rgba(255,255,255,.06);
+        rgba(255,255,255,.07);
 
     color: white;
 
@@ -1231,13 +1402,13 @@ CSS = """
 }
 
 
-.primary {
+#travel {
 
     background:
         linear-gradient(
             135deg,
-            #2e9fc2,
-            #6750a4
+            #299fc4,
+            #6b52a7
         );
 
     border: none;
@@ -1245,8 +1416,7 @@ CSS = """
 }
 
 
-.control:hover,
-.primary:hover {
+.controls button:hover {
 
     transform:
         translateY(-2px);
@@ -1256,7 +1426,7 @@ CSS = """
 
 /* STATUS */
 
-.journey-status {
+.status {
 
     display: flex;
 
@@ -1275,22 +1445,27 @@ CSS = """
 }
 
 
-.dot {
+.statusDot {
 
     width: 7px;
+
     height: 7px;
 
     border-radius: 50%;
 
-    background: #65ddff;
+    background: #64ddff;
 
     box-shadow:
-        0 0 10px #65ddff;
+        0 0 10px #64ddff;
 
 }
 
 """
 
+
+# =========================================================
+# JAVASCRIPT
+# =========================================================
 
 JS = """
 
@@ -1306,338 +1481,292 @@ export default function(component) {
 
     const root = parentElement;
 
-    const brain =
-        root.querySelector("#brainImage");
+
+    const brainImg =
+        root.querySelector("#brainImg");
+
+    brainImg.src =
+        "data:image/png;base64," + data.brain;
+
 
     const world =
         root.querySelector("#world");
 
-    const pathway =
-        root.querySelector("#pathway");
+    const brain =
+        root.querySelector("#brain");
+
+    const path =
+        root.querySelector("#travelPath");
 
     const tissue =
         root.querySelector("#tissue");
 
-    const neuronWorld =
+    const neuron =
         root.querySelector("#neuronWorld");
 
-    const synapseWorld =
+    const synapse =
         root.querySelector("#synapseWorld");
 
-    const chemicalWorld =
+    const chemical =
         root.querySelector("#chemicalWorld");
 
-    const stageLabel =
-        root.querySelector("#stageLabel");
 
-    const statusText =
+    const stageText =
+        root.querySelector("#stage");
+
+    const status =
         root.querySelector("#statusText");
 
-    const travelBtn =
-        root.querySelector("#travelBtn");
 
-    const backBtn =
-        root.querySelector("#backBtn");
+    const travel =
+        root.querySelector("#travel");
 
-    const voiceBtn =
-        root.querySelector("#voiceBtn");
+    const back =
+        root.querySelector("#back");
 
-    const askBtn =
-        root.querySelector("#askBtn");
+    const voice =
+        root.querySelector("#voice");
 
-
-    brain.src = data.brain;
-
-
-    let stage = 0;
-
-    let selectedRegion = null;
+    const ask =
+        root.querySelector("#ask");
 
 
     const stages = [
+
         "WHOLE BRAIN",
-        "REGION",
-        "TISSUE",
+        "BRAIN REGION",
+        "BRAIN TISSUE",
         "NEURON",
         "AXON",
         "SYNAPSE",
         "NEUROTRANSMITTER"
+
     ];
 
 
-    function updateState() {
+    let currentStage = 0;
+
+    let selectedRegion = "";
+
+
+    function sendState() {
 
         setStateValue(
             "stage",
-            stages[stage]
+            stages[currentStage]
         );
 
         setStateValue(
             "region",
-            selectedRegion || ""
+            selectedRegion
         );
 
     }
 
 
-    function setStage(newStage) {
+    function showStage(n) {
 
-        stage =
-            Math.max(
-                0,
-                Math.min(
-                    stages.length - 1,
-                    newStage
-                )
-            );
-
-
-        stageLabel.textContent =
-            stages[stage];
+        currentStage = Math.max(
+            0,
+            Math.min(
+                stages.length - 1,
+                n
+            )
+        );
 
 
-        /*
-        ===================================================
-        WHOLE BRAIN
-        ===================================================
-        */
+        stageText.textContent =
+            stages[currentStage];
 
-        if(stage === 0) {
+
+        /* WHOLE BRAIN */
+
+        if(currentStage === 0) {
 
             world.style.transform =
                 "translate(0,0) scale(1)";
 
             brain.style.opacity = "1";
 
-            pathway.style.opacity = "0";
+            path.style.opacity = "0";
+
+            path.style.height = "0";
 
             tissue.style.opacity = "0";
 
-            neuronWorld.style.opacity = "0";
+            tissue.style.transform =
+                "scale(.05)";
 
-            synapseWorld.style.opacity = "0";
+            neuron.style.opacity = "0";
 
-            chemicalWorld.style.opacity = "0";
+            synapse.style.opacity = "0";
 
-            travelBtn.textContent =
+            chemical.style.opacity = "0";
+
+            travel.textContent =
                 "ENTER BRAIN";
 
-            statusText.textContent =
-                "Select a brain region to begin your journey.";
+            status.textContent =
+                "Select a glowing point on the brain.";
 
         }
 
 
-        /*
-        ===================================================
-        REGION
-        ===================================================
-        */
+        /* REGION */
 
-        if(stage === 1) {
+        if(currentStage === 1) {
 
             world.style.transform =
-                "translate(-12%,-8%) scale(2.2)";
+                "translate(-10%,-7%) scale(2.2)";
 
             brain.style.opacity = "1";
 
-            pathway.style.opacity = "1";
+            path.style.opacity = "1";
 
-            pathway.style.height = "55%";
+            path.style.height = "55%";
 
-            statusText.textContent =
-                "Traveling toward the selected brain region...";
-
-            travelBtn.textContent =
+            travel.textContent =
                 "GO DEEPER";
+
+            status.textContent =
+                "Traveling into the selected brain region...";
 
         }
 
 
-        /*
-        ===================================================
-        TISSUE
-        ===================================================
-        */
+        /* TISSUE */
 
-        if(stage === 2) {
+        if(currentStage === 2) {
 
             world.style.transform =
-                "translate(-18%,-12%) scale(5)";
+                "translate(-17%,-10%) scale(5)";
 
-            brain.style.opacity = ".25";
+            brain.style.opacity = ".22";
 
-            pathway.style.opacity = "1";
+            path.style.opacity = "1";
 
-            pathway.style.height = "85%";
+            path.style.height = "85%";
 
             tissue.style.opacity = "1";
 
             tissue.style.transform =
                 "scale(1)";
 
-            statusText.textContent =
-                "Moving through the brain tissue...";
-
-            travelBtn.textContent =
+            travel.textContent =
                 "ENTER NEURON";
+
+            status.textContent =
+                "Moving through the brain tissue...";
 
         }
 
 
-        /*
-        ===================================================
-        NEURON
-        ===================================================
-        */
+        /* NEURON */
 
-        if(stage === 3) {
+        if(currentStage === 3) {
 
             world.style.transform =
                 "translate(0,0) scale(1)";
 
             brain.style.opacity = "0";
 
-            pathway.style.opacity = "0";
+            path.style.opacity = "0";
 
             tissue.style.opacity = "0";
 
-            neuronWorld.style.opacity = "1";
+            neuron.style.opacity = "1";
 
-            neuronWorld.style.transform =
+            neuron.style.transform =
                 "scale(1)";
 
-            statusText.textContent =
-                "You have reached a neuron.";
-
-            travelBtn.textContent =
+            travel.textContent =
                 "FOLLOW AXON";
 
+            status.textContent =
+                "You have reached a neuron.";
+
         }
 
 
-        /*
-        ===================================================
-        AXON
-        ===================================================
-        */
+        /* AXON */
 
-        if(stage === 4) {
+        if(currentStage === 4) {
 
-            neuronWorld.style.transform =
-                "scale(1.7) translateX(-15%)";
+            neuron.style.opacity = "1";
 
-            statusText.textContent =
-                "Following the electrical signal along the axon...";
+            neuron.style.transform =
+                "scale(1.65) translateX(-14%)";
 
-            travelBtn.textContent =
+            travel.textContent =
                 "REACH SYNAPSE";
 
-
-            const signal =
-                root.querySelector("#signal");
-
-
-            let x = 500;
-
-
-            function moveSignal() {
-
-                x += 3;
-
-                if(x > 750) {
-                    x = 500;
-                }
-
-                signal.setAttribute(
-                    "cx",
-                    x
-                );
-
-                if(stage === 4) {
-                    requestAnimationFrame(
-                        moveSignal
-                    );
-                }
-
-            }
-
-            moveSignal();
+            status.textContent =
+                "Following the electrical signal along the axon...";
 
         }
 
 
-        /*
-        ===================================================
-        SYNAPSE
-        ===================================================
-        */
+        /* SYNAPSE */
 
-        if(stage === 5) {
+        if(currentStage === 5) {
 
-            neuronWorld.style.opacity = "0";
+            neuron.style.opacity = "0";
 
-            synapseWorld.style.opacity = "1";
+            synapse.style.opacity = "1";
 
-            synapseWorld.style.transform =
+            synapse.style.transform =
                 "scale(1)";
 
-            statusText.textContent =
+            travel.textContent =
+                "SEE CHEMICAL SIGNAL";
+
+            status.textContent =
                 "The signal reaches the synaptic connection.";
 
-            travelBtn.textContent =
-                "SEE SIGNAL";
-
         }
 
 
-        /*
-        ===================================================
-        NEUROTRANSMITTER
-        ===================================================
-        */
+        /* NEUROTRANSMITTER */
 
-        if(stage === 6) {
+        if(currentStage === 6) {
 
-            synapseWorld.style.opacity = "0";
+            synapse.style.opacity = "0";
 
-            chemicalWorld.style.opacity = "1";
+            chemical.style.opacity = "1";
 
-            chemicalWorld.style.transform =
-                "scale(1.1)";
+            chemical.style.transform =
+                "scale(1)";
 
-            statusText.textContent =
+            travel.textContent =
+                "RESTART";
+
+            status.textContent =
                 "Neurotransmitters carry chemical signals between neurons.";
 
-            travelBtn.textContent =
-                "RESTART JOURNEY";
-
         }
 
 
-        updateState();
+        sendState();
 
     }
 
 
-    /*
-    =======================================================
-    BRAIN REGION CLICK
-    =======================================================
-    */
+    /* ===============================================
+       BRAIN REGION CLICK
+    =============================================== */
 
     root
-        .querySelectorAll(".hotspot")
-        .forEach(button => {
+        .querySelectorAll(".spot")
+        .forEach((button) => {
 
             button.onclick = () => {
 
                 selectedRegion =
                     button.dataset.region;
 
-                stage = 1;
+                currentStage = 1;
 
-                setStage(stage);
+                showStage(1);
 
                 setTriggerValue(
                     "region_clicked",
@@ -1649,99 +1778,94 @@ export default function(component) {
         });
 
 
-    /*
-    =======================================================
-    TRAVEL
-    =======================================================
-    */
+    /* ===============================================
+       TRAVEL
+    =============================================== */
 
-    travelBtn.onclick = () => {
+    travel.onclick = () => {
 
-        if(stage === 6) {
+        if(currentStage === 6) {
 
-            stage = 0;
+            showStage(0);
 
         } else {
 
-            stage += 1;
+            showStage(
+                currentStage + 1
+            );
 
         }
-
-        setStage(stage);
 
     };
 
 
-    /*
-    =======================================================
-    BACK
-    =======================================================
-    */
+    /* ===============================================
+       BACK
+    =============================================== */
 
-    backBtn.onclick = () => {
+    back.onclick = () => {
 
-        stage -= 1;
-
-        setStage(stage);
+        showStage(
+            currentStage - 1
+        );
 
     };
 
 
-    /*
-    =======================================================
-    VOICE
-    =======================================================
-    */
+    /* ===============================================
+       VOICE
+    =============================================== */
 
-    voiceBtn.onclick = () => {
+    voice.onclick = () => {
 
-        let text = "";
+        let message = "";
 
-        if(stage === 0) {
 
-            text =
-                "You are looking at the whole brain. Select a region to begin your neural journey.";
+        if(currentStage === 0) {
 
-        }
-
-        else if(stage === 1) {
-
-            text =
-                "We are traveling toward the selected brain region.";
+            message =
+                "You are viewing the whole brain. Select a region to begin your neural journey.";
 
         }
 
-        else if(stage === 2) {
+        else if(currentStage === 1) {
 
-            text =
-                "We are moving through brain tissue and approaching individual neurons.";
-
-        }
-
-        else if(stage === 3) {
-
-            text =
-                "This is a neuron. Dendrites receive information, the cell body integrates it, and the axon carries the signal.";
+            message =
+                "We are traveling into the selected brain region.";
 
         }
 
-        else if(stage === 4) {
+        else if(currentStage === 2) {
 
-            text =
+            message =
+                "We are moving through brain tissue toward individual neurons.";
+
+        }
+
+        else if(currentStage === 3) {
+
+            message =
+                "This is a neuron. Dendrites receive information, the cell body processes it, and the axon carries the signal.";
+
+        }
+
+        else if(currentStage === 4) {
+
+            message =
                 "The electrical signal is traveling along the axon toward the synapse.";
 
         }
 
-        else if(stage === 5) {
+        else if(currentStage === 5) {
 
-            text =
-                "At the synapse, the electrical signal leads to chemical communication between neurons.";
+            message =
+                "The signal has reached the synapse, where neurons communicate chemically.";
 
         }
 
         else {
 
-            text =
+            message =
                 "Neurotransmitters are chemical messengers that help neurons communicate.";
 
         }
@@ -1754,16 +1878,17 @@ export default function(component) {
 
             window.speechSynthesis.cancel();
 
-            const utterance =
+            const speech =
                 new SpeechSynthesisUtterance(
-                    text
+                    message
                 );
 
-            utterance.rate = .92;
-            utterance.pitch = 1;
+            speech.rate = .9;
+
+            speech.pitch = 1;
 
             window.speechSynthesis.speak(
-                utterance
+                speech
             );
 
         }
@@ -1771,22 +1896,20 @@ export default function(component) {
     };
 
 
-    /*
-    =======================================================
-    ASK AYNA
-    =======================================================
-    */
+    /* ===============================================
+       ASK AYNA
+    =============================================== */
 
-    askBtn.onclick = () => {
+    ask.onclick = () => {
 
         setTriggerValue(
             "ask_ayna",
             {
                 stage:
-                    stages[stage],
+                    stages[currentStage],
 
                 region:
-                    selectedRegion || "",
+                    selectedRegion,
 
                 question:
                     "Explain what is happening at this stage of my neural journey."
@@ -1796,7 +1919,46 @@ export default function(component) {
     };
 
 
-    setStage(0);
+    /* ===============================================
+       AXON SIGNAL
+    =============================================== */
+
+    let signalX = 510;
+
+    function animateSignal() {
+
+        const signal =
+            root.querySelector("#signal");
+
+        if(signal) {
+
+            signalX += 2.5;
+
+            if(signalX > 850) {
+
+                signalX = 510;
+
+            }
+
+            signal.setAttribute(
+                "cx",
+                signalX
+            );
+
+        }
+
+        requestAnimationFrame(
+            animateSignal
+        );
+
+    }
+
+    animateSignal();
+
+
+    /* START */
+
+    showStage(0);
 
 
     return () => {
@@ -1818,12 +1980,12 @@ export default function(component) {
 
 
 # =========================================================
-# CREATE COMPONENT
+# COMPONENT
 # =========================================================
 
 try:
 
-    brain_journey = st.components.v2.component(
+    journey = st.components.v2.component(
         name="neurolens_neural_journey",
         html=HTML,
         css=CSS,
@@ -1831,23 +1993,30 @@ try:
         isolate_styles=True
     )
 
-except Exception:
+except Exception as error:
 
     st.error(
-        "Tumhare Streamlit version mein Components v2 available nahi hai. "
-        "requirements.txt mein latest Streamlit use karo."
+        "NEUROLENS component load nahi hua."
     )
+
+    st.code(str(error))
 
     st.stop()
 
 
 # =========================================================
-# MOUNT COMPONENT
+# MOUNT
 # =========================================================
 
-result = brain_journey(
+result = journey(
+
     data={
-        "brain": brain_data_uri
+        "brain": brain_base64
+    },
+
+    default={
+        "stage": "WHOLE BRAIN",
+        "region": ""
     },
 
     key="neural_journey",
@@ -1860,20 +2029,22 @@ result = brain_journey(
 
 
 # =========================================================
-# PYTHON RESPONSE FROM COMPONENT
+# PYTHON STATE
 # =========================================================
 
 current_stage = getattr(
     result,
     "stage",
-    None
+    "WHOLE BRAIN"
 )
+
 
 current_region = getattr(
     result,
     "region",
-    None
+    ""
 )
+
 
 ask_event = getattr(
     result,
@@ -1888,16 +2059,15 @@ ask_event = getattr(
 
 if current_region in REGIONS:
 
-    region_info = REGIONS[current_region]
-
     st.markdown("---")
 
     st.subheader(
-        f"🧠 {region_info['name']}"
+        "🧠 " +
+        REGIONS[current_region]["name"]
     )
 
     st.write(
-        region_info["description"]
+        REGIONS[current_region]["text"]
     )
 
 
@@ -1909,52 +2079,38 @@ if ask_event:
 
     st.markdown("---")
 
-    st.subheader("💬 Ask Ayna")
+    st.subheader(
+        "💬 Ask Ayna"
+    )
+
+    default_question = (
+        "Explain what is happening at "
+        f"the {current_stage} stage of "
+        "my neural journey."
+    )
+
 
     question = st.text_input(
-        "Your neuroscience question:",
-        value=(
-            f"What is happening at the "
-            f"{current_stage or 'current'} stage?"
-        ),
-        key="ayna_question"
+        "Question",
+        value=default_question,
+        key="neural_question"
     )
+
 
     if st.button(
         "Ask Ayna",
-        key="ask_ayna_submit"
+        key="neural_ask_button"
     ):
 
         with st.spinner(
             "Ayna is thinking..."
         ):
 
-            answer =
-                ask_ayna(
-                    question
-                )
+            answer = ask_ayna(
+                question
+            )
 
         st.info(answer)
-
-
-# =========================================================
-# OLD / SIMPLE BRAIN EXPLORER
-# =========================================================
-
-st.markdown("---")
-
-st.subheader("🔬 Brain Explorer")
-
-selected = st.selectbox(
-    "Explore a brain region",
-    list(REGIONS.keys()),
-    format_func=lambda x:
-        REGIONS[x]["name"]
-)
-
-st.write(
-    REGIONS[selected]["description"]
-)
 
 
 # =========================================================
@@ -1964,7 +2120,7 @@ st.write(
 st.markdown("---")
 
 st.caption(
-    "NEUROLENS — Cognitive Neuroscience • Brain • Behavior • AI"
+    "NEUROLENS • Cognitive Neuroscience • Brain • Behavior • AI"
 )
 
 st.caption(
