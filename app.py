@@ -48,12 +48,17 @@ ASSETS = os.path.join(ROOT, "assets")
 
 def asset_path(name):
     p = os.path.join(ASSETS, name)
-    return p if os.path.exists(p) else os.path.join(ROOT, name)
+
+    if os.path.exists(p):
+        return p
+
+    return os.path.join(ROOT, name)
 
 
 def find_video(*names, keywords=()):
     for name in names:
         p = asset_path(name)
+
         if os.path.exists(p):
             return p
 
@@ -179,7 +184,7 @@ st.markdown(
 
 @keyframes p{
     50%{
-        transform:scale(1.1)
+        transform:scale(1.1);
     }
 }
 
@@ -216,10 +221,11 @@ st.markdown(
 
 @keyframes move{
     0%{
-        transform:translateX(-170px)
+        transform:translateX(-170px);
     }
+
     100%{
-        transform:translateX(170px)
+        transform:translateX(170px);
     }
 }
 
@@ -255,38 +261,47 @@ defaults = {
     "language": "English",
     "character": "Nova",
     "equipment": "EEG Scanner",
-    "journey_stage": "brain",
-    "journey_region": "Prefrontal Cortex",
+
     "messages": [],
     "private_messages": [],
+
     "private_unlocked": False,
     "private_pin_hash": None,
+
     "progress": fresh_progress(),
+
     "ai_requests": 0,
     "ai_cache": {},
+
     "last_experiment": None,
     "experiment_history": [],
+
     "puzzle_history": [],
     "research_history": [],
     "research_results": [],
+
     "lab_started": False,
     "active_lab_experiment": None,
     "lab_result": None,
     "lab_start_time": None,
+
     "lab_sequence": None,
     "attention_target": None,
     "attention_stimuli": [],
-    "inhib_word": None,
-    "brain_stage": 0
+    "inhib_word": None
 }
 
 
 for key, value in defaults.items():
+
     if key not in st.session_state:
+
         if isinstance(value, dict):
             st.session_state[key] = value.copy()
+
         elif isinstance(value, list):
             st.session_state[key] = value.copy()
+
         else:
             st.session_state[key] = value
 
@@ -522,8 +537,10 @@ MOODS = {
 def load_brain():
 
     try:
+
         if os.path.exists(BRAIN_PATH):
             return Image.open(BRAIN_PATH).convert("RGB")
+
     except Exception:
         pass
 
@@ -542,6 +559,7 @@ def get_api_key():
     for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
 
         try:
+
             value = st.secrets.get(name)
 
             if value:
@@ -566,6 +584,7 @@ def make_client(key):
 
     try:
         return genai.Client(api_key=key)
+
     except Exception:
         return None
 
@@ -599,12 +618,14 @@ def ask_ai(
     ).hexdigest()
 
     if cache_key in st.session_state.ai_cache:
+
         return (
             st.session_state.ai_cache[cache_key],
             "cache"
         )
 
     if st.session_state.ai_requests >= AI_LIMIT:
+
         return (
             "AI session limit reached. "
             "Local NEUROLENS activities are still available.",
@@ -616,6 +637,7 @@ def ask_ai(
     )
 
     if client is None:
+
         return (
             "Ask Ayna is unavailable. "
             "Add GEMINI_API_KEY in Streamlit Secrets.",
@@ -704,18 +726,21 @@ def ask_ai_audio(
     )
 
     if client is None:
+
         return (
             "Voice AI needs GEMINI_API_KEY in Streamlit Secrets.",
             "offline"
         )
 
     if types is None:
+
         return (
             "Voice input support is unavailable in this environment.",
             "offline"
         )
 
     if st.session_state.ai_requests >= AI_LIMIT:
+
         return (
             "AI session limit reached.",
             "limit"
@@ -755,16 +780,17 @@ def ask_ai_audio(
         )
 
 
+# =========================================================
+# HELPERS
+# =========================================================
+
 def go_to(page):
 
     st.session_state.page = page
     st.rerun()
 
 
-def record(
-    name,
-    amount=1
-):
+def record(name, amount=1):
 
     st.session_state.progress[name] = (
         st.session_state.progress.get(
@@ -782,36 +808,43 @@ def voice_button(
 ):
 
     safe = (
-        html.escape(text)
-        .replace("`", "\\`")
+        html.escape(
+            str(text)
+        )
+        .replace(
+            "`",
+            "\\`"
+        )
     )
 
     components.html(
         f"""
         <button
-            onclick="speak()"
+            onclick="speakText()"
             style="
                 padding:9px 15px;
                 border-radius:10px;
                 border:1px solid #789;
                 background:#173b5f;
                 color:white;
+                cursor:pointer;
             "
         >
             🔊 Play Ayna
         </button>
 
         <script>
-        function speak(){{
+        function speakText(){{
             window.speechSynthesis.cancel();
 
-            let u =
-                new SpeechSynthesisUtterance(
-                    `{safe}`
-                );
+            const text =
+                `{safe}`;
+
+            const u =
+                new SpeechSynthesisUtterance(text);
 
             u.lang = '{language}';
-            u.rate = .92;
+            u.rate = 0.92;
             u.pitch = 1.03;
 
             window.speechSynthesis.speak(u);
@@ -873,8 +906,7 @@ with st.sidebar:
 
     st.progress(
         min(
-            st.session_state.ai_requests
-            / AI_LIMIT,
+            st.session_state.ai_requests / AI_LIMIT,
             1.0
         )
     )
@@ -951,10 +983,7 @@ if st.session_state.page == "Welcome Reboot":
         "Welcome to NeuroLens! Main Ayna hoon, "
         "aap ki cognitive neuroscience lab assistant. "
         "Aaj hum brain, behaviour aur cognition ko explore karenge."
-        if st.session_state.get(
-            "language",
-            "English"
-        ) == "Roman English"
+        if st.session_state.language == "Roman English"
         else
         "Welcome to NeuroLens! I'm Ayna, your cognitive "
         "neuroscience lab assistant. Let's explore the brain, "
@@ -972,8 +1001,7 @@ if st.session_state.page == "Welcome Reboot":
 
     st.info(
         "Agar video mein voice nahi hai, Play Ayna button "
-        "browser speech se Ayna ki voice chalata hai. "
-        "Lip-sync browser speech ke saath frame-perfect nahi hoti."
+        "browser speech se Ayna ki voice chalata hai."
     )
 
     if st.button(
@@ -998,7 +1026,7 @@ elif st.session_state.page == "Lab":
 
     st.caption(
         "Character → equipment → experiment → perform → "
-        "Ayna analysis → follow-up → research note"
+        "Ayna analysis → follow-up"
     )
 
     left, right = st.columns(
@@ -1024,9 +1052,7 @@ elif st.session_state.page == "Lab":
         equipment = st.selectbox(
             "Choose equipment",
             list(EQUIPMENT),
-            index=list(
-                EQUIPMENT
-            ).index(
+            index=list(EQUIPMENT).index(
                 st.session_state.equipment
             ),
             key="lab_equipment_main"
@@ -1034,20 +1060,17 @@ elif st.session_state.page == "Lab":
 
         st.session_state.equipment = equipment
 
+        characters = [
+            "Nova",
+            "Mira",
+            "Ray",
+            "Zara"
+        ]
+
         character = st.selectbox(
             "👤 Choose lab character",
-            [
-                "Nova",
-                "Mira",
-                "Ray",
-                "Zara"
-            ],
-            index=[
-                "Nova",
-                "Mira",
-                "Ray",
-                "Zara"
-            ].index(
+            characters,
+            index=characters.index(
                 st.session_state.character
             ),
             key="lab_character_main"
@@ -1072,7 +1095,7 @@ elif st.session_state.page == "Lab":
 
             "Attention Gate": (
                 "Attention",
-                "Find X in: A  X  K  M  X  T  P  X  R  B  X  Q",
+                "Find X in: A X K M X T P X R B X Q",
                 "4"
             ),
 
@@ -1084,13 +1107,13 @@ elif st.session_state.page == "Lab":
 
             "Decision Under Delay": (
                 "Decision Making",
-                "A: Rs 1,000 today  |  B: Rs 1,500 after 30 days",
+                "A: Rs 1,000 today | B: Rs 1,500 after 30 days",
                 "B"
             ),
 
             "Inhibition Challenge": (
                 "Inhibitory Control",
-                "Respond with the colour shown by the target stimulus.",
+                "Respond with the colour shown by the target.",
                 "BLUE"
             ),
 
@@ -1113,7 +1136,7 @@ elif st.session_state.page == "Lab":
             key="lab_selected_experiment"
         )
 
-        domain, instruction, answer = LAB_TASKS[
+        domain, instruction, correct_answer = LAB_TASKS[
             selected
         ]
 
@@ -1139,27 +1162,19 @@ elif st.session_state.page == "Lab":
             st.session_state.lab_result = None
             st.session_state.lab_start_time = time.time()
 
-            if selected == "Working Memory Sprint":
+            st.session_state.lab_sequence = (
+                "729418"
+            )
 
-                st.session_state.lab_sequence = (
-                    "729418"
-                )
+            st.session_state.attention_target = "X"
 
-            if selected == "Attention Gate":
-
-                st.session_state.attention_target = "X"
-
-            if selected == "Inhibition Challenge":
-
-                st.session_state.inhib_word = "BLUE"
+            st.session_state.inhib_word = "BLUE"
 
             st.rerun()
 
     if st.session_state.lab_started:
 
-        active = (
-            st.session_state.active_lab_experiment
-        )
+        active = st.session_state.active_lab_experiment
 
         st.divider()
 
@@ -1175,8 +1190,9 @@ elif st.session_state.page == "Lab":
                 """
                 <div class="card"
                 style="text-align:center;font-size:30px;">
-                A&nbsp;&nbsp;X&nbsp;&nbsp;K&nbsp;&nbsp;M&nbsp;&nbsp;X&nbsp;&nbsp;
-                T&nbsp;&nbsp;P&nbsp;&nbsp;X&nbsp;&nbsp;R&nbsp;&nbsp;B&nbsp;&nbsp;X&nbsp;&nbsp;Q
+                A&nbsp;&nbsp;X&nbsp;&nbsp;K&nbsp;&nbsp;M&nbsp;&nbsp;
+                X&nbsp;&nbsp;T&nbsp;&nbsp;P&nbsp;&nbsp;X&nbsp;&nbsp;
+                R&nbsp;&nbsp;B&nbsp;&nbsp;X&nbsp;&nbsp;Q
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -1271,44 +1287,56 @@ elif st.session_state.page == "Lab":
             correct = False
 
             if active == "Attention Gate":
+
                 correct = (
-                    response.strip() == "4"
+                    str(response).strip() == "4"
                 )
 
             elif active == "Working Memory Sprint":
+
                 correct = (
-                    response.replace(
-                        " ",
-                        ""
-                    ) == "729418"
+                    str(response)
+                    .replace(" ", "")
+                    == "729418"
                 )
 
             elif active == "Decision Under Delay":
-                correct = response.startswith("B")
+
+                correct = (
+                    str(response).startswith("B")
+                )
 
             elif active == "Inhibition Challenge":
-                correct = response == "BLUE"
+
+                correct = (
+                    response == "BLUE"
+                )
 
             elif active == "Cognitive Flexibility":
-                correct = response == "Circle"
+
+                correct = (
+                    response == "Circle"
+                )
 
             elif active == "Memory Retrieval":
-                correct = response.strip() == "6"
 
-            st.session_state.lab_result = {
+                correct = (
+                    str(response).strip() == "6"
+                )
+
+            result = {
                 "experiment": active,
                 "correct": correct,
-                "time": round(
-                    elapsed,
-                    2
-                )
+                "time": round(elapsed, 2)
             }
+
+            st.session_state.lab_result = result
 
             record("experiments")
             record("games")
 
             st.session_state.experiment_history.append(
-                st.session_state.lab_result
+                result
             )
 
             st.rerun()
@@ -1331,17 +1359,16 @@ elif st.session_state.page == "Lab":
                 "exercise, not a diagnostic score."
             )
 
-        followup = st.button(
+        if st.button(
             "🤖 Ask Ayna for follow-up",
             key="lab_followup"
-        )
-
-        if followup:
+        ):
 
             answer_text, source = ask_ai(
                 f"""
 Give one short educational follow-up challenge
-for the cognitive domain of {result['experiment']}.
+for the cognitive domain of
+{result['experiment']}.
 Do not diagnose.
 """,
                 max_tokens=250
@@ -1368,7 +1395,7 @@ elif st.session_state.page == "Explore Brain":
 
     st.caption(
         "Explore regions, circuits, neurotransmitters "
-        "and their relationship with cognition."
+        "and cognition."
     )
 
     region = st.selectbox(
@@ -1388,9 +1415,11 @@ elif st.session_state.page == "Explore Brain":
     with col1:
 
         if JOURNEY_VIDEO:
+
             st.video(JOURNEY_VIDEO)
 
         elif brain:
+
             st.image(
                 brain,
                 use_container_width=True
@@ -1414,8 +1443,10 @@ elif st.session_state.page == "Explore Brain":
             <div class="card">
                 <h2>{region}</h2>
                 <p>{description}</p>
+
                 <b>Main functions</b>
                 <p>{function}</p>
+
                 <b>Example circuit</b>
                 <p>{circuit}</p>
             </div>
@@ -1506,81 +1537,93 @@ elif st.session_state.page == "Brain Puzzle":
             key="picture_puzzle_difficulty"
         )
 
-        n = int(
-            difficulty[0]
-        )
+        n = int(difficulty[0])
 
         buffer = BytesIO()
 
         brain.save(
             buffer,
-            "PNG"
+            format="PNG"
         )
 
         image_data = base64.b64encode(
             buffer.getvalue()
-        ).decode()
+        ).decode("utf-8")
 
-        puzzle_html = f"""
-        <div style="font-family:Arial">
+        # IMPORTANT:
+        # This HTML is intentionally NOT an f-string.
+        # Therefore JavaScript { } cannot break Python parsing.
 
-        <button id="newPuzzle">
-        🔀 New Puzzle
-        </button>
+        puzzle_html = """
+        <div style="font-family:Arial,sans-serif;color:white;">
 
-        <span
-            id="stats"
-            style="margin-left:12px"
-        ></span>
+            <button
+                id="newPuzzle"
+                style="
+                    padding:9px 15px;
+                    border-radius:10px;
+                    border:1px solid #789;
+                    background:#173b5f;
+                    color:white;
+                    cursor:pointer;
+                "
+            >
+                🔀 New Puzzle
+            </button>
 
-        <div id="board"></div>
+            <span
+                id="stats"
+                style="margin-left:12px;"
+            ></span>
 
-        <h3 id="complete"></h3>
+            <div id="board"></div>
+
+            <h3 id="complete"></h3>
 
         </div>
 
         <style>
 
-        #board{{
+        #board {
             display:grid;
-            grid-template-columns:repeat({n},1fr);
+            grid-template-columns:repeat(__N__,1fr);
             gap:6px;
             max-width:800px;
             margin:14px auto;
-        }}
+        }
 
-        .slot{{
+        .slot {
             aspect-ratio:1;
             border:2px dashed #9fb1c8;
             border-radius:10px;
             overflow:hidden;
             background:#102235;
-        }}
+        }
 
-        .piece{{
+        .piece {
             width:100%;
             height:100%;
-            background-image:
-                url(data:image/png;base64,{image_data});
-            background-size:
-                {n * 100}% {n * 100}%;
+            background-image:url(
+                data:image/png;base64,__IMAGE__
+            );
+            background-size:__SIZE__% __SIZE__%;
             cursor:grab;
             touch-action:none;
             border-radius:8px;
-        }}
+        }
 
-        .correct{{
+        .correct {
             outline:3px solid #4caf78;
             cursor:default;
-        }}
+        }
 
         </style>
 
         <script>
 
-        (() => {{
+        (() => {
 
-            const N = {n};
+            const N = __N__;
 
             const board =
                 document.getElementById("board");
@@ -1593,19 +1636,18 @@ elif st.session_state.page == "Brain Puzzle":
 
             let moves = 0;
 
-            let start =
-                Date.now();
+            let start = Date.now();
 
             let dragging = null;
 
 
-            function shuffle(array) {{
+            function shuffle(array) {
 
                 for (
                     let i = array.length - 1;
                     i > 0;
                     i--
-                ) {{
+                ) {
 
                     const j =
                         Math.floor(
@@ -1620,11 +1662,11 @@ elif st.session_state.page == "Brain Puzzle":
                         array[j],
                         array[i]
                     ];
-                }}
-            }}
+                }
+            }
 
 
-            function updateStats() {{
+            function updateStats() {
 
                 const correct =
                     document.querySelectorAll(
@@ -1647,16 +1689,38 @@ elif st.session_state.page == "Brain Puzzle":
                     + seconds
                     + "s";
 
-                if (
-                    correct === N * N
-                ) {{
+                if (correct === N * N) {
+
                     complete.textContent =
                         "🎉 Puzzle solved!";
-                }}
-            }}
+                }
+            }
 
 
-            function setup() {{
+            function checkPieces() {
+
+                document
+                .querySelectorAll(".piece")
+                .forEach(function(piece) {
+
+                    const parent =
+                        piece.parentElement;
+
+                    const correct =
+                        parent &&
+                        Number(piece.dataset.id)
+                        ===
+                        Number(parent.dataset.slot);
+
+                    piece.classList.toggle(
+                        "correct",
+                        correct
+                    );
+                });
+            }
+
+
+            function setup() {
 
                 board.innerHTML = "";
 
@@ -1667,166 +1731,155 @@ elif st.session_state.page == "Brain Puzzle":
                 start = Date.now();
 
                 let ids =
-                    [...Array(N * N).keys()];
+                    Array.from(
+                        {length:N * N},
+                        function(_, i) {
+                            return i;
+                        }
+                    );
 
                 shuffle(ids);
 
 
-                ids.forEach(
-                    id => {{
+                ids.forEach(function(id) {
 
-                        const slot =
-                            document.createElement(
-                                "div"
-                            );
+                    const slot =
+                        document.createElement("div");
 
-                        slot.className =
-                            "slot";
+                    slot.className = "slot";
 
-                        slot.dataset.slot =
-                            id;
+                    slot.dataset.slot = id;
 
 
-                        const piece =
-                            document.createElement(
-                                "div"
-                            );
+                    const piece =
+                        document.createElement("div");
 
-                        piece.className =
-                            "piece";
+                    piece.className = "piece";
 
-                        piece.dataset.id =
-                            id;
+                    piece.dataset.id = id;
 
 
-                        const row =
-                            Math.floor(id / N);
+                    const row =
+                        Math.floor(id / N);
 
-                        const col =
-                            id % N;
-
-
-                        piece.style.backgroundPosition =
-                            `${{
-                                col / (N - 1) * 100
-                            }}% ${{
-                                row / (N - 1) * 100
-                            }}%`;
+                    const col =
+                        id % N;
 
 
-                        piece.onpointerdown =
-                            event => {{
+                    const x =
+                        N === 1
+                        ? 0
+                        : col / (N - 1) * 100;
 
-                                if (
-                                    piece.classList.contains(
-                                        "correct"
-                                    )
-                                ) {{
-                                    return;
-                                }}
+                    const y =
+                        N === 1
+                        ? 0
+                        : row / (N - 1) * 100;
 
-                                dragging =
-                                    piece;
+
+                    piece.style.backgroundPosition =
+                        x + "% " + y + "%";
+
+
+                    piece.addEventListener(
+                        "pointerdown",
+                        function(event) {
+
+                            if (
+                                piece.classList.contains(
+                                    "correct"
+                                )
+                            ) {
+                                return;
+                            }
+
+                            dragging = piece;
+
+                            try {
 
                                 piece.setPointerCapture(
                                     event.pointerId
                                 );
-                            }};
+
+                            } catch(e) {}
+                        }
+                    );
 
 
-                        piece.onpointerup =
-                            event => {{
+                    piece.addEventListener(
+                        "pointerup",
+                        function(event) {
 
-                                if (!dragging) {{
-                                    return;
-                                }}
+                            if (!dragging) {
+                                return;
+                            }
 
-                                const target =
-                                    document
-                                    .elementFromPoint(
-                                        event.clientX,
-                                        event.clientY
-                                    )
-                                    ?.closest(
-                                        ".slot"
-                                    );
+                            const target =
+                                document.elementFromPoint(
+                                    event.clientX,
+                                    event.clientY
+                                );
 
-
-                                if (target) {{
-
-                                    const other =
-                                        target.querySelector(
-                                            ".piece"
-                                        );
-
-                                    const oldParent =
-                                        piece.parentElement;
+                            const targetSlot =
+                                target
+                                ? target.closest(".slot")
+                                : null;
 
 
-                                    if (
-                                        other &&
-                                        other !== piece
-                                    ) {{
-                                        oldParent.appendChild(
-                                            other
-                                        );
-                                    }}
+                            if (targetSlot) {
 
-
-                                    target.appendChild(
-                                        piece
-                                    );
-
-                                    moves++;
-
-
-                                    document
-                                    .querySelectorAll(
+                                const other =
+                                    targetSlot.querySelector(
                                         ".piece"
-                                    )
-                                    .forEach(
-                                        p => {{
-                                            p.classList.toggle(
-                                                "correct",
-                                                Number(
-                                                    p.dataset.id
-                                                ) ===
-                                                Number(
-                                                    p.parentElement
-                                                     .dataset
-                                                     .slot
-                                                )
-                                            );
-                                        }}
                                     );
 
-
-                                    updateStats();
-                                }}
-
-                                dragging = null;
-                            }};
+                                const oldParent =
+                                    piece.parentElement;
 
 
-                        slot.appendChild(
-                            piece
-                        );
+                                if (
+                                    other &&
+                                    other !== piece
+                                ) {
 
-                        board.appendChild(
-                            slot
-                        );
-                    }}
-                );
+                                    oldParent.appendChild(
+                                        other
+                                    );
+                                }
+
+
+                                targetSlot.appendChild(
+                                    piece
+                                );
+
+                                moves++;
+
+                                checkPieces();
+
+                                updateStats();
+                            }
+
+                            dragging = null;
+                        }
+                    );
+
+
+                    slot.appendChild(piece);
+
+                    board.appendChild(slot);
+
+                });
 
                 updateStats();
             }
 
 
             document
-            .getElementById(
-                "newPuzzle"
-            )
-            .onclick = setup;
+            .getElementById("newPuzzle")
+            .addEventListener(
+                "click",
+                setup
+            );
 
 
             setInterval(
@@ -1837,10 +1890,26 @@ elif st.session_state.page == "Brain Puzzle":
 
             setup();
 
-        }})();
+        })();
 
         </script>
         """
+
+        puzzle_html = (
+            puzzle_html
+            .replace(
+                "__N__",
+                str(n)
+            )
+            .replace(
+                "__IMAGE__",
+                image_data
+            )
+            .replace(
+                "__SIZE__",
+                str(n * 100)
+            )
+        )
 
         components.html(
             puzzle_html,
@@ -1852,9 +1921,7 @@ elif st.session_state.page == "Brain Puzzle":
             key="record_puzzle"
         ):
 
-            record(
-                "puzzles"
-            )
+            record("puzzles")
 
             st.session_state.puzzle_history.append(
                 {
@@ -1935,6 +2002,7 @@ Give:
 
 Do not diagnose.
 Do not infer sensitive traits.
+
 Context:
 {context[:500]}
 """
@@ -2015,9 +2083,7 @@ elif st.session_state.page == "Brain Exercises":
         time.gmtime().tm_yday - 1
     ) % len(EXPERIMENTS)
 
-    title, domain = EXPERIMENTS[
-        index
-    ]
+    title, domain = EXPERIMENTS[index]
 
     st.markdown(
         f"## {title}"
@@ -2098,14 +2164,12 @@ elif st.session_state.page == "Brain Exercises":
 
         if not st.session_state.inhib_word:
 
-            st.session_state.inhib_word = (
-                random.choice(
-                    [
-                        "RED",
-                        "BLUE",
-                        "GREEN"
-                    ]
-                )
+            st.session_state.inhib_word = random.choice(
+                [
+                    "RED",
+                    "BLUE",
+                    "GREEN"
+                ]
             )
 
         word = st.session_state.inhib_word
@@ -2252,9 +2316,7 @@ elif st.session_state.page == "Daily Cognitive Experiment":
         time.gmtime().tm_yday - 1
     ) % len(EXPERIMENTS)
 
-    title, domain = EXPERIMENTS[
-        index
-    ]
+    title, domain = EXPERIMENTS[index]
 
     st.markdown(
         f"## {title}"
@@ -2276,7 +2338,7 @@ elif st.session_state.page == "Daily Cognitive Experiment":
 
         st.markdown(
             """
-            **A  X  K  M  X  T  P  X  R  B  X  Q**
+            **A X K M X T P X R B X Q**
             """
         )
 
@@ -2339,14 +2401,12 @@ elif st.session_state.page == "Daily Cognitive Experiment":
 
         if not st.session_state.inhib_word:
 
-            st.session_state.inhib_word = (
-                random.choice(
-                    [
-                        "RED",
-                        "BLUE",
-                        "GREEN"
-                    ]
-                )
+            st.session_state.inhib_word = random.choice(
+                [
+                    "RED",
+                    "BLUE",
+                    "GREEN"
+                ]
             )
 
         target = st.session_state.inhib_word
@@ -2535,9 +2595,7 @@ elif st.session_state.page == "Research Book":
 
             query = topic.strip()
 
-            current_year = (
-                datetime.utcnow().year
-            )
+            current_year = datetime.utcnow().year
 
             if years == "Last 5 years":
 
@@ -2643,9 +2701,7 @@ elif st.session_state.page == "Research Book":
             "### 📑 Results"
         )
 
-        for index, paper in enumerate(
-            results
-        ):
+        for index, paper in enumerate(results):
 
             title = (
                 paper.get("title")
@@ -2737,9 +2793,7 @@ elif st.session_state.page == "Research Book":
                         "### Abstract"
                     )
 
-                    st.write(
-                        abstract
-                    )
+                    st.write(abstract)
 
                 else:
 
@@ -2795,10 +2849,7 @@ elif st.session_state.page == "Research Book":
 
                     if (
                         style == "pdf"
-                        or
-                        url_value.lower().endswith(
-                            ".pdf"
-                        )
+                        or url_value.lower().endswith(".pdf")
                     ):
 
                         pdf_url = url_value
@@ -2822,16 +2873,10 @@ elif st.session_state.page == "Research Book":
                         pdf_url
                     )
 
-                    st.caption(
-                        "This link is shown only when "
-                        "an open/full-text route is available."
-                    )
-
                 else:
 
                     st.caption(
-                        "No direct open-access PDF was detected. "
-                        "Use the original source to check lawful access."
+                        "No direct open-access PDF was detected."
                     )
 
                 if st.button(
@@ -2964,8 +3009,7 @@ Be concise and scientifically cautious.
 
         context = "\n".join(
             f"{m['role']}: {m['content'][:600]}"
-            for m in
-            st.session_state.messages[-6:]
+            for m in st.session_state.messages[-6:]
         )
 
         answer, source = ask_ai(
@@ -3128,9 +3172,7 @@ elif st.session_state.page == "Private Ask Ayna":
             "🔓 Private Ask Ayna unlocked for this session."
         )
 
-        for message in (
-            st.session_state.private_messages
-        ):
+        for message in st.session_state.private_messages:
 
             with st.chat_message(
                 message["role"]
