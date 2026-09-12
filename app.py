@@ -1737,9 +1737,9 @@ elif st.session_state.page == "Brain Puzzle":
                         piece.onpointerup =
                             event => {{
 
-                                if (!dragging) {
+                                if (!dragging) {{
                                     return;
-                                }
+                                }}
 
                                 const target =
                                     document
@@ -1815,7 +1815,7 @@ elif st.session_state.page == "Brain Puzzle":
                         board.appendChild(
                             slot
                         );
-                    }
+                    }}
                 );
 
                 updateStats();
