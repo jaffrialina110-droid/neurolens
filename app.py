@@ -3,6 +3,8 @@ import time
 import random
 import hashlib
 import html
+import streamlit as st
+from streamlit import components
 from pathlib import Path
 
 import streamlit as st
