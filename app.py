@@ -500,8 +500,32 @@ EQUIPMENT = {
 
     "Physiological Monitor":
         "Illustrates non-neural physiological signals such as "
-        "pulse or skin conductance; not a diagnosis."
+        "pulse or skin conductance; not a diagnosis.",
+
+    "Behaviour Observation Station":
+        "Educational simulation for observing behavioural "
+        "responses during structured tasks.",
+
+    "Behaviour Task Screen":
+        "Runs simple behavioural decision-making and "
+        "response-pattern tasks.",
+
+    "Social Interaction Simulator":
+        "Educational simulation of social interaction, "
+        "communication and behavioural responses.",
+
+    "Emotion Recognition Display":
+        "Educational simulation exploring interpretation "
+        "of facial and emotional cues; not a clinical emotion detector."
 }
+
+
+BEHAVIOUR_EQUIPMENT = [
+    "Behaviour Observation Station",
+    "Behaviour Task Screen",
+    "Social Interaction Simulator",
+    "Emotion Recognition Display"
+]
 
 
 # =========================================================
@@ -707,7 +731,7 @@ Task:
 
         return text, "ai"
 
-    except Exception:
+    except Exception as error:
 
         return (
             "Ayna could not complete that request right now. "
@@ -1054,7 +1078,9 @@ elif st.session_state.page == "Lab":
             list(EQUIPMENT),
             index=list(EQUIPMENT).index(
                 st.session_state.equipment
-            ),
+            )
+            if st.session_state.equipment in EQUIPMENT
+            else 0,
             key="lab_equipment_main"
         )
 
@@ -1086,6 +1112,21 @@ elif st.session_state.page == "Lab":
         st.info(
             EQUIPMENT[equipment]
         )
+
+        st.markdown("### 🧪 Behaviour Lab")
+
+        st.write(
+            "Explore educational behaviour-focused simulations "
+            "separately from the main neuroscience lab."
+        )
+
+        if st.button(
+            "🧠 Open Behaviour Lab",
+            use_container_width=True,
+            key="open_behaviour_lab"
+        ):
+
+            go_to("AI Mood & Behaviour")
 
     with right:
 
@@ -1162,12 +1203,8 @@ elif st.session_state.page == "Lab":
             st.session_state.lab_result = None
             st.session_state.lab_start_time = time.time()
 
-            st.session_state.lab_sequence = (
-                "729418"
-            )
-
+            st.session_state.lab_sequence = "729418"
             st.session_state.attention_target = "X"
-
             st.session_state.inhib_word = "BLUE"
 
             st.rerun()
@@ -1287,42 +1324,25 @@ elif st.session_state.page == "Lab":
             correct = False
 
             if active == "Attention Gate":
-
-                correct = (
-                    str(response).strip() == "4"
-                )
+                correct = str(response).strip() == "4"
 
             elif active == "Working Memory Sprint":
-
                 correct = (
-                    str(response)
-                    .replace(" ", "")
+                    str(response).replace(" ", "")
                     == "729418"
                 )
 
             elif active == "Decision Under Delay":
-
-                correct = (
-                    str(response).startswith("B")
-                )
+                correct = str(response).startswith("B")
 
             elif active == "Inhibition Challenge":
-
-                correct = (
-                    response == "BLUE"
-                )
+                correct = response == "BLUE"
 
             elif active == "Cognitive Flexibility":
-
-                correct = (
-                    response == "Circle"
-                )
+                correct = response == "Circle"
 
             elif active == "Memory Retrieval":
-
-                correct = (
-                    str(response).strip() == "6"
-                )
+                correct = str(response).strip() == "6"
 
             result = {
                 "experiment": active,
@@ -1549,10 +1569,6 @@ elif st.session_state.page == "Brain Puzzle":
         image_data = base64.b64encode(
             buffer.getvalue()
         ).decode("utf-8")
-
-        # IMPORTANT:
-        # This HTML is intentionally NOT an f-string.
-        # Therefore JavaScript { } cannot break Python parsing.
 
         puzzle_html = """
         <div style="font-family:Arial,sans-serif;color:white;">
@@ -1897,18 +1913,9 @@ elif st.session_state.page == "Brain Puzzle":
 
         puzzle_html = (
             puzzle_html
-            .replace(
-                "__N__",
-                str(n)
-            )
-            .replace(
-                "__IMAGE__",
-                image_data
-            )
-            .replace(
-                "__SIZE__",
-                str(n * 100)
-            )
+            .replace("__N__", str(n))
+            .replace("__IMAGE__", image_data)
+            .replace("__SIZE__", str(n * 100))
         )
 
         components.html(
@@ -1936,29 +1943,69 @@ elif st.session_state.page == "Brain Puzzle":
 
 
 # =========================================================
-# AI MOOD & BEHAVIOUR
+# AI MOOD & BEHAVIOUR / BEHAVIOUR LAB
 # =========================================================
 
 elif st.session_state.page == "AI Mood & Behaviour":
 
     st.subheader(
-        "🎯 AI Mood & Behaviour"
+        "🧠 Behaviour Lab"
     )
 
-    st.write(
-        "Use voice as the main input, or type. "
-        "This is an educational conversational estimate, "
-        "not a clinical assessment."
+    st.caption(
+        "Educational behaviour and conversational simulations. "
+        "These activities do not diagnose or directly measure brain activity."
     )
 
-    voice_tab, text_tab = st.tabs(
+    st.markdown("### 🧪 Behaviour Lab Equipment")
+
+    behaviour_equipment = st.selectbox(
+        "Choose Behaviour Lab equipment",
+        BEHAVIOUR_EQUIPMENT,
+        key="behaviour_equipment"
+    )
+
+    st.info(
+        EQUIPMENT[behaviour_equipment]
+    )
+
+    st.markdown("### 👤 Lab Character")
+
+    behaviour_character = st.selectbox(
+        "Choose character",
         [
-            "🎙️ Voice",
-            "⌨️ Text"
+            "Nova",
+            "Mira",
+            "Ray",
+            "Zara"
+        ],
+        key="behaviour_character"
+    )
+
+    st.success(
+        f"🧑‍🔬 {behaviour_character} is ready at the "
+        f"{behaviour_equipment}."
+    )
+
+    st.divider()
+
+    tab_voice, tab_text, tab_social = st.tabs(
+        [
+            "🎙️ Voice Behaviour",
+            "⌨️ Text Behaviour",
+            "🤝 Social Interaction"
         ]
     )
 
-    with voice_tab:
+    # -----------------------------------------------------
+    # VOICE
+    # -----------------------------------------------------
+
+    with tab_voice:
+
+        st.markdown(
+            "### 🎙️ Conversational Behaviour Input"
+        )
 
         audio = None
 
@@ -1972,8 +2019,8 @@ elif st.session_state.page == "AI Mood & Behaviour":
         except Exception:
 
             st.info(
-                "Voice recording is unavailable "
-                "in this browser. Use Text."
+                "Voice recording is unavailable in this browser. "
+                "Use the Text Behaviour tab instead."
             )
 
         context = st.text_input(
@@ -1984,32 +2031,177 @@ elif st.session_state.page == "AI Mood & Behaviour":
         if st.button(
             "🧠 Send Voice to Ayna",
             key="send_mood_voice"
-        ) and audio:
+        ):
 
-            answer, source = ask_ai_audio(
-                audio,
-                f"""
-Estimate broad conversational affect only.
+            if audio:
 
-Choose one primary mood from:
+                answer, source = ask_ai_audio(
+                    audio,
+                    f"""
+You are analysing a short conversational sample
+for an educational behaviour laboratory.
+
+Give a cautious broad conversational estimate only.
+
+Choose one primary broad state from:
 {', '.join(MOODS)}
 
-Give:
+Return:
 1. emoji
-2. broad mood
+2. broad conversational state
 3. confidence: Low / Medium / High
 4. one short explanation
 
 Do not diagnose.
 Do not infer sensitive traits.
+Do not claim to measure brain activity.
 
 Context:
 {context[:500]}
 """
+                )
+
+                st.success(
+                    "Ayna's educational conversational estimate"
+                )
+
+                st.write(answer)
+                st.caption(source)
+
+                voice_button(
+                    answer,
+                    "mood_voice_result"
+                )
+
+            else:
+
+                st.warning(
+                    "No voice recording was detected. "
+                    "Please record a voice message or use Text Behaviour."
+                )
+
+    # -----------------------------------------------------
+    # TEXT
+    # -----------------------------------------------------
+
+    with tab_text:
+
+        st.markdown(
+            "### ⌨️ Behavioural Text Task"
+        )
+
+        behaviour_text = st.text_area(
+            "Tell Ayna what you are thinking or feeling",
+            height=130,
+            key="mood_text"
+        )
+
+        if st.button(
+            "✨ Analyse Behavioural Text",
+            key="send_mood_text"
+        ):
+
+            if behaviour_text.strip():
+
+                answer, source = ask_ai(
+                    f"""
+Give a cautious educational conversational analysis.
+
+Return:
+- one broad state
+- one possible behavioural signal
+- confidence
+- one short explanation
+
+User text:
+{behaviour_text}
+
+Do not diagnose.
+Do not infer sensitive traits.
+Do not claim that the response measures brain activity.
+""",
+                    max_tokens=300
+                )
+
+                st.info(answer)
+                st.caption(source)
+
+                voice_button(
+                    answer,
+                    "mood_text_result"
+                )
+
+            else:
+
+                st.warning(
+                    "Please enter some text first."
+                )
+
+    # -----------------------------------------------------
+    # SOCIAL INTERACTION
+    # -----------------------------------------------------
+
+    with tab_social:
+
+        st.markdown(
+            "### 🤝 Social Interaction Simulator"
+        )
+
+        scenario = st.selectbox(
+            "Choose scenario",
+            [
+                "Meeting a new person",
+                "Receiving unexpected feedback",
+                "Solving a disagreement",
+                "Working in a team",
+                "Making a difficult decision"
+            ],
+            key="social_scenario"
+        )
+
+        response_style = st.radio(
+            "How would you respond?",
+            [
+                "Calm",
+                "Direct",
+                "Avoidant",
+                "Curious",
+                "Emotional"
+            ],
+            horizontal=True,
+            key="social_response_style"
+        )
+
+        if st.button(
+            "🧠 Run Behaviour Simulation",
+            key="run_social_simulation"
+        ):
+
+            answer, source = ask_ai(
+                f"""
+You are running an educational social behaviour simulation.
+
+Scenario:
+{scenario}
+
+Selected response style:
+{response_style}
+
+Explain:
+1. what behavioural tendency the response may represent
+2. one alternative response
+3. one cognitive process that could be involved
+
+Use cautious language.
+Do not diagnose personality or mental illness.
+""",
+                max_tokens=350
             )
 
+            record("experiments")
+
             st.success(
-                "Ayna's broad conversational estimate"
+                "Behaviour simulation complete."
             )
 
             st.write(answer)
@@ -2017,51 +2209,15 @@ Context:
 
             voice_button(
                 answer,
-                "mood_voice_result"
+                "social_result_voice"
             )
 
-    with text_tab:
-
-        text = st.text_area(
-            "Tell Ayna how you feel",
-            height=130,
-            key="mood_text"
-        )
-
-        if st.button(
-            "✨ Send Text to Ayna",
-            key="send_mood_text"
-        ) and text:
-
-            answer, source = ask_ai(
-                f"""
-Give:
-- one emoji
-- one broad primary mood from {', '.join(MOODS)}
-- optional secondary signal
-- confidence
-- one friendly sentence
-
-User text:
-{text}
-
-Do not diagnose.
-""",
-                max_tokens=240
-            )
-
-            st.info(answer)
-            st.caption(source)
-
-            voice_button(
-                answer,
-                "mood_text_result"
-            )
+    st.divider()
 
     st.caption(
-        "Voice tone and text can be ambiguous and context-dependent. "
-        "Results should not be treated as diagnosis, brain measurement "
-        "or a definitive statement about a person's mental state."
+        "Behavioural responses are context-dependent. "
+        "These simulations are educational and should not be "
+        "treated as clinical, psychological or neurological diagnosis."
     )
 
 
@@ -2612,327 +2768,238 @@ elif st.session_state.page == "Research Book":
                     f"[{current_year - 10}-01-01 TO "
                     f"{current_year}-12-31]"
                 )
-
             url = (
-                "https://www.ebi.ac.uk/"
-                "europepmc/webservices/rest/search"
-                f"?query={urllib.parse.quote_plus(query)}"
-                f"&format=json&pageSize={limit}"
+                "                "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+                "?query="
+                + urllib.parse.quote(query)
+                + f"&format=json&pageSize={limit}"
             )
 
             try:
 
-                request = urllib.request.Request(
+                with urllib.request.urlopen(
                     url,
-                    headers={
-                        "User-Agent":
-                        "NEUROLENS Research Book/1.0"
-                    }
-                )
+                    timeout=15
+                ) as response:
 
-                with st.spinner(
-                    "Searching Europe PMC..."
-                ):
-
-                    with urllib.request.urlopen(
-                        request,
-                        timeout=20
-                    ) as response:
-
-                        data = json.loads(
-                            response.read().decode(
-                                "utf-8"
-                            )
+                    data = json.loads(
+                        response.read().decode(
+                            "utf-8"
                         )
+                    )
 
-                results = (
-                    data
-                    .get(
-                        "resultList",
-                        {}
-                    )
-                    .get(
-                        "result",
-                        []
-                    )
+                results = data.get(
+                    "resultList",
+                    {}
+                ).get(
+                    "result",
+                    []
                 )
 
                 st.session_state.research_results = results
-
                 st.session_state.research_history.append(
                     {
                         "topic": topic,
-                        "time": time.time(),
                         "count": len(results)
                     }
                 )
 
-                if results:
-
-                    record("research")
-
-                    st.success(
-                        f"Found {len(results)} "
-                        "research record(s)."
-                    )
-
-                else:
-
-                    st.info(
-                        "No papers matched this search."
-                    )
+                record("research")
 
             except Exception as error:
 
                 st.error(
-                    "Research search failed. "
-                    "Please try again."
+                    "Research search could not be completed right now."
                 )
 
-                st.caption(
-                    f"Technical detail: {error}"
+                results = []
+
+            if results:
+
+                st.success(
+                    f"Found {len(results)} research records."
                 )
 
-    results = st.session_state.research_results
+                for i, paper in enumerate(results):
 
-    if results:
-
-        st.markdown(
-            "### 📑 Results"
-        )
-
-        for index, paper in enumerate(results):
-
-            title = (
-                paper.get("title")
-                or "Untitled paper"
-            )
-
-            authors = (
-                paper.get("authorString")
-                or "Authors not listed"
-            )
-
-            journal = (
-                paper.get("journalTitle")
-                or ""
-            )
-
-            year = (
-                paper.get("pubYear")
-                or ""
-            )
-
-            doi = (
-                paper.get("doi")
-                or ""
-            )
-
-            pmid = (
-                paper.get("pmid")
-                or ""
-            )
-
-            pmcid = (
-                paper.get("pmcid")
-                or ""
-            )
-
-            abstract = (
-                paper.get("abstractText")
-                or ""
-            )
-
-            open_access = bool(
-                paper.get(
-                    "isOpenAccess"
-                )
-            )
-
-            with st.expander(
-                f"📄 {index + 1}. {title}"
-            ):
-
-                st.markdown(
-                    f"**Authors:** {authors}"
-                )
-
-                if journal:
-
-                    st.markdown(
-                        f"**Journal:** {journal}"
-                    )
-
-                if year:
-
-                    st.markdown(
-                        f"**Year:** {year}"
-                    )
-
-                if doi:
-
-                    st.markdown(
-                        f"**DOI:** `{doi}`"
-                    )
-
-                if pmid:
-
-                    st.markdown(
-                        f"**PMID:** `{pmid}`"
-                    )
-
-                if pmcid:
-
-                    st.markdown(
-                        f"**PMCID:** `{pmcid}`"
-                    )
-
-                if abstract:
-
-                    st.markdown(
-                        "### Abstract"
-                    )
-
-                    st.write(abstract)
-
-                else:
-
-                    st.info(
-                        "Abstract is not available "
-                        "in this record."
-                    )
-
-                if pmid:
-
-                    st.link_button(
-                        "🔗 View PubMed",
-                        f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-                    )
-
-                if pmcid:
-
-                    st.link_button(
-                        "📖 View Europe PMC Full Text",
-                        f"https://europepmc.org/articles/{pmcid}"
-                    )
-
-                pdf_url = None
-
-                links = (
-                    paper
-                    .get(
-                        "fullTextUrlList",
-                        {}
-                    )
-                    .get(
-                        "fullTextUrl",
-                        []
-                    )
-                )
-
-                for link in links:
-
-                    url_value = (
-                        link.get(
-                            "url",
-                            ""
+                    title = (
+                        paper.get(
+                            "title"
                         )
+                        or "Untitled research record"
                     )
 
-                    style = (
-                        link.get(
-                            "documentStyle",
-                            ""
+                    authors = (
+                        paper.get(
+                            "authorString"
                         )
-                        .lower()
+                        or "Authors not listed"
                     )
 
-                    if (
-                        style == "pdf"
-                        or url_value.lower().endswith(".pdf")
+                    journal = (
+                        paper.get(
+                            "journalTitle"
+                        )
+                        or "Journal not listed"
+                    )
+
+                    year = (
+                        paper.get(
+                            "pubYear"
+                        )
+                        or "Year not listed"
+                    )
+
+                    doi = paper.get(
+                        "doi"
+                    )
+
+                    pmid = paper.get(
+                        "pmid"
+                    )
+
+                    pmcid = paper.get(
+                        "pmcid"
+                    )
+
+                    abstract = (
+                        paper.get(
+                            "abstractText"
+                        )
+                        or "Abstract not available."
+                    )
+
+                    with st.expander(
+                        f"📄 {i + 1}. {title}"
                     ):
 
-                        pdf_url = url_value
-                        break
+                        st.write(
+                            f"**Authors:** {authors}"
+                        )
 
-                if (
-                    not pdf_url
-                    and pmcid
-                    and open_access
-                ):
+                        st.write(
+                            f"**Journal:** {journal}"
+                        )
 
-                    pdf_url = (
-                        f"https://europepmc.org/"
-                        f"articles/{pmcid}?pdf=render"
+                        st.write(
+                            f"**Year:** {year}"
+                        )
+
+                        if doi:
+
+                            st.write(
+                                f"**DOI:** {doi}"
+                            )
+
+                        if pmid:
+
+                            st.write(
+                                f"**PMID:** {pmid}"
+                            )
+
+                        if pmcid:
+
+                            st.write(
+                                f"**PMCID:** {pmcid}"
+                            )
+
+                        st.markdown(
+                            "**Abstract**"
+                        )
+
+                        st.write(
+                            abstract
+                        )
+
+                        if doi:
+
+                            doi_url = (
+                                "https://doi.org/"
+                                + urllib.parse.quote(
+                                    doi,
+                                    safe="/"
+                                )
+                            )
+
+                            st.link_button(
+                                "🔗 Open DOI",
+                                doi_url
+                            )
+
+                        elif pmid:
+
+                            st.link_button(
+                                "🔗 Open PubMed",
+                                "https://pubmed.ncbi.nlm.nih.gov/"
+                                + str(pmid)
+                                + "/"
+                            )
+
+            else:
+
+                if topic.strip():
+
+                    st.info(
+                        "No research records were found "
+                        "for this search."
                     )
 
-                if pdf_url:
+    st.divider()
 
-                    st.link_button(
-                        "⬇️ Open / Download Open-Access PDF",
-                        pdf_url
-                    )
+    st.markdown(
+        "### 🧠 Research Topic Notes"
+    )
 
-                else:
+    book_topic = st.selectbox(
+        "Choose a topic",
+        list(BOOK),
+        key="book_topic"
+    )
 
-                    st.caption(
-                        "No direct open-access PDF was detected."
-                    )
+    overview, research_note = BOOK[
+        book_topic
+    ]
 
-                if st.button(
-                    "🤖 Explain with Ayna",
-                    key=f"paper_explain_{index}"
-                ):
+    st.markdown(
+        f"""
+        <div class="card">
+            <h3>{book_topic}</h3>
+            <p>{overview}</p>
+            <b>Research note</b>
+            <p>{research_note}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-                    prompt = f"""
-Explain this real research record for an educational
-cognitive neuroscience platform.
+    book_question = st.text_input(
+        "Ask Ayna about this research topic",
+        key="book_question",
+        placeholder="Ask a cognitive neuroscience question..."
+    )
 
-Do not invent details that are absent from the record.
+    if st.button(
+        "🤖 Ask Ayna",
+        key="book_ask"
+    ) and book_question:
 
-Title:
-{title}
+        answer, source = ask_ai(
+            book_question,
+            context=(
+                f"Research topic: {book_topic}\n"
+                f"Overview: {overview}\n"
+                f"Research note: {research_note}"
+            ),
+            max_tokens=450
+        )
 
-Authors:
-{authors}
+        st.write(answer)
+        st.caption(source)
 
-Journal:
-{journal}
-
-Year:
-{year}
-
-DOI:
-{doi}
-
-Abstract:
-{abstract}
-
-Explain:
-1. research question
-2. why it matters
-3. methods only if stated
-4. main findings only if supported
-5. limitations
-6. relevance to cognition, behaviour or neuroscience
-"""
-
-                    answer, source = ask_ai(
-                        prompt,
-                        max_tokens=650
-                    )
-
-                    st.markdown(
-                        "### 🧠 Ayna's Explanation"
-                    )
-
-                    st.write(answer)
-                    st.caption(source)
-
-                    voice_button(
-                        answer,
-                        f"paper_voice_{index}"
-                    )
+        voice_button(
+            answer,
+            "book_answer_voice"
+        )
 
 
 # =========================================================
@@ -2942,23 +3009,45 @@ Explain:
 elif st.session_state.page == "Ask Ayna":
 
     st.subheader(
-        "💬 Ask Ayna"
+        "🤖 Ask Ayna"
     )
 
     st.caption(
-        "English | Roman English • Text + voice • "
-        "Educational, not therapy or diagnosis"
+        "Your educational cognitive neuroscience assistant."
     )
 
-    for message in st.session_state.messages:
+    if not st.session_state.messages:
+
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": (
+                    "Hi! I'm Ayna. Ask me about memory, "
+                    "attention, learning, emotion, decision-making, "
+                    "reward, perception, cognitive control, "
+                    "brain systems or neuroplasticity."
+                )
+            }
+        ]
+
+    for i, message in enumerate(
+        st.session_state.messages
+    ):
 
         with st.chat_message(
             message["role"]
         ):
 
-            st.markdown(
+            st.write(
                 message["content"]
             )
+
+            if message["role"] == "assistant":
+
+                voice_button(
+                    message["content"],
+                    f"ask_ayna_voice_{i}"
+                )
 
     try:
 
@@ -2971,86 +3060,82 @@ elif st.session_state.page == "Ask Ayna":
 
         audio = None
 
-    if st.button(
-        "🧠 Send Voice to Ayna",
-        key="public_voice_send"
-    ) and audio:
-
-        answer, source = ask_ai_audio(
-            audio,
-            """
-Transcribe and answer this user's request.
-Respond as Ayna.
-Be concise and scientifically cautious.
-"""
+        st.caption(
+            "Voice recording is unavailable in this browser. "
+            "You can use the text box below."
         )
 
-        st.session_state.messages.extend(
-            [
+    if audio:
+
+        if st.button(
+            "🎙️ Send Voice",
+            key="send_public_voice"
+        ):
+
+            answer, source = ask_ai_audio(
+                audio,
+                """
+You are Ayna, an educational cognitive neuroscience assistant.
+
+Listen to the user's voice and answer their question.
+
+Use scientifically cautious language.
+Do not diagnose.
+Do not claim simple tasks measure brain activity.
+Keep the answer concise and useful.
+"""
+            )
+
+            st.session_state.messages.append(
                 {
                     "role": "user",
                     "content": "🎙️ Voice message"
-                },
+                }
+            )
+
+            st.session_state.messages.append(
                 {
                     "role": "assistant",
                     "content": answer
                 }
-            ]
-        )
+            )
 
-        st.rerun()
+            st.rerun()
 
-    question = st.chat_input(
-        "Ask Ayna...",
-        key="public_chat"
+    prompt = st.chat_input(
+        "Ask Ayna about the brain, behaviour or cognition..."
     )
 
-    if question:
+    if prompt:
 
-        context = "\n".join(
-            f"{m['role']}: {m['content'][:600]}"
-            for m in st.session_state.messages[-6:]
+        st.session_state.messages.append(
+            {
+                "role": "user",
+                "content": prompt
+            }
+        )
+
+        previous = "\n".join(
+            [
+                f"{m['role']}: {m['content']}"
+                for m in st.session_state.messages[-8:]
+            ]
         )
 
         answer, source = ask_ai(
-            question,
-            context
+            prompt,
+            context=previous,
+            max_tokens=500
         )
 
-        st.session_state.messages.extend(
-            [
-                {
-                    "role": "user",
-                    "content": question
-                },
-                {
-                    "role": "assistant",
-                    "content": answer
-                }
-            ]
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
         )
 
         st.rerun()
-
-    if st.session_state.messages:
-
-        last_answer = (
-            st.session_state.messages[-1]["content"]
-        )
-
-        voice_button(
-            last_answer,
-            "public_last_voice"
-        )
-
-        if st.button(
-            "🗑️ Clear chat",
-            key="clear_public_chat"
-        ):
-
-            st.session_state.messages = []
-
-            st.rerun()
 
 
 # =========================================================
@@ -3064,99 +3149,69 @@ elif st.session_state.page == "Private Ask Ayna":
     )
 
     st.caption(
-        "Create your own 4–6 digit PIN. "
-        "The PIN is stored only as a session hash."
+        "A private educational space for your own research notes."
     )
 
     if not st.session_state.private_unlocked:
 
-        if st.session_state.private_pin_hash is None:
+        st.info(
+            "Create a PIN for this session or enter your existing PIN."
+        )
 
-            st.info(
-                "First create your own PIN. "
-                "Do not use a PIN that you use for banking "
-                "or other important accounts."
-            )
+        pin = st.text_input(
+            "PIN",
+            type="password",
+            max_chars=12,
+            key="private_pin_input"
+        )
 
-            new_pin = st.text_input(
-                "Create PIN",
-                type="password",
-                max_chars=6,
-                key="private_create_pin"
-            )
+        if st.button(
+            "🔓 Unlock Private Ayna",
+            type="primary",
+            key="private_unlock"
+        ):
 
-            confirm_pin = st.text_input(
-                "Confirm PIN",
-                type="password",
-                max_chars=6,
-                key="private_confirm_pin"
-            )
+            if not pin.strip():
 
-            if st.button(
-                "🔐 Create PIN",
-                use_container_width=True,
-                key="private_create_pin_button"
-            ):
+                st.warning(
+                    "Please enter a PIN."
+                )
 
-                if not new_pin.isdigit():
+            elif st.session_state.private_pin_hash is None:
 
-                    st.error(
-                        "PIN must contain digits only."
+                st.session_state.private_pin_hash = hashlib.sha256(
+                    pin.encode(
+                        "utf-8"
                     )
+                ).hexdigest()
 
-                elif not 4 <= len(new_pin) <= 6:
+                st.session_state.private_unlocked = True
 
-                    st.error(
-                        "PIN must be 4–6 digits."
-                    )
+                st.success(
+                    "Private Ask Ayna unlocked for this session."
+                )
 
-                elif new_pin != confirm_pin:
+                st.rerun()
 
-                    st.error(
-                        "PINs do not match."
-                    )
-
-                else:
-
-                    st.session_state.private_pin_hash = (
-                        hashlib.sha256(
-                            new_pin.encode()
-                        ).hexdigest()
-                    )
-
-                    st.session_state.private_unlocked = True
-
-                    st.success(
-                        "Your private PIN has been created."
-                    )
-
-                    st.rerun()
-
-        else:
-
-            pin = st.text_input(
-                "Enter your PIN",
-                type="password",
-                max_chars=6,
-                key="private_unlock_pin"
-            )
-
-            if st.button(
-                "🔓 Unlock",
-                use_container_width=True,
-                key="unlock_private"
-            ):
+            else:
 
                 entered_hash = hashlib.sha256(
-                    pin.encode()
+                    pin.encode(
+                        "utf-8"
+                    )
                 ).hexdigest()
 
                 if (
                     entered_hash
-                    == st.session_state.private_pin_hash
+                    ==
+                    st.session_state.private_pin_hash
                 ):
 
                     st.session_state.private_unlocked = True
+
+                    st.success(
+                        "Unlocked."
+                    )
 
                     st.rerun()
 
@@ -3169,136 +3224,73 @@ elif st.session_state.page == "Private Ask Ayna":
     else:
 
         st.success(
-            "🔓 Private Ask Ayna unlocked for this session."
+            "🔓 Private session unlocked."
         )
 
-        for message in st.session_state.private_messages:
+        if st.button(
+            "🔒 Lock Private Session",
+            key="lock_private"
+        ):
+
+            st.session_state.private_unlocked = False
+            st.rerun()
+
+        for i, message in enumerate(
+            st.session_state.private_messages
+        ):
 
             with st.chat_message(
                 message["role"]
             ):
 
-                st.markdown(
+                st.write(
                     message["content"]
                 )
 
-        try:
+                if message["role"] == "assistant":
 
-            private_audio = st.audio_input(
-                "🎙️ Private voice message",
-                key="private_voice_input"
-            )
+                    voice_button(
+                        message["content"],
+                        f"private_voice_{i}"
+                    )
 
-        except Exception:
-
-            private_audio = None
-
-        if st.button(
-            "🧠 Send Private Voice",
-            key="private_voice_send"
-        ) and private_audio:
-
-            answer, source = ask_ai_audio(
-                private_audio,
-                """
-Answer the user's private message as Ayna.
-Be concise, educational and non-clinical.
-"""
-            )
-
-            st.session_state.private_messages.extend(
-                [
-                    {
-                        "role": "user",
-                        "content": "🎙️ Voice message"
-                    },
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
-                ]
-            )
-
-            st.rerun()
-
-        private_question = st.chat_input(
-            "Private message to Ayna...",
-            key="private_chat"
+        private_prompt = st.chat_input(
+            "Ask Ayna privately..."
         )
 
-        if private_question:
+        if private_prompt:
+
+            st.session_state.private_messages.append(
+                {
+                    "role": "user",
+                    "content": private_prompt
+                }
+            )
 
             context = "\n".join(
-                f"{m['role']}: {m['content'][:600]}"
-                for m in
-                st.session_state.private_messages[-6:]
+                [
+                    f"{m['role']}: {m['content']}"
+                    for m in st.session_state.private_messages[-8:]
+                ]
             )
 
             answer, source = ask_ai(
-                private_question,
-                context=context,
-                system_extra=(
-                    "This is a private research workspace. "
-                    "Be scientifically cautious. "
-                    "Do not diagnose. "
-                    "Do not invent references."
-                )
+                private_prompt,
+                context=(
+                    "This is a private research-notes session.\n"
+                    + context
+                ),
+                max_tokens=500
             )
 
-            st.session_state.private_messages.extend(
-                [
-                    {
-                        "role": "user",
-                        "content": private_question
-                    },
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
-                ]
+            st.session_state.private_messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer
+                }
             )
 
             st.rerun()
-
-        if st.session_state.private_messages:
-
-            voice_button(
-                st.session_state.private_messages[-1]["content"],
-                "private_last_voice"
-            )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            if st.button(
-                "🔒 Lock Private Chat",
-                key="lock_private"
-            ):
-
-                st.session_state.private_unlocked = False
-
-                st.rerun()
-
-        with col2:
-
-            if st.button(
-                "🗑️ Delete Private Session",
-                key="delete_private"
-            ):
-
-                st.session_state.private_messages = []
-
-                st.session_state.private_unlocked = False
-
-                st.session_state.private_pin_hash = None
-
-                st.rerun()
-
-        st.caption(
-            "This is a session-level lock, not encrypted storage "
-            "or authentication for sensitive/clinical information."
-        )
 
 
 # =========================================================
@@ -3313,95 +3305,240 @@ elif st.session_state.page == "My Progress":
 
     progress = st.session_state.progress
 
-    columns = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
 
-    metrics = [
-        ("Experiments", "experiments"),
-        ("Puzzles", "puzzles"),
-        ("Games", "games"),
-        ("Research", "research"),
-        ("Streak", "streak")
-    ]
+    with col1:
 
-    for column, (label, key) in zip(
-        columns,
-        metrics
-    ):
-
-        column.metric(
-            label,
+        st.metric(
+            "Experiments",
             progress.get(
-                key,
+                "experiments",
                 0
             )
         )
 
-    if plotly_go:
+    with col2:
 
-        figure = plotly_go.Figure(
-            plotly_go.Bar(
-                x=[
-                    "Experiments",
-                    "Puzzles",
-                    "Games",
-                    "Research"
-                ],
-                y=[
-                    progress.get(
-                        "experiments",
-                        0
-                    ),
-                    progress.get(
-                        "puzzles",
-                        0
-                    ),
-                    progress.get(
-                        "games",
-                        0
-                    ),
-                    progress.get(
-                        "research",
-                        0
-                    )
-                ]
+        st.metric(
+            "Puzzles",
+            progress.get(
+                "puzzles",
+                0
             )
         )
 
-        figure.update_layout(
+    with col3:
+
+        st.metric(
+            "Games",
+            progress.get(
+                "games",
+                0
+            )
+        )
+
+    with col4:
+
+        st.metric(
+            "Research",
+            progress.get(
+                "research",
+                0
+            )
+        )
+
+    st.divider()
+
+    st.markdown(
+        "### 🧠 Activity Overview"
+    )
+
+    if plotly_go:
+
+        labels = [
+            "Experiments",
+            "Puzzles",
+            "Games",
+            "Research"
+        ]
+
+        values = [
+            progress.get(
+                "experiments",
+                0
+            ),
+            progress.get(
+                "puzzles",
+                0
+            ),
+            progress.get(
+                "games",
+                0
+            ),
+            progress.get(
+                "research",
+                0
+            )
+        ]
+
+        fig = plotly_go.Figure(
+            data=[
+                plotly_go.Bar(
+                    x=labels,
+                    y=values
+                )
+            ]
+        )
+
+        fig.update_layout(
             height=350,
             margin=dict(
                 l=20,
                 r=20,
-                t=20,
+                t=30,
                 b=20
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(
+                color="white"
             )
         )
 
         st.plotly_chart(
-            figure,
+            fig,
             use_container_width=True
         )
 
-    st.markdown(
-        "### 📚 History"
-    )
-
-    if st.session_state.experiment_history:
+    else:
 
         st.write(
-            st.session_state.experiment_history[-10:]
+            {
+                "Experiments": progress.get(
+                    "experiments",
+                    0
+                ),
+                "Puzzles": progress.get(
+                    "puzzles",
+                    0
+                ),
+                "Games": progress.get(
+                    "games",
+                    0
+                ),
+                "Research": progress.get(
+                    "research",
+                    0
+                )
+            }
         )
+
+    st.divider()
+
+    st.markdown(
+        "### 🧪 Recent Experiments"
+    )
+
+    history = st.session_state.experiment_history
+
+    if history:
+
+        for item in reversed(
+            history[-10:]
+        ):
+
+            if isinstance(item, dict):
+
+                title = (
+                    item.get(
+                        "title"
+                    )
+                    or item.get(
+                        "experiment"
+                    )
+                    or "Experiment"
+                )
+
+                correct = item.get(
+                    "correct"
+                )
+
+                if correct is True:
+
+                    status = "✅ Correct"
+
+                elif correct is False:
+
+                    status = "⚪ Practice"
+
+                else:
+
+                    status = "🧪 Completed"
+
+                st.write(
+                    f"**{title}** — {status}"
+                )
+
+            else:
+
+                st.write(
+                    f"🧪 {item}"
+                )
+
+    else:
+
+        st.info(
+            "No experiments recorded yet."
+        )
+
+    st.divider()
+
+    st.markdown(
+        "### 📚 Research Searches"
+    )
 
     if st.session_state.research_history:
 
-        st.write(
-            "Research topics:",
+        for item in reversed(
             st.session_state.research_history[-10:]
+        ):
+
+            st.write(
+                f"🔎 {item.get('topic', 'Research')} "
+                f"— {item.get('count', 0)} records"
+            )
+
+    else:
+
+        st.info(
+            "No research searches yet."
         )
 
-    st.info(
-        "Progress is session-based in this build. "
-        "Permanent accounts/history require authenticated backend storage."
+    st.divider()
+
+    st.markdown(
+        "### 🧩 Puzzle History"
+    )
+
+    if st.session_state.puzzle_history:
+
+        for item in reversed(
+            st.session_state.puzzle_history[-10:]
+        ):
+
+            st.write(
+                f"🧩 {item.get('difficulty', 'Puzzle')}"
+            )
+
+    else:
+
+        st.info(
+            "No puzzle activity recorded yet."
+        )
+
+    st.caption(
+        "Progress reflects activity inside this session. "
+        "It is not a medical or cognitive assessment."
     )
 
 
@@ -3412,6 +3549,13 @@ elif st.session_state.page == "My Progress":
 st.divider()
 
 st.caption(
-    "NEUROLENS • Cognitive Neuroscience Education • "
-    "Created by Ayna Jaffri"
+    "NEUROLENS • Cognitive Neuroscience • "
+    "Educational simulation • Created by Ayna Jaffri"
 )
+
+st.caption(
+    "Important: NEUROLENS activities are educational. "
+    "They do not diagnose medical or psychiatric conditions "
+    "and simple games do not directly measure brain activity."
+)
+            
