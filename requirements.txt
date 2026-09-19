@@ -1,4 +1,13 @@
-streamlit>=1.42.0,<2.0
+streamlit>=1.42,<2.0
 google-genai>=1.0.0
-Pillow>=10.0.0
+brainflow>=5.15.0
+streamlit-webrtc>=0.69.0
+opencv-python-headless>=4.10.0
+mediapipe>=0.10.14
+av>=12.0.0
+numpy>=1.26.0
+pandas>=2.0.0
 plotly>=5.20.0
+requests>=2.31.0
+Pillow>=10.0.0
+openpyxl>=3.1.0
