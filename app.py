@@ -1,65 +1,72 @@
 import os
-import io
 import re
 import time
 import json
-import math
+import random
 import hashlib
 import sqlite3
-import threading
-from pathlib import Path
+import urllib.parse
+import urllib.request
 from datetime import datetime
+from io import BytesIO
 
-import numpy as np
-import pandas as pd
 import streamlit as st
+from PIL import Image
 
-# ============================================================
-# OPTIONAL IMPORTS
-# ============================================================
+# =========================================================
+# OPTIONAL PACKAGES
+# =========================================================
 
 try:
     from google import genai
-    GEMINI_AVAILABLE = True
+    from google.genai import types
 except Exception:
     genai = None
-    GEMINI_AVAILABLE = False
+    types = None
 
 try:
-    from brainflow.board_shim import (
-        BoardShim,
-        BrainFlowInputParams,
-        BoardIds,
-    )
-    BRAINFLOW_AVAILABLE = True
+    import plotly.graph_objects as go
 except Exception:
-    BRAINFLOW_AVAILABLE = False
+    go = None
+
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 try:
     import cv2
-    CV_AVAILABLE = True
 except Exception:
-    CV_AVAILABLE = False
-
-try:
-    import av
-    from streamlit_webrtc import webrtc_streamer
-    WEBRTC_AVAILABLE = True
-except Exception:
-    av = None
-    webrtc_streamer = None
-    WEBRTC_AVAILABLE = False
+    cv2 = None
 
 try:
     import mediapipe as mp
-    MEDIAPIPE_AVAILABLE = True
 except Exception:
     mp = None
-    MEDIAPIPE_AVAILABLE = False
 
-# ============================================================
+try:
+    from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+except Exception:
+    webrtc_streamer = None
+    VideoProcessorBase = object
+
+try:
+    from streamlit_dnd import dnd, apply_move
+except Exception:
+    dnd = None
+    apply_move = None
+
+try:
+    from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
+except Exception:
+    BoardShim = None
+    BrainFlowInputParams = None
+    BoardIds = None
+
+
+# =========================================================
 # PAGE
-# ============================================================
+# =========================================================
 
 st.set_page_config(
     page_title="NEUROLENS",
@@ -68,78 +75,151 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# STYLE
-# ============================================================
+ROOT = os.path.dirname(os.path.abspath(__file__))
+ASSETS = os.path.join(ROOT, "assets")
+
+
+# =========================================================
+# ASSETS
+# =========================================================
+
+def asset(name):
+    p1 = os.path.join(ASSETS, name)
+    p2 = os.path.join(ROOT, name)
+
+    if os.path.exists(p1):
+        return p1
+    if os.path.exists(p2):
+        return p2
+    return None
+
+
+BRAIN_PATH = asset("brain.png")
+AYNA_ROBOT = asset("ayna_robot.png")
+REBOOT_VIDEO = asset("ayna_reboot_voiced.mp4")
+LAB_VIDEO = asset("cognitive_lab_brain.mp4")
+BRAIN_VIDEO = asset("brain_animation.mp4")
+
+
+# =========================================================
+# CSS
+# =========================================================
 
 st.markdown(
     """
 <style>
+
+.stApp {
+    background:
+        radial-gradient(circle at 10% 0%, #173e63 0%, transparent 30%),
+        radial-gradient(circle at 100% 20%, #1b3458 0%, transparent 25%),
+        linear-gradient(135deg,#06101d,#0a1728);
+}
+
 .block-container {
+    max-width: 1450px;
     padding-top: 1rem;
-    padding-bottom: 3rem;
 }
 
-.neuro-title {
-    font-size: 42px;
-    font-weight: 800;
-    letter-spacing: 1px;
-}
-
-.neuro-sub {
-    font-size: 17px;
-    opacity: 0.75;
+.hero {
+    padding: 25px;
+    border-radius: 24px;
+    background: linear-gradient(135deg,#102b48,#111a30);
+    border: 1px solid #365777;
+    margin-bottom: 18px;
 }
 
 .card {
     padding: 18px;
     border-radius: 18px;
-    border: 1px solid rgba(128,128,128,.25);
-    margin-bottom: 15px;
+    background: #0d2035;
+    border: 1px solid #294866;
+    margin: 8px 0;
+}
+
+.lab {
+    min-height: 300px;
+    border-radius: 25px;
+    position: relative;
+    overflow: hidden;
+    background:
+        radial-gradient(circle,#2b6598 0,#102d4d 28%,#06101d 70%);
+    border: 1px solid #3c607d;
+}
+
+.orb {
+    position:absolute;
+    width:100px;
+    height:100px;
+    border-radius:50%;
+    left:calc(50% - 50px);
+    top:calc(50% - 50px);
+    background:radial-gradient(circle,#fff,#8fd8ff 20%,#6674ff 55%,#30245f);
+    box-shadow:0 0 55px #74c7ff;
+    animation:pulse 2s infinite;
+}
+
+@keyframes pulse {
+    50% { transform:scale(1.12); }
+}
+
+.stage {
+    min-height:230px;
+    border-radius:22px;
+    background:radial-gradient(circle,#153d63,#071321);
+    border:1px solid #38536e;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+}
+
+.neuron {
+    font-size:5rem;
+    animation:pulse 1.5s infinite;
+}
+
+.signal {
+    font-size:3rem;
+    animation:moveSignal 2s linear infinite;
+}
+
+@keyframes moveSignal {
+    from {transform:translateX(-180px);}
+    to {transform:translateX(180px);}
 }
 
 .small {
-    font-size: 13px;
-    opacity: .75;
+    opacity:.75;
+    font-size:.9rem;
 }
 
-.status-ok {
-    padding: 10px;
-    border-radius: 12px;
-    background: rgba(0,180,80,.12);
+.puzzle-piece {
+    border-radius:12px;
+    overflow:hidden;
+    border:2px solid #284d6b;
 }
 
-.status-warn {
-    padding: 10px;
-    border-radius: 12px;
-    background: rgba(255,180,0,.12);
+.badge {
+    display:inline-block;
+    padding:6px 10px;
+    border-radius:12px;
+    background:#173b5f;
+    margin:3px;
 }
 
-.status-error {
-    padding: 10px;
-    border-radius: 12px;
-    background: rgba(255,0,0,.10);
-}
-
-button {
-    border-radius: 10px !important;
-}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ============================================================
-# PATHS
-# ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent
-ASSET_DIR = BASE_DIR / "assets"
-DB_PATH = BASE_DIR / "neurolens.db"
-
-# ============================================================
+# =========================================================
 # DATABASE
-# ============================================================
+# =========================================================
+
+DB_PATH = os.path.join(ROOT, "neurolens.db")
+
 
 def db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -151,49 +231,54 @@ def init_db():
     conn = db()
     cur = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS activity (
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT,
-            category TEXT,
-            item TEXT,
+            activity TEXT,
             score REAL,
-            details TEXT
+            details TEXT,
+            created_at TEXT
         )
-    """)
+        """
+    )
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS research_notes (
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS research_notes(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT,
             title TEXT,
-            note TEXT
+            note TEXT,
+            created_at TEXT
         )
-    """)
+        """
+    )
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS ai_requests (
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_requests(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT,
-            module TEXT,
-            prompt TEXT,
-            response TEXT
+            request_type TEXT,
+            created_at TEXT
         )
-    """)
+        """
+    )
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS consultations (
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS consultations(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT,
             name TEXT,
             contact TEXT,
             topic TEXT,
             duration TEXT,
-            payment_method TEXT,
-            payment_reference TEXT,
-            status TEXT
+            amount INTEGER,
+            payment_ref TEXT,
+            status TEXT,
+            created_at TEXT
         )
-    """)
+        """
+    )
 
     conn.commit()
     conn.close()
@@ -201,33 +286,20 @@ def init_db():
 
 init_db()
 
-# ============================================================
-# HELPERS
-# ============================================================
 
-def now():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def clean_text(text, limit=5000):
-    if text is None:
-        return ""
-
-    text = str(text)
-    text = re.sub(r"<script.*?>.*?</script>", "", text, flags=re.I | re.S)
-    text = re.sub(r"<.*?>", "", text)
-    return text.strip()[:limit]
-
-
-def save_activity(category, item, score=None, details=""):
+def save_activity(name, score=0, details=""):
     conn = db()
     conn.execute(
         """
-        INSERT INTO activity
-        (created_at, category, item, score, details)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO activity(activity,score,details,created_at)
+        VALUES(?,?,?,?)
         """,
-        (now(), category, item, score, clean_text(details)),
+        (
+            name,
+            float(score),
+            str(details)[:2000],
+            datetime.now().isoformat(timespec="seconds"),
+        ),
     )
     conn.commit()
     conn.close()
@@ -237,1532 +309,2422 @@ def save_note(title, note):
     conn = db()
     conn.execute(
         """
-        INSERT INTO research_notes
-        (created_at, title, note)
-        VALUES (?, ?, ?)
-        """,
-        (now(), clean_text(title, 200), clean_text(note, 10000)),
-    )
-    conn.commit()
-    conn.close()
-
-
-def save_ai(module, prompt, response):
-    conn = db()
-    conn.execute(
-        """
-        INSERT INTO ai_requests
-        (created_at, module, prompt, response)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO research_notes(title,note,created_at)
+        VALUES(?,?,?)
         """,
         (
-            now(),
-            clean_text(module, 100),
-            clean_text(prompt, 5000),
-            clean_text(response, 10000),
+            title[:300],
+            note[:5000],
+            datetime.now().isoformat(timespec="seconds"),
         ),
     )
     conn.commit()
     conn.close()
 
 
-def get_table(query):
+def save_ai(kind):
     conn = db()
-    df = pd.read_sql_query(query, conn)
+    conn.execute(
+        "INSERT INTO ai_requests(request_type,created_at) VALUES(?,?)",
+        (kind, datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
     conn.close()
-    return df
 
 
-# ============================================================
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+def default_progress():
+    return {
+        "experiments": 0,
+        "games": 0,
+        "puzzles": 0,
+        "research": 0,
+        "ai": 0,
+        "accuracy": 0,
+    }
+
+
+defaults = {
+    "page": "Welcome",
+    "language": "English",
+    "character": "Researcher",
+    "equipment": "EEG Simulator",
+    "progress": default_progress(),
+    "ai_count": 0,
+    "ai_window_start": time.time(),
+    "messages": [],
+    "private_messages": [],
+    "private_pin_hash": None,
+    "private_unlocked": False,
+    "research_results": [],
+    "research_notes": [],
+    "experiment_history": [],
+    "puzzle_board": None,
+    "puzzle_solution": None,
+    "puzzle_grid": 3,
+    "puzzle_started": None,
+    "puzzle_moves": 0,
+    "puzzle_round": 1,
+    "puzzle_completed": False,
+    "puzzle_best_time": None,
+    "puzzle_best_score": 0,
+    "puzzle_best_moves": None,
+    "puzzle_challenge": "Time Challenge",
+    "daily_done": False,
+    "eye_samples": [],
+}
+
+for k, v in defaults.items():
+    if k not in st.session_state:
+        if isinstance(v, dict):
+            st.session_state[k] = dict(v)
+        elif isinstance(v, list):
+            st.session_state[k] = list(v)
+        else:
+            st.session_state[k] = v
+
+
+# =========================================================
+# NAVIGATION
+# =========================================================
+
+PAGES = [
+    "Welcome",
+    "Virtual Cognitive Lab",
+    "Eye Tracking",
+    "EEG / Biosignal Lab",
+    "Visual Brain Journey",
+    "Brain Puzzle",
+    "Ask Ayna",
+    "Private Ask Ayna",
+    "Voice Mood",
+    "AI Mood & Behaviour",
+    "Research Book",
+    "Behaviour Decoding",
+    "Brain Exercises",
+    "Daily Experiment",
+    "My Progress",
+    "Security & Privacy",
+    "Settings",
+]
+
+
+def go(page):
+    st.session_state.page = page
+    st.rerun()
+
+
+# =========================================================
+# SECURITY HELPERS
+# =========================================================
+
+def clean_text(value, limit=3000):
+    value = str(value or "")
+    value = value.replace("\x00", " ")
+    return value.strip()[:limit]
+
+
+def pin_hash(pin):
+    salt = b"NEUROLENS-PIN-SALT"
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        pin.encode(),
+        salt,
+        120000,
+    ).hex()
+
+
+# =========================================================
 # GEMINI
-# ============================================================
+# =========================================================
 
-def get_secret(name, default=""):
+def api_key():
     try:
-        return st.secrets.get(name, default)
+        key = st.secrets.get("GEMINI_API_KEY")
+        if key:
+            return str(key).strip()
     except Exception:
-        return os.getenv(name, default)
+        pass
+
+    return os.getenv("GEMINI_API_KEY", "").strip()
 
 
-def ask_ai(prompt, module="NEUROLENS"):
-    if not GEMINI_AVAILABLE:
-        return "Gemini SDK installed nahi hai."
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    api_key = get_secret("GEMINI_API_KEY")
 
-    if not api_key or api_key == "YOUR_REAL_GEMINI_API_KEY":
-        return "Gemini API key configure nahi hui. `.streamlit/secrets.toml` mein key add karein."
+@st.cache_resource(show_spinner=False)
+def gemini_client(key):
+    if not key or genai is None:
+        return None
 
-    model = get_secret("GEMINI_MODEL", "gemini-2.5-flash")
+    try:
+        return genai.Client(api_key=key)
+    except Exception:
+        return None
+
+
+def ai_allowed():
+    now = time.time()
+
+    if now - st.session_state.ai_window_start > 3600:
+        st.session_state.ai_window_start = now
+        st.session_state.ai_count = 0
+
+    return st.session_state.ai_count < 40
+
+
+def ask_ai(prompt, context="", max_tokens=500):
+    prompt = clean_text(prompt, 3500)
+    context = clean_text(context, 5000)
+
+    if not ai_allowed():
+        return (
+            "AI session protection limit reached. "
+            "You can continue using the local NEUROLENS tools.",
+            "rate-limit",
+        )
+
+    client = gemini_client(api_key())
+
+    if client is None:
+        return (
+            "Ayna is not connected. Add GEMINI_API_KEY in "
+            "Streamlit Secrets.",
+            "offline",
+        )
 
     system = """
-You are Ayna, an educational cognitive neuroscience AI assistant inside NEUROLENS.
-
-Topics:
-- cognitive neuroscience
-- attention
-- memory
-- learning
-- decision making
-- reward
-- perception
-- emotion
-- cognitive control
-- neuroplasticity
-- brain systems
-- behavioral neuroscience
-- AI and cognition
+You are Ayna, the educational cognitive-neuroscience AI assistant
+inside NEUROLENS.
 
 Rules:
-1. Do not diagnose medical or psychiatric conditions.
-2. Do not claim that simple cognitive games measure brain activity.
-3. Do not claim that webcam eye tracking is equivalent to research-grade eye tracking.
-4. Never describe simulated EEG as real EEG.
-5. Distinguish observation, hypothesis and established evidence.
-6. Use scientifically cautious language.
-7. Encourage a qualified professional for medical concerns.
+- Be scientifically cautious.
+- Do not diagnose.
+- Do not claim a simple game measures brain activity.
+- Do not claim voice analysis can reveal someone's hidden personality,
+  mental disorder or exact internal emotional state.
+- Distinguish observation, interpretation and uncertainty.
+- Keep answers useful and concise.
 """
 
-    full_prompt = system + "\n\nUSER:\n" + clean_text(prompt, 8000)
+    full_prompt = (
+        system
+        + "\n\nCONTEXT:\n"
+        + context
+        + "\n\nUSER REQUEST:\n"
+        + prompt
+    )
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=model,
-            contents=full_prompt,
-        )
+        st.session_state.ai_count += 1
+        st.session_state.progress["ai"] += 1
+        save_ai("text")
 
-        text = getattr(response, "text", None)
+        if types:
+            cfg = types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=max_tokens,
+            )
+
+            result = client.models.generate_content(
+                model=MODEL,
+                contents=full_prompt,
+                config=cfg,
+            )
+        else:
+            result = client.models.generate_content(
+                model=MODEL,
+                contents=full_prompt,
+            )
+
+        text = (getattr(result, "text", "") or "").strip()
 
         if not text:
-            return "AI ne response return nahi kiya."
+            text = "Ayna returned no text."
 
-        save_ai(module, prompt, text)
-
-        return text
+        return text, "Gemini"
 
     except Exception as e:
-        return f"AI connection error: {e}"
-
-
-# ============================================================
-# EXCEL EXPORT
-# ============================================================
-
-def make_excel():
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        get_table("SELECT * FROM activity").to_excel(
-            writer, index=False, sheet_name="Activity"
+        return (
+            "Ayna could not complete the request right now.",
+            f"error: {type(e).__name__}",
         )
 
-        get_table("SELECT * FROM research_notes").to_excel(
-            writer, index=False, sheet_name="Research Notes"
+
+def ask_ai_audio(audio, instruction):
+    if not audio:
+        return "No voice recording was provided.", "none"
+
+    if not ai_allowed():
+        return "AI session protection limit reached.", "rate-limit"
+
+    client = gemini_client(api_key())
+
+    if client is None or types is None:
+        return (
+            "Voice AI needs GEMINI_API_KEY and google-genai.",
+            "offline",
         )
 
-        get_table("SELECT * FROM ai_requests").to_excel(
-            writer, index=False, sheet_name="AI Requests"
+    try:
+        data = audio.getvalue()
+        mime = audio.type or "audio/wav"
+
+        part = types.Part.from_bytes(
+            data=data,
+            mime_type=mime,
         )
 
-        get_table("SELECT * FROM consultations").to_excel(
-            writer, index=False, sheet_name="Consultations"
+        st.session_state.ai_count += 1
+        st.session_state.progress["ai"] += 1
+        save_ai("voice")
+
+        result = client.models.generate_content(
+            model=MODEL,
+            contents=[part, instruction],
         )
 
-    output.seek(0)
-    return output
+        text = (getattr(result, "text", "") or "").strip()
+
+        return text or "No voice interpretation was returned.", "Gemini voice"
+
+    except Exception:
+        return (
+            "Ayna could not process this voice recording.",
+            "voice-error",
+        )
 
 
-# ============================================================
-# BRAIN JOURNEY
-# ============================================================
+# =========================================================
+# BROWSER VOICE
+# =========================================================
+
+def speak(text, key):
+    safe = (
+        clean_text(text, 5000)
+        .replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("${", "\\${")
+    )
+
+    html = f"""
+    <button
+      onclick="speakAyna()"
+      style="
+      padding:10px 16px;
+      border-radius:10px;
+      border:1px solid #789;
+      background:#ffffff;
+      color:#111;
+      font-weight:600;
+      cursor:pointer;">
+      🔊 Speak Ayna
+    </button>
+
+    <script>
+    function speakAyna(){{
+        window.speechSynthesis.cancel();
+
+        const text = `{safe}`;
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        utterance.lang = "en-US";
+        utterance.rate = 1.05;
+        utterance.pitch = 1.03;
+
+        window.speechSynthesis.speak(utterance);
+    }}
+    </script>
+    """
+
+    st.components.v1.html(html, height=55)
+
+
+# =========================================================
+# DATA
+# =========================================================
 
 BRAIN_REGIONS = {
-    "Prefrontal Cortex": (
-        "Executive control, planning, working memory and decision-making."
-    ),
-    "Hippocampus": (
-        "Memory formation, spatial processing and contextual learning."
-    ),
-    "Striatum": (
-        "Action selection, reward learning and habit-related processes."
-    ),
-    "Anterior Cingulate Cortex": (
-        "Conflict monitoring, error processing and cognitive control."
-    ),
-    "Attention Networks": (
-        "Systems supporting selection and maintenance of relevant information."
-    ),
+    "Prefrontal Cortex": {
+        "description": "Planning, working memory, cognitive control and goal-directed behaviour.",
+        "function": "Decision-making, inhibition, planning.",
+        "network": "Prefrontal cortex ↔ basal ganglia ↔ thalamus ↔ cortex",
+    },
+    "Hippocampus": {
+        "description": "Important for episodic memory and spatial representation.",
+        "function": "Memory, learning and navigation.",
+        "network": "Hippocampus ↔ entorhinal cortex ↔ distributed cortex",
+    },
+    "Striatum": {
+        "description": "Participates in action selection, reward learning and habits.",
+        "function": "Reward learning, action selection and habits.",
+        "network": "Cortex → striatum → pallidal pathways → thalamus → cortex",
+    },
+    "Anterior Cingulate Cortex": {
+        "description": "Contributes to conflict processing, performance monitoring and control.",
+        "function": "Error monitoring, conflict and effort.",
+        "network": "ACC ↔ prefrontal ↔ striatal networks",
+    },
+    "Amygdala": {
+        "description": "Processes emotionally significant information and contributes to emotional learning.",
+        "function": "Salience, threat-related processing and learning.",
+        "network": "Amygdala ↔ hypothalamus ↔ brainstem/cortex",
+    },
+    "Cerebellum": {
+        "description": "Supports coordination, timing and motor learning and also contributes to cognition.",
+        "function": "Timing, coordination and motor learning.",
+        "network": "Cerebellum → deep nuclei → thalamus → cortex",
+    },
 }
 
 
-# ============================================================
-# EEG
-# ============================================================
-
-def board_candidates():
-    result = {
-        "Synthetic EEG": BoardIds.SYNTHETIC_BOARD.value
-        if BRAINFLOW_AVAILABLE else -1
-    }
-
-    if not BRAINFLOW_AVAILABLE:
-        return result
-
-    possible = [
-        ("OpenBCI Cyton", "CYTON_BOARD"),
-        ("OpenBCI Ganglion", "GANGLION_BOARD"),
-        ("Muse 2", "MUSE_2_BOARD"),
-        ("Muse S", "MUSE_S_BOARD"),
-        ("BrainBit", "BRAINBIT_BOARD"),
-        ("FreeEEG32", "FREEEEG32_BOARD"),
-        ("Mentalab Explore", "MENTALAB_EXPLORER_BOARD"),
-        ("Neurosity", "NEUROSITY_MINDROVE_BOARD"),
-    ]
-
-    for label, attr in possible:
-        if hasattr(BoardIds, attr):
-            try:
-                result[label] = getattr(BoardIds, attr).value
-            except Exception:
-                pass
-
-    return result
-
-
-def build_brainflow_params(
-    serial_port="",
-    mac_address="",
-    ip_address="",
-    ip_port=0,
-):
-    params = BrainFlowInputParams()
-
-    if serial_port:
-        params.serial_port = serial_port
-
-    if mac_address:
-        params.mac_address = mac_address
-
-    if ip_address:
-        params.ip_address = ip_address
-
-    if ip_port:
-        params.ip_port = int(ip_port)
-
-    return params
-
-
-def read_board_once(
-    board_id,
-    seconds=5,
-    serial_port="",
-    mac_address="",
-    ip_address="",
-    ip_port=0,
-):
-    if not BRAINFLOW_AVAILABLE:
-        return None, "BrainFlow installed nahi hai."
-
-    board = None
-
-    try:
-        params = build_brainflow_params(
-            serial_port,
-            mac_address,
-            ip_address,
-            ip_port,
-        )
-
-        board = BoardShim(int(board_id), params)
-
-        board.prepare_session()
-        board.start_stream()
-
-        time.sleep(float(seconds))
-
-        data = board.get_board_data()
-
-        try:
-            board.stop_stream()
-        except Exception:
-            pass
-
-        try:
-            board.release_session()
-        except Exception:
-            pass
-
-        if data is None or data.size == 0:
-            return None, "Board se data receive nahi hua."
-
-        return data, "Connected successfully."
-
-    except Exception as e:
-
-        if board is not None:
-            try:
-                board.stop_stream()
-            except Exception:
-                pass
-
-            try:
-                board.release_session()
-            except Exception:
-                pass
-
-        return None, str(e)
-
-
-def eeg_band_power(signal, fs):
-    signal = np.asarray(signal, dtype=float)
-
-    if len(signal) < 20:
-        return {}
-
-    signal = signal - np.mean(signal)
-
-    freqs = np.fft.rfftfreq(len(signal), 1 / fs)
-    power = np.abs(np.fft.rfft(signal)) ** 2
-
-    bands = {
-        "Delta": (1, 4),
-        "Theta": (4, 8),
-        "Alpha": (8, 13),
-        "Beta": (13, 30),
-        "Gamma": (30, 45),
-    }
-
-    output = {}
-
-    for name, (low, high) in bands.items():
-        mask = (freqs >= low) & (freqs < high)
-
-        if np.any(mask):
-            output[name] = float(np.mean(power[mask]))
-        else:
-            output[name] = 0.0
-
-    return output
-
-
-# ============================================================
-# EYE TRACKING
-# ============================================================
-
-class GazeProcessor:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.gaze_x = None
-        self.gaze_y = None
-        self.face_detected = False
-        self.samples = []
-        self.face = None
-
-        if MEDIAPIPE_AVAILABLE:
-            try:
-                self.face = mp.solutions.face_mesh.FaceMesh(
-                    max_num_faces=1,
-                    refine_landmarks=True,
-                    min_detection_confidence=0.5,
-                    min_tracking_confidence=0.5,
-                )
-            except Exception:
-                self.face = None
-
-    def _estimate(self, frame):
-        if not CV_AVAILABLE or self.face is None:
-            return None, None, False
-
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        result = self.face.process(rgb)
-
-        if not result.multi_face_landmarks:
-            return None, None, False
-
-        landmarks = result.multi_face_landmarks[0].landmark
-
-        h, w = frame.shape[:2]
-
-        # MediaPipe iris landmarks
-        left_ids = [474, 475, 476, 477]
-        right_ids = [469, 470, 471, 472]
-
-        def center(ids):
-            xs = [landmarks[i].x for i in ids]
-            ys = [landmarks[i].y for i in ids]
-
-            return (
-                float(np.mean(xs)),
-                float(np.mean(ys)),
-            )
-
-        try:
-            lx, ly = center(left_ids)
-            rx, ry = center(right_ids)
-
-            x = float((lx + rx) / 2)
-            y = float((ly + ry) / 2)
-
-            return x, y, True
-
-        except Exception:
-            return None, None, False
-
-    def process(self, frame):
-        x, y, found = self._estimate(frame)
-
-        with self.lock:
-            self.face_detected = found
-
-            if found:
-                self.gaze_x = x
-                self.gaze_y = y
-
-                self.samples.append(
-                    {
-                        "time": time.time(),
-                        "x": x,
-                        "y": y,
-                    }
-                )
-
-                self.samples = self.samples[-1000:]
-
-        return frame
-
-    def latest(self):
-        with self.lock:
-            return {
-                "x": self.gaze_x,
-                "y": self.gaze_y,
-                "face": self.face_detected,
-            }
-
-    def get_samples(self):
-        with self.lock:
-            return list(self.samples)
-
-
-# ============================================================
-# BRAIN PUZZLE
-# ============================================================
-
-def puzzle_page():
-    st.header("🧩 Brain Puzzle")
-
-    st.write(
-        "Drag-and-drop style cognitive puzzle. "
-        "Touch/mobile support browser ke hisaab se vary kar sakta hai."
+NEUROTRANSMITTERS = {
+    "Dopamine": "Reward learning, motivation, movement and several cognitive processes.",
+    "Serotonin": "Mood-related processes, sleep, appetite and physiological functions.",
+    "GABA": "Major inhibitory neurotransmitter in the central nervous system.",
+    "Glutamate": "Major excitatory neurotransmitter important for learning and plasticity.",
+    "Acetylcholine": "Contributes to attention, learning, memory and neuromuscular communication.",
+}
+
+
+EQUIPMENT = [
+    "EEG Simulator",
+    "Eye Tracker",
+    "Reaction-Time System",
+    "Cognitive Task Monitor",
+    "Physiological Sensor",
+]
+
+
+EXPERIMENTS = [
+    ("Attention Gate", "Attention"),
+    ("Working Memory Sprint", "Working Memory"),
+    ("Decision Under Delay", "Decision & Reward"),
+    ("Stroop Control", "Cognitive Control"),
+    ("Pattern Recognition", "Pattern Recognition"),
+]
+
+
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+with st.sidebar:
+
+    st.markdown("## 🧠 NEUROLENS")
+
+    st.caption("Explore cognition, behaviour & the brain")
+
+    language = st.radio(
+        "Language",
+        ["English", "Roman English"],
+        index=0 if st.session_state.language == "English" else 1,
     )
 
-    if "puzzle_score" not in st.session_state:
-        st.session_state.puzzle_score = 0
+    st.session_state.language = language
 
-    sequence = list(range(1, 10))
+    st.divider()
 
-    cols = st.columns(3)
+    for i, page in enumerate(PAGES):
 
-    for i, value in enumerate(sequence):
-        with cols[i % 3]:
-            if st.button(
-                f"Piece {value}",
-                key=f"puzzle_{value}",
-                use_container_width=True,
-            ):
-                st.session_state.puzzle_score += 1
+        active = page == st.session_state.page
 
-    st.metric(
-        "Puzzle Interaction Count",
-        st.session_state.puzzle_score,
+        label = ("● " if active else "○ ") + page
+
+        if st.button(
+            label,
+            key=f"nav_{i}",
+            use_container_width=True,
+        ):
+            go(page)
+
+    st.divider()
+
+    st.caption(
+        f"AI requests this session: "
+        f"{st.session_state.ai_count}/40"
     )
 
-    if st.button("Record Puzzle Completion"):
-        save_activity(
-            "Brain Puzzle",
-            "Puzzle completion",
-            100,
-            "User manually recorded puzzle completion.",
+    st.progress(
+        min(st.session_state.ai_count / 40, 1)
+    )
+
+
+# =========================================================
+# HEADER
+# =========================================================
+
+if st.session_state.page != "Welcome":
+
+    st.markdown(
+        """
+        <div class="hero">
+        <h1>🧠 NEUROLENS</h1>
+        <p>Explore cognition, behaviour & the brain</p>
+        <small>
+        Independent cognitive neuroscience project •
+        Created by Ayna Jaffri
+        </small>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# =========================================================
+# WELCOME
+# =========================================================
+
+if st.session_state.page == "Welcome":
+
+    st.markdown(
+        """
+        <div class="hero">
+        <h1>🧠 NEUROLENS</h1>
+        <h3>Welcome to the Cognitive Neuroscience Lab</h3>
+        <p>Brain • Behaviour • Cognition • AI</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if REBOOT_VIDEO:
+
+        try:
+            with open(REBOOT_VIDEO, "rb") as f:
+                st.video(f.read())
+        except Exception:
+            st.video(REBOOT_VIDEO)
+
+    elif AYNA_ROBOT:
+        st.image(AYNA_ROBOT, use_container_width=True)
+
+    else:
+        st.markdown(
+            """
+            <div class="lab">
+              <div class="orb"></div>
+              <div style="position:absolute;top:20px;left:20px">
+              AYNA • COGNITIVE NEUROSCIENCE SYSTEM
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        st.success("Puzzle completion saved.")
 
+    if language == "Roman English":
+        welcome = (
+            "Welcome to NeuroLens! Main Ayna hoon, "
+            "aap ki cognitive neuroscience lab assistant. "
+            "Let's explore brain, behaviour aur cognition together."
+        )
+    else:
+        welcome = (
+            "Welcome to NeuroLens! I'm Ayna, your cognitive "
+            "neuroscience lab assistant. Let's explore the brain, "
+            "behaviour, and cognition together."
+        )
 
-# ============================================================
-# EYE TRACKING PAGE
-# ============================================================
+    st.markdown("### 🤖 Ayna")
+    st.write(welcome)
 
-def eye_tracking_page():
-    st.header("👁️ AI Eye Tracking")
+    speak(welcome, "welcome_voice")
 
     st.info(
-        "This is webcam-based gaze estimation. "
-        "It is NOT equivalent to a research-grade eye tracker."
+        "Browser voice ke liye Speak Ayna button use karein. "
+        "Video ki original voice aur browser speech automatically "
+        "frame-perfect lip-sync nahi hoti."
     )
 
-    if not WEBRTC_AVAILABLE:
-        st.error(
-            "streamlit-webrtc available nahi hai. "
-            "requirements.txt check karein."
-        )
-        return
+    if st.button(
+        "🚀 Enter NEUROLENS",
+        type="primary",
+        use_container_width=True,
+    ):
+        go("Virtual Cognitive Lab")
 
-    if not MEDIAPIPE_AVAILABLE:
-        st.warning(
-            "MediaPipe available nahi hai. "
-            "Webcam stream chal sakti hai, lekin iris estimation nahi chalegi."
-        )
 
-    if "gaze_processor" not in st.session_state:
-        st.session_state.gaze_processor = GazeProcessor()
+# =========================================================
+# VIRTUAL LAB
+# =========================================================
 
-    processor = st.session_state.gaze_processor
+elif st.session_state.page == "Virtual Cognitive Lab":
 
-    st.subheader("1. Camera")
-
-    def callback(frame):
-        img = frame.to_ndarray(format="bgr24")
-
-        processed = processor.process(img)
-
-        return av.VideoFrame.from_ndarray(
-            processed,
-            format="bgr24",
-        )
-
-    webrtc_streamer(
-        key="neurolens_eye_tracking",
-        video_frame_callback=callback,
-        media_stream_constraints={
-            "video": True,
-            "audio": False,
-        },
-        async_processing=True,
-    )
-
-    st.subheader("2. Current Gaze Estimate")
-
-    state = processor.latest()
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        st.metric(
-            "Face",
-            "Detected" if state["face"] else "Not detected",
-        )
-
-    with c2:
-        st.metric(
-            "Gaze X",
-            "-" if state["x"] is None
-            else f"{state['x']:.3f}",
-        )
-
-    with c3:
-        st.metric(
-            "Gaze Y",
-            "-" if state["y"] is None
-            else f"{state['y']:.3f}",
-        )
-
-    st.caption(
-        "X/Y normalized estimates hain. "
-        "Calibration ke baghair inhe exact screen coordinates na samjhein."
-    )
-
-    if st.button("Capture Gaze Snapshot"):
-        state = processor.latest()
-
-        if state["x"] is None:
-            st.warning("Abhi gaze sample available nahi hai.")
-        else:
-            save_activity(
-                "Eye Tracking",
-                "Gaze snapshot",
-                None,
-                json.dumps(state),
-            )
-            st.success("Gaze sample saved.")
-
-    samples = processor.get_samples()
-
-    if samples:
-        df = pd.DataFrame(samples)
-
-        st.subheader("Gaze Path")
-
-        st.line_chart(
-            df.set_index("time")[["x", "y"]]
-        )
-
-        st.subheader("Recent Samples")
-
-        st.dataframe(
-            df.tail(20),
-            use_container_width=True,
-        )
-
-
-# ============================================================
-# EEG PAGE
-# ============================================================
-
-def eeg_page():
-    st.header("🧠 Real EEG / BrainFlow Lab")
-
-    st.warning(
-        "Real EEG mode requires physical EEG hardware. "
-        "Cloud Streamlit cannot magically access a USB EEG connected "
-        "to your local laptop/tablet."
-    )
-
-    mode = st.radio(
-        "Mode",
-        [
-            "Synthetic EEG",
-            "Real EEG Hardware",
-        ],
-        horizontal=True,
-    )
-
-    if mode == "Synthetic EEG":
-        st.success(
-            "Synthetic mode: BrainFlow generated data. "
-            "This is NOT real brain activity."
-        )
-
-        seconds = st.slider(
-            "Recording duration",
-            2,
-            15,
-            5,
-        )
-
-        if st.button("Run Synthetic EEG"):
-            data, message = read_board_once(
-                BoardIds.SYNTHETIC_BOARD.value
-                if BRAINFLOW_AVAILABLE else -1,
-                seconds,
-            )
-
-            if data is None:
-                st.error(message)
-                return
-
-            st.success(message)
-
-            if BRAINFLOW_AVAILABLE:
-                channels = BoardShim.get_eeg_channels(
-                    BoardIds.SYNTHETIC_BOARD.value
-                )
-
-                if channels:
-                    channel = channels[0]
-
-                    signal = data[channel, :]
-
-                    st.line_chart(
-                        pd.DataFrame(
-                            {"Synthetic EEG": signal}
-                        )
-                    )
-
-                    fs = BoardShim.get_sampling_rate(
-                        BoardIds.SYNTHETIC_BOARD.value
-                    )
-
-                    powers = eeg_band_power(
-                        signal,
-                        fs,
-                    )
-
-                    st.subheader("Frequency Bands")
-
-                    st.bar_chart(
-                        pd.DataFrame(
-                            {"Power": powers}
-                        )
-                    )
-
-                    save_activity(
-                        "EEG",
-                        "Synthetic recording",
-                        None,
-                        f"Samples={data.shape[1]}",
-                    )
-
-        return
-
-    # REAL EEG
-    st.subheader("Real Hardware Configuration")
-
-    if not BRAINFLOW_AVAILABLE:
-        st.error(
-            "BrainFlow package installed nahi hai."
-        )
-        return
-
-    boards = board_candidates()
-
-    board_name = st.selectbox(
-        "EEG Board",
-        list(boards.keys()),
-    )
-
-    board_id = boards[board_name]
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        serial_port = st.text_input(
-            "Serial Port",
-            placeholder="COM3 / /dev/ttyUSB0",
-        )
-
-        mac_address = st.text_input(
-            "MAC Address",
-            placeholder="For supported Bluetooth boards",
-        )
-
-    with col2:
-        ip_address = st.text_input(
-            "IP Address",
-            placeholder="For network boards",
-        )
-
-        ip_port = st.number_input(
-            "IP Port",
-            min_value=0,
-            max_value=65535,
-            value=0,
-        )
-
-    seconds = st.slider(
-        "Recording seconds",
-        2,
-        20,
-        5,
-    )
-
-    st.caption(
-        "Board-specific parameters vary. "
-        "Use the connection settings required by your exact EEG device."
-    )
-
-    if st.button("Connect + Record Real EEG"):
-        with st.spinner("Connecting to EEG..."):
-
-            data, message = read_board_once(
-                board_id=board_id,
-                seconds=seconds,
-                serial_port=serial_port,
-                mac_address=mac_address,
-                ip_address=ip_address,
-                ip_port=ip_port,
-            )
-
-        if data is None:
-            st.error(
-                "EEG connection failed:\n\n" + message
-            )
-
-        else:
-            st.success(
-                "REAL EEG DATA RECEIVED"
-            )
-
-            eeg_channels = BoardShim.get_eeg_channels(
-                board_id
-            )
-
-            fs = BoardShim.get_sampling_rate(
-                board_id
-            )
-
-            if not eeg_channels:
-                st.warning(
-                    "Is board ke liye EEG channels detect nahi hue."
-                )
-                return
-
-            channel_data = []
-
-            for ch in eeg_channels[:8]:
-                channel_data.append(
-                    data[ch, :]
-                )
-
-            channel_data = np.array(
-                channel_data
-            )
-
-            chart_df = pd.DataFrame(
-                channel_data.T,
-                columns=[
-                    f"EEG {i+1}"
-                    for i in range(channel_data.shape[0])
-                ],
-            )
-
-            st.subheader("Live/Recorded EEG")
-
-            st.line_chart(
-                chart_df
-            )
-
-            first_channel = channel_data[0]
-
-            powers = eeg_band_power(
-                first_channel,
-                fs,
-            )
-
-            st.subheader(
-                "Frequency-Band Features"
-            )
-
-            st.bar_chart(
-                pd.DataFrame(
-                    {"Power": powers}
-                )
-            )
-
-            csv = chart_df.to_csv(
-                index=False
-            ).encode("utf-8")
-
-            st.download_button(
-                "Download EEG CSV",
-                csv,
-                "neurolens_eeg.csv",
-                "text/csv",
-            )
-
-            save_activity(
-                "EEG",
-                "Real EEG recording",
-                None,
-                (
-                    f"Board={board_name}; "
-                    f"Channels={len(eeg_channels)}; "
-                    f"Samples={data.shape[1]}"
-                ),
-            )
-
-
-# ============================================================
-# COMBINED LAB
-# ============================================================
-
-def cognitive_lab():
-    st.header("🧪 Virtual Cognitive Neuroscience Lab")
+    st.subheader("🔬 Virtual Cognitive Neuroscience Lab")
 
     character = st.selectbox(
-        "Choose your role",
+        "👤 Character",
         [
             "Researcher",
             "Student",
             "Lab Assistant",
             "AI Research Agent",
         ],
+        index=[
+            "Researcher",
+            "Student",
+            "Lab Assistant",
+            "AI Research Agent",
+        ].index(st.session_state.character),
     )
 
-    equipment = st.multiselect(
-        "Equipment",
-        [
-            "EEG",
-            "Eye Tracker",
-            "Reaction-Time System",
-            "Cognitive Task Monitor",
-            "Physiological Sensor",
-        ],
-        default=[
-            "Cognitive Task Monitor"
-        ],
+    st.session_state.character = character
+
+    equipment = st.selectbox(
+        "🧪 Equipment",
+        EQUIPMENT,
+        index=EQUIPMENT.index(st.session_state.equipment),
     )
+
+    st.session_state.equipment = equipment
+
+    c1, c2 = st.columns([1.4, 1])
+
+    with c1:
+
+        if LAB_VIDEO:
+
+            try:
+                with open(LAB_VIDEO, "rb") as f:
+                    st.video(f.read())
+            except Exception:
+                st.video(LAB_VIDEO)
+
+        else:
+
+            st.markdown(
+                """
+                <div class="lab">
+                <div class="orb"></div>
+                <div style="position:absolute;top:20px;left:20px">
+                LIVE COGNITIVE LAB SIMULATION
+                </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with c2:
+
+        st.markdown("### Current setup")
+
+        st.write(f"**Character:** {character}")
+        st.write(f"**Equipment:** {equipment}")
+
+        st.info(
+            "Educational simulation. Equipment does not automatically "
+            "measure real neural activity."
+        )
+
+    st.markdown("### 🧪 Select experiment")
+
+    experiment_names = [x[0] for x in EXPERIMENTS]
 
     experiment = st.selectbox(
         "Experiment",
-        [
-            "Attention",
-            "Memory",
-            "Decision & Reward",
-            "Stroop / Cognitive Control",
-            "Pattern Recognition",
-        ],
+        experiment_names,
     )
 
-    st.write(
-        f"Role: **{character}**"
-    )
+    domain = dict(EXPERIMENTS)[experiment]
 
-    st.write(
-        f"Experiment: **{experiment}**"
-    )
+    st.caption(f"Domain: {domain}")
 
-    if equipment:
-        st.write(
-            "Equipment: " +
-            ", ".join(equipment)
-        )
+    if experiment == "Attention Gate":
 
-    st.divider()
-
-    if experiment == "Attention":
-
-        target = st.session_state.get(
-            "attention_target",
-            "X",
-        )
-
-        st.write(
-            "Find the target symbol:"
-        )
-
-        symbols = [
-            "O", "O", "O",
-            "O", target, "O",
-            "O", "O", "O",
+        target = random.choice(["X", "O", "K"])
+        letters = [
+            random.choice(["X", "O", "K", "M", "P"])
+            for _ in range(12)
         ]
+        letters[random.randint(0, 11)] = target
 
-        cols = st.columns(3)
-
-        for i, symbol in enumerate(symbols):
-
-            with cols[i % 3]:
-
-                if st.button(
-                    symbol,
-                    key=f"attention_{i}",
-                    use_container_width=True,
-                ):
-
-                    if symbol == target:
-                        st.success(
-                            "Correct!"
-                        )
-
-                        save_activity(
-                            "Cognitive Lab",
-                            "Attention",
-                            100,
-                            character,
-                        )
-                    else:
-                        st.error(
-                            "Try again."
-                        )
-
-    elif experiment == "Memory":
-
-        sequence = "729418"
-
-        st.write(
-            "Memorize this sequence:"
-        )
-
-        st.code(sequence)
+        st.write("Find the target:", " ".join(letters))
 
         answer = st.text_input(
-            "Enter sequence"
+            f"How many {target}s do you see?"
         )
 
-        if st.button(
-            "Check Memory"
-        ):
+        if st.button("Run Attention Experiment"):
 
-            score = (
-                100
-                if answer.strip() == sequence
-                else 0
-            )
+            try:
+                correct = int(answer) == letters.count(target)
+            except Exception:
+                correct = False
 
-            st.metric(
-                "Score",
-                score,
-            )
+            score = 100 if correct else 0
+
+            if correct:
+                st.success("Correct response recorded.")
+            else:
+                st.warning(
+                    f"Expected {letters.count(target)}."
+                )
 
             save_activity(
-                "Cognitive Lab",
-                "Working Memory",
+                experiment,
                 score,
-                sequence,
+                f"Target={target}",
             )
 
-    elif experiment == "Decision & Reward":
+            st.session_state.progress["experiments"] += 1
+            st.session_state.progress["games"] += 1
+
+    elif experiment == "Working Memory Sprint":
+
+        seq = "7 2 9 4 1 8"
+
+        st.info(f"Memorize: {seq}")
+
+        time.sleep(0.1)
+
+        answer = st.text_input("Enter the sequence")
+
+        if st.button("Run Memory Experiment"):
+
+            correct = answer.replace(" ", "") == "729418"
+
+            if correct:
+                st.success("Memory response correct.")
+                score = 100
+            else:
+                st.warning("Sequence did not match.")
+                score = 0
+
+            save_activity(
+                experiment,
+                score,
+                "Working memory sequence",
+            )
+
+            st.session_state.progress["experiments"] += 1
+            st.session_state.progress["games"] += 1
+
+    elif experiment == "Decision Under Delay":
 
         choice = st.radio(
-            "Choose",
+            "Choose one:",
             [
-                "PKR 1,000 today",
-                "PKR 1,500 after 30 days",
+                "Rs. 1,000 today",
+                "Rs. 1,500 after 30 days",
             ],
         )
 
-        if st.button(
-            "Record Decision"
-        ):
+        if st.button("Record Decision"):
+
+            st.success("Decision recorded.")
 
             save_activity(
-                "Cognitive Lab",
-                "Reward Decision",
-                None,
+                experiment,
+                0,
                 choice,
             )
 
-            st.success(
-                "Decision recorded."
+            st.session_state.progress["experiments"] += 1
+
+            st.info(
+                "This task explores delayed-reward preference. "
+                "One choice does not define personality or behaviour."
             )
 
-    elif experiment == "Stroop / Cognitive Control":
+    elif experiment == "Stroop Control":
 
-        word = st.selectbox(
-            "Word",
+        word = random.choice(
+            ["RED", "BLUE", "GREEN"]
+        )
+
+        st.markdown(f"### {word}")
+
+        answer = st.selectbox(
+            "Select the displayed word:",
             ["RED", "BLUE", "GREEN"],
         )
 
-        color = st.selectbox(
-            "Ink Color",
-            ["RED", "BLUE", "GREEN"],
-        )
+        if st.button("Submit Stroop Response"):
 
-        if st.button(
-            "Record Stroop Response"
-        ):
+            correct = answer == word
 
-            correct = (
-                word == color
-            )
+            if correct:
+                st.success("Correct.")
+                score = 100
+            else:
+                st.warning("Response mismatch.")
+                score = 0
 
             save_activity(
-                "Cognitive Lab",
-                "Stroop",
-                100 if correct else 0,
-                f"{word}/{color}",
+                experiment,
+                score,
+                word,
             )
 
-            st.write(
-                "Recorded."
-            )
+            st.session_state.progress["experiments"] += 1
 
     else:
 
-        pattern = [
-            2,
-            4,
-            8,
-            16,
-            32,
-        ]
+        st.write("Complete the pattern:")
 
-        st.write(
-            "Complete the pattern:"
-        )
-
-        st.code(
-            " → ".join(
-                map(str, pattern)
-            )
-            + " → ?"
-        )
+        st.markdown("### 2 → 4 → 8 → 16 → ?")
 
         answer = st.number_input(
-            "Next value",
+            "Next number",
             min_value=0,
             value=0,
         )
 
-        if st.button(
-            "Check Pattern"
-        ):
+        if st.button("Run Pattern Experiment"):
 
-            score = (
-                100
-                if answer == 64
-                else 0
-            )
+            correct = answer == 32
 
-            st.metric(
-                "Score",
-                score,
-            )
+            if correct:
+                st.success("Pattern correct.")
+                score = 100
+            else:
+                st.warning("Try again.")
+                score = 0
 
             save_activity(
-                "Cognitive Lab",
-                "Pattern Recognition",
+                experiment,
                 score,
-                "2→4→8→16→32→64",
+                "Pattern recognition",
             )
 
-    st.info(
-        "Any EEG shown in Virtual Lab without physical hardware "
-        "must be treated as conceptual/simulated data."
-    )
+            st.session_state.progress["experiments"] += 1
 
+    st.divider()
 
-# ============================================================
-# ASK AYNA
-# ============================================================
+    st.markdown("### 📈 Simulated laboratory signal")
 
-def ask_ayna_page():
-    st.header("🤖 Ask Ayna")
+    if np is not None and go is not None:
+
+        x = np.linspace(0, 4, 250)
+
+        signal = (
+            np.sin(2 * np.pi * 8 * x)
+            + 0.35 * np.sin(2 * np.pi * 14 * x)
+            + 0.15 * np.random.randn(len(x))
+        )
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=signal,
+                mode="lines",
+                name="Simulated signal",
+            )
+        )
+
+        fig.update_layout(
+            height=300,
+            title="Conceptual simulated neural signal",
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
 
     st.caption(
-        "Cognitive neuroscience educational assistant"
+        "⚠️ This waveform is simulated. It is not an EEG/fMRI measurement."
     )
 
-    if "ayna_messages" not in st.session_state:
-        st.session_state.ayna_messages = []
 
-    for message in st.session_state.ayna_messages:
+# =========================================================
+# EYE TRACKING
+# =========================================================
+
+elif st.session_state.page == "Eye Tracking":
+
+    st.subheader("👁️ Webcam Eye Tracking")
+
+    st.warning(
+        "This is webcam-based gaze estimation, not research-grade "
+        "eye tracking. Camera permission is required."
+    )
+
+    if webrtc_streamer is None:
+
+        st.error(
+            "streamlit-webrtc is not installed."
+        )
+
+    elif mp is None or cv2 is None:
+
+        st.error(
+            "MediaPipe/OpenCV is not available."
+        )
+
+    else:
+
+        class GazeProcessor(VideoProcessorBase):
+
+            def __init__(self):
+                self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+                    max_num_faces=1,
+                    refine_landmarks=True,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                )
+
+                self.samples = []
+
+            def recv(self, frame):
+
+                image = frame.to_ndarray(format="bgr24")
+
+                rgb = cv2.cvtColor(
+                    image,
+                    cv2.COLOR_BGR2RGB,
+                )
+
+                result = self.face_mesh.process(rgb)
+
+                if result.multi_face_landmarks:
+
+                    landmarks = result.multi_face_landmarks[0]
+
+                    left = landmarks.landmark[468]
+
+                    gx = float(left.x)
+                    gy = float(left.y)
+
+                    self.samples.append(
+                        {
+                            "x": gx,
+                            "y": gy,
+                            "time": time.time(),
+                        }
+                    )
+
+                    self.samples = self.samples[-300:]
+
+                    cv2.circle(
+                        image,
+                        (
+                            int(gx * image.shape[1]),
+                            int(gy * image.shape[0]),
+                        ),
+                        8,
+                        (0, 255, 255),
+                        -1,
+                    )
+
+                return frame.from_ndarray(
+                    image,
+                    format="bgr24",
+                )
+
+        ctx = webrtc_streamer(
+            key="neurolens-eye",
+            video_processor_factory=GazeProcessor,
+            media_stream_constraints={
+                "video": True,
+                "audio": False,
+            },
+            async_processing=True,
+        )
+
+        st.info(
+            "Move your eyes around the screen after camera access. "
+            "The displayed point is a rough webcam landmark estimate."
+        )
+
+        st.markdown("### 👁️ What this module can demonstrate")
+
+        st.write(
+            """
+            • approximate gaze position  
+            • visual attention demonstrations  
+            • webcam landmark tracking  
+            • conceptual fixation data  
+            """
+        )
+
+
+# =========================================================
+# EEG / BIOSIGNAL
+# =========================================================
+
+elif st.session_state.page == "EEG / Biosignal Lab":
+
+    st.subheader("🧠 EEG / Biosignal Lab")
+
+    st.info(
+        "Real EEG requires compatible physical hardware. "
+        "The synthetic mode works without hardware."
+    )
+
+    mode = st.radio(
+        "Mode",
+        ["Synthetic EEG", "Real BrainFlow connection"],
+        horizontal=True,
+    )
+
+    if mode == "Synthetic EEG":
+
+        if np is None or go is None:
+
+            st.error(
+                "NumPy/Plotly required."
+            )
+
+        else:
+
+            t = np.linspace(0, 5, 1000)
+
+            alpha = np.sin(
+                2 * np.pi * 10 * t
+            )
+
+            beta = 0.4 * np.sin(
+                2 * np.pi * 20 * t
+            )
+
+            noise = 0.2 * np.random.randn(
+                len(t)
+            )
+
+            signal = alpha + beta + noise
+
+            fig = go.Figure()
+
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=signal,
+                    mode="lines",
+                    name="Synthetic EEG",
+                )
+            )
+
+            fig.update_layout(
+                height=350,
+                title="Synthetic EEG-like waveform",
+                xaxis_title="Time (s)",
+                yaxis_title="Amplitude",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            st.success(
+                "Synthetic EEG running."
+            )
+
+    else:
+
+        if BoardShim is None:
+
+            st.error(
+                "BrainFlow is not installed."
+            )
+
+        else:
+
+            if st.button(
+                "🔌 Test BrainFlow Synthetic Board"
+            ):
+
+                board = None
+
+                try:
+
+                    params = BrainFlowInputParams()
+
+                    board_id = (
+                        BoardIds.SYNTHETIC_BOARD.value
+                    )
+
+                    board = BoardShim(
+                        board_id,
+                        params,
+                    )
+
+                    board.prepare_session()
+                    board.start_stream()
+
+                    time.sleep(2)
+
+                    data = board.get_board_data()
+
+                    board.stop_stream()
+                    board.release_session()
+
+                    st.success(
+                        f"BrainFlow connection successful. "
+                        f"Received shape: {data.shape}"
+                    )
+
+                except Exception as e:
+
+                    if board:
+
+                        try:
+                            board.release_session()
+                        except Exception:
+                            pass
+
+                    st.error(
+                        f"BrainFlow test failed: {e}"
+                    )
+
+            st.caption(
+                "For actual EEG hardware, configure the correct BrainFlow board "
+                "and device connection parameters."
+            )
+
+
+# =========================================================
+# VISUAL BRAIN JOURNEY
+# =========================================================
+
+elif st.session_state.page == "Visual Brain Journey":
+
+    st.subheader("🧠 Visual Brain Journey")
+
+    if BRAIN_VIDEO:
+
+        try:
+            with open(BRAIN_VIDEO, "rb") as f:
+                st.video(f.read())
+        except Exception:
+            st.video(BRAIN_VIDEO)
+
+    if BRAIN_PATH:
+
+        st.image(
+            BRAIN_PATH,
+            use_container_width=True,
+        )
+
+    region = st.selectbox(
+        "Choose brain region",
+        list(BRAIN_REGIONS),
+    )
+
+    info = BRAIN_REGIONS[region]
+
+    st.markdown(f"## {region}")
+
+    st.write(info["description"])
+
+    st.success(
+        f"Primary conceptual role: {info['function']}"
+    )
+
+    st.markdown(
+        f"**Network / pathway:** {info['network']}"
+    )
+
+    stage = st.selectbox(
+        "Journey stage",
+        [
+            "Brain Region",
+            "Neuron",
+            "Axon",
+            "Electrical Signal",
+            "Synapse",
+            "Neurotransmitter",
+        ],
+    )
+
+    stage_icons = {
+        "Brain Region": "🧠",
+        "Neuron": "🧬",
+        "Axon": "➰",
+        "Electrical Signal": "⚡",
+        "Synapse": "🔗",
+        "Neurotransmitter": "🧪",
+    }
+
+    st.markdown(
+        f"""
+        <div class="stage">
+        <div class="neuron">
+        {stage_icons[stage]}
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(f"### Current stage: {stage}")
+
+    if stage == "Brain Region":
+        st.write(
+            "The selected region is considered as part of a distributed "
+            "network rather than an isolated 'single-function box'."
+        )
+
+    elif stage == "Neuron":
+        st.write(
+            "Neurons receive, integrate and transmit information."
+        )
+
+    elif stage == "Axon":
+        st.write(
+            "Axons carry electrical signals toward downstream targets."
+        )
+
+    elif stage == "Electrical Signal":
+        st.write(
+            "Action potentials are electrical events that propagate "
+            "along neuronal axons."
+        )
+
+    elif stage == "Synapse":
+        st.write(
+            "Synapses allow communication between neurons or other cells."
+        )
+
+    else:
+
+        nt = st.selectbox(
+            "Choose neurotransmitter",
+            list(NEUROTRANSMITTERS),
+        )
+
+        st.info(
+            NEUROTRANSMITTERS[nt]
+        )
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if st.button("⬅ Previous Region"):
+            names = list(BRAIN_REGIONS)
+            i = names.index(region)
+            go(
+                "Visual Brain Journey"
+            )
+
+    with c2:
+        if st.button("🔄 Restart Journey"):
+            st.rerun()
+
+    with c3:
+        if st.button("➡ Next Region"):
+            names = list(BRAIN_REGIONS)
+            i = names.index(region)
+            next_region = names[
+                (i + 1) % len(names)
+            ]
+            st.session_state["journey_region"] = next_region
+            st.rerun()
+
+
+# =========================================================
+# BRAIN PUZZLE
+# =========================================================
+
+elif st.session_state.page == "Brain Puzzle":
+
+    st.subheader("🧩 Brain Jigsaw Challenge")
+
+    st.caption(
+        "Finger/mouse press-hold drag-and-drop. "
+        "Correct tile placement is required."
+    )
+
+    if dnd is None:
+
+        st.error(
+            "Install streamlit-dnd>=0.2.0 in requirements.txt."
+        )
+
+    elif not BRAIN_PATH:
+
+        st.error(
+            "brain.png not found. Put brain.png in the app root "
+            "or inside the assets folder."
+        )
+
+    else:
+
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["Easy", "Medium", "Hard"],
+        )
+
+        challenge = st.selectbox(
+            "Challenge mode",
+            [
+                "Time Challenge",
+                "Minimum Moves",
+                "Speed Mode",
+                "Memory Mode",
+            ],
+        )
+
+        grid_map = {
+            "Easy": 3,
+            "Medium": 4,
+            "Hard": 5,
+        }
+
+        grid = grid_map[difficulty]
+
+        st.session_state.puzzle_challenge = challenge
+
+        def make_tiles():
+
+            img = Image.open(
+                BRAIN_PATH
+            ).convert("RGB")
+
+            w, h = img.size
+
+            tiles = []
+
+            for row in range(grid):
+
+                for col in range(grid):
+
+                    left = int(col * w / grid)
+                    top = int(row * h / grid)
+                    right = int((col + 1) * w / grid)
+                    bottom = int((row + 1) * h / grid)
+
+                    tile = img.crop(
+                        (
+                            left,
+                            top,
+                            right,
+                            bottom,
+                        )
+                    )
+
+                    buf = BytesIO()
+
+                    tile.save(
+                        buf,
+                        format="PNG",
+                    )
+
+                    tiles.append(
+                        buf.getvalue()
+                    )
+
+            return tiles
+
+        def start_puzzle():
+
+            tiles = make_tiles()
+
+            order = list(
+                range(len(tiles))
+            )
+
+            for _ in range(10 + grid * 5):
+
+                a = random.randrange(
+                    len(order)
+                )
+
+                b = random.randrange(
+                    len(order)
+                )
+
+                if a != b:
+                    order[a], order[b] = (
+                        order[b],
+                        order[a],
+                    )
+
+            st.session_state.puzzle_solution = list(
+                range(len(tiles))
+            )
+
+            st.session_state.puzzle_board = {
+                "board": order
+            }
+
+            st.session_state.puzzle_grid = grid
+            st.session_state.puzzle_started = time.time()
+            st.session_state.puzzle_moves = 0
+            st.session_state.puzzle_completed = False
+
+        if (
+            st.session_state.puzzle_board is None
+            or st.session_state.puzzle_grid != grid
+        ):
+
+            start_puzzle()
+
+        tiles = make_tiles()
+
+        board = st.session_state.puzzle_board
+
+        elapsed = 0
+
+        if st.session_state.puzzle_started:
+
+            elapsed = int(
+                time.time()
+                - st.session_state.puzzle_started
+            )
+
+        m1, m2, m3, m4 = st.columns(4)
+
+        with m1:
+            st.metric(
+                "Round",
+                st.session_state.puzzle_round,
+            )
+
+        with m2:
+            st.metric(
+                "Moves",
+                st.session_state.puzzle_moves,
+            )
+
+        with m3:
+            st.metric(
+                "Time",
+                f"{elapsed}s",
+            )
+
+        with m4:
+            st.metric(
+                "Best Score",
+                st.session_state.puzzle_best_score,
+            )
+
+        st.markdown(
+            f"**Mode:** {challenge} • "
+            f"**Grid:** {grid}×{grid}"
+        )
+
+        container_key = "puzzle_board"
+
+        with st.container(
+            key=container_key,
+            border=True,
+        ):
+
+            for index, tile_index in enumerate(
+                board["board"]
+            ):
+
+                row = index // grid
+                col = index % grid
+
+                if col == 0:
+                    cols = st.columns(grid)
+
+                with cols[col]:
+
+                    with st.container(
+                        key=f"piece_{tile_index}",
+                        border=True,
+                    ):
+
+                        st.image(
+                            tiles[tile_index],
+                            use_container_width=True,
+                        )
+
+        event = dnd(
+            container_key,
+            cross=False,
+            key="neurolens_puzzle_dnd",
+        )
+
+        if event:
+
+            old_order = list(
+                board["board"]
+            )
+
+            if apply_move is not None:
+
+                try:
+
+                    apply_move(
+                        event,
+                        {
+                            container_key: board["board"]
+                        },
+                    )
+
+                    st.session_state.puzzle_moves += 1
+
+                    st.rerun()
+
+                except Exception:
+
+                    st.session_state.puzzle_board[
+                        "board"
+                    ] = old_order
+
+        current = st.session_state.puzzle_board[
+            "board"
+        ]
+
+        if (
+            current
+            == st.session_state.puzzle_solution
+            and not st.session_state.puzzle_completed
+        ):
+
+            st.session_state.puzzle_completed = True
+
+            final_time = int(
+                time.time()
+                - st.session_state.puzzle_started
+            )
+
+            moves = st.session_state.puzzle_moves
+
+            score = max(
+                1000
+                - final_time * 5
+                - moves * 10,
+                100,
+            )
+
+            if challenge == "Speed Mode":
+                score += max(
+                    500 - final_time * 10,
+                    0,
+                )
+
+            if challenge == "Minimum Moves":
+                score += max(
+                    500 - moves * 20,
+                    0,
+                )
+
+            st.session_state.puzzle_best_score = max(
+                st.session_state.puzzle_best_score,
+                score,
+            )
+
+            if (
+                st.session_state.puzzle_best_time is None
+                or final_time
+                < st.session_state.puzzle_best_time
+            ):
+                st.session_state.puzzle_best_time = final_time
+
+            if (
+                st.session_state.puzzle_best_moves is None
+                or moves
+                < st.session_state.puzzle_best_moves
+            ):
+                st.session_state.puzzle_best_moves = moves
+
+            st.session_state.progress[
+                "puzzles"
+            ] += 1
+
+            save_activity(
+                "Brain Puzzle",
+                score,
+                f"{grid}x{grid};{challenge};"
+                f"{final_time}s;{moves} moves",
+            )
+
+            st.balloons()
+
+            st.success(
+                f"🎉 Puzzle complete! "
+                f"Score: {score} • "
+                f"Time: {final_time}s • "
+                f"Moves: {moves}"
+            )
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+
+            if st.button(
+                "🆕 New Puzzle",
+                use_container_width=True,
+            ):
+                start_puzzle()
+                st.rerun()
+
+        with c2:
+
+            if st.button(
+                "🔄 Reset Puzzle",
+                use_container_width=True,
+            ):
+                start_puzzle()
+                st.rerun()
+
+        with c3:
+
+            if st.button(
+                "➡ Next Round",
+                use_container_width=True,
+            ):
+
+                st.session_state.puzzle_round += 1
+
+                next_grid = min(
+                    7,
+                    3
+                    + (
+                        st.session_state.puzzle_round
+                        // 3
+                    ),
+                )
+
+                st.session_state.puzzle_grid = next_grid
+
+                start_puzzle()
+
+                st.rerun()
+
+        st.caption(
+            "Puzzle tiles are derived from brain.png. "
+            "The drag system supports touch interaction in current "
+            "streamlit-dnd releases."
+        )
+
+
+# =========================================================
+# ASK AYNA
+# =========================================================
+
+elif st.session_state.page == "Ask Ayna":
+
+    st.subheader("🤖 Ask Ayna")
+
+    st.caption(
+        "Cognitive neuroscience • AI • behaviour • learning • attention"
+    )
+
+    for message in st.session_state.messages:
 
         with st.chat_message(
             message["role"]
         ):
+
             st.write(
                 message["content"]
             )
 
-    prompt = st.chat_input(
-        "Ask Ayna about cognition, brain or behaviour..."
-    )
+    st.markdown("### 🎙️ Voice")
 
-    if prompt:
+    try:
+        audio = st.audio_input(
+            "Record your message",
+            key="ask_ayna_audio",
+        )
+    except Exception:
+        audio = None
 
-        prompt = clean_text(prompt)
+    if st.button(
+        "🧠 SEND VOICE",
+        use_container_width=True,
+    ) and audio:
 
-        st.session_state.ayna_messages.append(
+        answer, source = ask_ai_audio(
+            audio,
+            """
+            Listen to this user voice message.
+            Transcribe the relevant request internally and answer as Ayna.
+            Keep the answer educational and concise.
+            Do not diagnose.
+            """,
+        )
+
+        st.session_state.messages.append(
             {
                 "role": "user",
-                "content": prompt,
+                "content": "🎙️ Voice message",
             }
         )
 
-        response = ask_ai(
-            prompt,
-            "Ask Ayna",
-        )
-
-        st.session_state.ayna_messages.append(
+        st.session_state.messages.append(
             {
                 "role": "assistant",
-                "content": response,
+                "content": answer,
             }
         )
 
         st.rerun()
 
-    if st.session_state.ayna_messages:
+    st.markdown("### 💬 Text")
 
-        latest = st.session_state.ayna_messages[-1]
-
-        if latest["role"] == "assistant":
-
-            st.markdown(
-                "### 🔊 Speak Ayna"
-            )
-
-            escaped = json.dumps(
-                latest["content"]
-            )
-
-            st.components.v1.html(
-                f"""
-                <button onclick='speakAyna()'
-                style="
-                padding:12px 18px;
-                border-radius:10px;
-                border:0;
-                cursor:pointer;
-                font-weight:bold;
-                ">
-                🔊 Speak Ayna
-                </button>
-
-                <script>
-                function speakAyna() {{
-                    const text = {escaped};
-                    const utterance =
-                        new SpeechSynthesisUtterance(text);
-                    utterance.rate = 1;
-                    speechSynthesis.cancel();
-                    speechSynthesis.speak(utterance);
-                }}
-                </script>
-                """,
-                height=70,
-            )
-
-
-# ============================================================
-# PRIVATE ASK AYNA
-# ============================================================
-
-def hash_pin(pin, salt=None):
-
-    if salt is None:
-        salt = os.urandom(16)
-
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        pin.encode(),
-        salt,
-        150000,
+    text_input = st.text_area(
+        "Message Ayna",
+        height=110,
+        placeholder="Ask something about the brain, cognition or behaviour...",
     )
 
-    return (
-        salt.hex(),
-        digest.hex(),
-    )
-
-
-def private_ask_page():
-
-    st.header("🔐 Private Ask Ayna")
-
-    if "private_pin_hash" not in st.session_state:
-
-        st.info(
-            "First time: create a 4–6 digit PIN."
-        )
-
-        pin = st.text_input(
-            "Create PIN",
-            type="password",
-            max_chars=6,
-        )
-
-        confirm = st.text_input(
-            "Confirm PIN",
-            type="password",
-            max_chars=6,
-        )
-
-        if st.button(
-            "Create Private PIN"
-        ):
-
-            if (
-                pin.isdigit()
-                and 4 <= len(pin) <= 6
-                and pin == confirm
-            ):
-
-                salt, digest = hash_pin(
-                    pin
-                )
-
-                st.session_state.private_pin_salt = salt
-                st.session_state.private_pin_hash = digest
-                st.session_state.private_unlocked = True
-
-                st.success(
-                    "Private area unlocked."
-                )
-
-            else:
-                st.error(
-                    "PIN 4–6 digits ka hona chahiye."
-                )
-
-        return
-
-    if not st.session_state.get(
-        "private_unlocked",
-        False,
+    if st.button(
+        "SEND",
+        type="primary",
+        use_container_width=True,
     ):
 
-        pin = st.text_input(
-            "Enter PIN",
-            type="password",
-            max_chars=6,
+        if text_input.strip():
+
+            context = "\n".join(
+                f"{m['role']}: {m['content']}"
+                for m in st.session_state.messages[-6:]
+            )
+
+            answer, source = ask_ai(
+                text_input,
+                context,
+            )
+
+            st.session_state.messages.append(
+                {
+                    "role": "user",
+                    "content": text_input,
+                }
+            )
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                }
+            )
+
+            st.rerun()
+
+    if st.session_state.messages:
+
+        last = st.session_state.messages[-1][
+            "content"
+        ]
+
+        st.markdown("### 🔊 Ayna Voice")
+
+        speak(
+            last,
+            "ask_ayna_last",
         )
 
         if st.button(
-            "Unlock"
+            "🗑️ Clear Chat"
         ):
 
-            try:
-                salt = bytes.fromhex(
-                    st.session_state.private_pin_salt
-                )
+            st.session_state.messages = []
 
-                _, digest = hash_pin(
-                    pin,
-                    salt,
-                )
+            st.rerun()
 
-                if digest == st.session_state.private_pin_hash:
+
+# =========================================================
+# PRIVATE ASK AYNA
+# =========================================================
+
+elif st.session_state.page == "Private Ask Ayna":
+
+    st.subheader("🔐 Private Ask Ayna")
+
+    st.caption(
+        "Session-level private chat with a 4–6 digit PIN."
+    )
+
+    if not st.session_state.private_unlocked:
+
+        if st.session_state.private_pin_hash is None:
+
+            st.info(
+                "Create your private PIN."
+            )
+
+            p1 = st.text_input(
+                "Create PIN",
+                type="password",
+                max_chars=6,
+            )
+
+            p2 = st.text_input(
+                "Confirm PIN",
+                type="password",
+                max_chars=6,
+            )
+
+            if st.button(
+                "Create Private PIN",
+                use_container_width=True,
+            ):
+
+                if (
+                    p1.isdigit()
+                    and 4 <= len(p1) <= 6
+                    and p1 == p2
+                ):
+
+                    st.session_state.private_pin_hash = (
+                        pin_hash(p1)
+                    )
+
                     st.session_state.private_unlocked = True
+
                     st.rerun()
 
                 else:
+
+                    st.error(
+                        "PIN must be 4–6 digits and both entries must match."
+                    )
+
+        else:
+
+            p = st.text_input(
+                "Enter PIN",
+                type="password",
+                max_chars=6,
+            )
+
+            if st.button(
+                "🔓 Unlock",
+                use_container_width=True,
+            ):
+
+                if (
+                    pin_hash(p)
+                    == st.session_state.private_pin_hash
+                ):
+
+                    st.session_state.private_unlocked = True
+
+                    st.rerun()
+
+                else:
+
                     st.error(
                         "Incorrect PIN."
                     )
 
-            except Exception:
-                st.error(
-                    "Unlock error."
+    else:
+
+        st.success(
+            "🔓 Private session unlocked."
+        )
+
+        for message in st.session_state.private_messages:
+
+            with st.chat_message(
+                message["role"]
+            ):
+
+                st.write(
+                    message["content"]
                 )
-
-        return
-
-    st.success(
-        "Private session unlocked."
-    )
-
-    if st.button(
-        "Lock Private Area"
-    ):
-        st.session_state.private_unlocked = False
-        st.rerun()
-
-    question = st.text_area(
-        "Private question"
-    )
-
-    if st.button(
-        "Ask Privately"
-    ) and question.strip():
-
-        answer = ask_ai(
-            question,
-            "Private Ask Ayna",
-        )
-
-        st.write(answer)
-
-
-# ============================================================
-# MOOD & BEHAVIOUR
-# ============================================================
-
-def mood_page():
-
-    st.header(
-        "😊 AI Mood & Behaviour"
-    )
-
-    stress = st.slider(
-        "Stress",
-        0,
-        100,
-        50,
-    )
-
-    attention = st.slider(
-        "Attention",
-        0,
-        100,
-        50,
-    )
-
-    energy = st.slider(
-        "Energy",
-        0,
-        100,
-        50,
-    )
-
-    mood = st.slider(
-        "Mood",
-        0,
-        100,
-        50,
-    )
-
-    sleep = st.slider(
-        "Sleep Quality",
-        0,
-        100,
-        50,
-    )
-
-    motivation = st.slider(
-        "Motivation",
-        0,
-        100,
-        50,
-    )
-
-    if st.button(
-        "Analyze with Ayna"
-    ):
-
-        prompt = f"""
-Analyze these self-reported values educationally:
-
-Stress: {stress}
-Attention: {attention}
-Energy: {energy}
-Mood: {mood}
-Sleep: {sleep}
-Motivation: {motivation}
-
-Explain possible cognitive-behavioural relationships.
-Do not diagnose anything.
-"""
-
-        answer = ask_ai(
-            prompt,
-            "Mood & Behaviour",
-        )
-
-        st.write(answer)
-
-
-# ============================================================
-# RESEARCH BOOK
-# ============================================================
-
-def research_book():
-
-    st.header(
-        "📚 Research Book"
-    )
-
-    query = st.text_input(
-        "Search Europe PMC"
-    )
-
-    if st.button(
-        "Search Papers"
-    ) and query:
-
-        import requests
-
-        url = (
-            "https://www.ebi.ac.uk/europepmc/webservices/"
-            "rest/search"
-        )
 
         try:
+            audio = st.audio_input(
+                "Private voice",
+                key="private_voice",
+            )
+        except Exception:
+            audio = None
 
-            response = requests.get(
-                url,
-                params={
-                    "query": query,
-                    "format": "json",
-                    "pageSize": 10,
-                },
-                timeout=20,
+        if st.button(
+            "SEND PRIVATE VOICE",
+            use_container_width=True,
+        ) and audio:
+
+            answer, _ = ask_ai_audio(
+                audio,
+                "Answer this private message as Ayna. "
+                "Be educational, concise and non-diagnostic.",
             )
 
-            data = response.json()
+            st.session_state.private_messages.extend(
+                [
+                    {
+                        "role": "user",
+                        "content": "🎙️ Voice message",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": answer,
+                    },
+                ]
+            )
 
-            results = data.get(
-                "resultList",
-                {}).get(
-                    "result",
-                    [],
+            st.rerun()
+
+        private_text = st.text_area(
+            "Private message",
+            height=100,
+        )
+
+        if st.button(
+            "SEND PRIVATE",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            if private_text.strip():
+
+                context = "\n".join(
+                    f"{m['role']}: {m['content']}"
+                    for m in st.session_state.private_messages[-6:]
                 )
 
-            for paper in results:
-
-                title = paper.get(
-                    "title",
-                    "Untitled",
+                answer, _ = ask_ai(
+                    private_text,
+                    context,
                 )
 
-                year = paper.get(
+                st.session_state.private_messages.extend(
+                    [
+                        {
+                            "role": "user",
+                            "content": private_text,
+                        },
+                        {
+                            "role": "assistant",
+                            "content": answer,
+                        },
+                    ]
+                )
+
+                st.rerun()
+
+        if st.session_state.private_messages:
+
+            speak(
+                st.session_state.private_messages[-1][
+                    "content"
+                ],
+                "private_voice_output",
+            )
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+
+            if st.button(
+                "🔒 Lock",
+                use_container_width=True,
+            ):
+
+                st.session_state.private_unlocked = False
+
+                st.rerun()
+
+        with c2:
+
+            if st.button(
+                "🗑️ Delete Private Session",
+                use_container_width=True,
+            ):
+
+                st.session_state.private_messages = []
+                st.session_state.private_pin_hash = None
+                st.session_state.private_unlocked = False
+
+                st.rerun()
+
+
+# =========================================================
+# VOICE MOOD
+# =========================================================
+
+elif st.session_state.page == "Voice Mood":
+
+    st.subheader("🎙️ Voice Mood & Communication")
+
+    st.warning(
+        "Voice analysis is an AI-assisted interpretation of the "
+        "recording. It cannot reliably determine someone's hidden "
+        "emotional state or diagnose a condition."
+    )
+
+    try:
+        voice = st.audio_input(
+            "Record your voice",
+            key="voice_mood_input",
+        )
+    except Exception:
+        voice = None
+
+    if voice:
+
+        st.audio(
+            voice,
+            format=voice.type or "audio/wav",
+        )
+
+        if st.button(
+            "🧠 Analyse Voice",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            prompt = """
+Analyse this voice recording for observable communication/acoustic
+features such as apparent speaking pace, pauses, energy and expressed
+affective tone.
+
+Return:
+1. One emoji.
+2. A cautious mood/communication interpretation.
+3. Confidence: low/medium/high.
+4. One limitation.
+
+Do not diagnose.
+Do not infer personality, criminality, hidden trauma or mental illness.
+"""
+
+            answer, source = ask_ai_audio(
+                voice,
+                prompt,
+            )
+
+            st.markdown("### 🤖 Ayna Voice Interpretation")
+
+            st.write(answer)
+
+            st.caption(source)
+
+            speak(
+                answer,
+                "voice_mood_output",
+            )
+
+
+# =========================================================
+# AI MOOD & BEHAVIOUR
+# =========================================================
+
+elif st.session_state.page == "AI Mood & Behaviour":
+
+    st.subheader("🧠 AI Mood & Behaviour Lab")
+
+    st.caption(
+        "Self-report + optional voice/text interpretation."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+
+        stress = st.slider(
+            "Stress",
+            0,
+            10,
+            5,
+        )
+
+        attention = st.slider(
+            "Attention",
+            0,
+            10,
+            5,
+        )
+
+        energy = st.slider(
+            "Energy",
+            0,
+            10,
+            5,
+        )
+
+        mood = st.slider(
+            "Mood",
+            0,
+            10,
+            5,
+        )
+
+    with c2:
+
+        sleep = st.slider(
+            "Sleep quality",
+            0,
+            10,
+            5,
+        )
+
+        motivation = st.slider(
+            "Motivation",
+            0,
+            10,
+            5,
+        )
+
+        emojis = st.multiselect(
+            "Optional emojis",
+            [
+                "😊",
+                "😌",
+                "😐",
+                "😟",
+                "😔",
+                "😤",
+                "😴",
+                "😂",
+                "❤️",
+                "🔥",
+                "🤔",
+                "🙏",
+            ],
+        )
+
+    text = st.text_area(
+        "Optional description",
+        height=110,
+    )
+
+    try:
+        voice = st.audio_input(
+            "Optional voice",
+            key="mood_voice",
+        )
+    except Exception:
+        voice = None
+
+    if st.button(
+        "🧠 SEND TO AYNA",
+        type="primary",
+        use_container_width=True,
+    ):
+
+        voice_observation = ""
+
+        if voice:
+
+            voice_observation, _ = ask_ai_audio(
+                voice,
+                """
+                Describe only observable communication characteristics
+                and expressed affect in this voice. Do not diagnose.
+                Do not infer sensitive personal traits.
+                """,
+            )
+
+        prompt = f"""
+Interpret this self-report educationally.
+
+Stress: {stress}/10
+Attention: {attention}/10
+Energy: {energy}/10
+Mood: {mood}/10
+Sleep: {sleep}/10
+Motivation: {motivation}/10
+Emojis: {" ".join(emojis)}
+
+Text:
+{text}
+
+Voice observation:
+{voice_observation}
+
+Return:
+- one suitable emoji
+- concise interpretation
+- possible cognitive/behavioural context
+- uncertainty/limitation
+
+Do not diagnose.
+"""
+
+        answer, source = ask_ai(
+            prompt,
+            max_tokens=450,
+        )
+
+        st.markdown(
+            "### 🤖 Ayna Interpretation"
+        )
+
+        st.write(answer)
+
+        st.caption(source)
+
+        speak(
+            answer,
+            "mood_output",
+        )
+
+        st.info(
+            "Self-report scores and AI interpretation are not "
+            "brain measurements or clinical assessments."
+        )
+
+
+# =========================================================
+# RESEARCH BOOK
+# =========================================================
+
+elif st.session_state.page == "Research Book":
+
+    st.subheader("📚 Cognitive Neuroscience Research Book")
+
+    st.caption(
+        "Search literature through Europe PMC."
+    )
+
+    topic = st.text_input(
+        "Research topic",
+        placeholder="working memory, dopamine, attention, neuroplasticity...",
+    )
+
+    years = st.selectbox(
+        "Date",
+        [
+            "All years",
+            "Last 5 years",
+            "Last 10 years",
+        ],
+    )
+
+    limit = st.selectbox(
+        "Number of papers",
+        [5, 10],
+    )
+
+    if st.button(
+        "🔎 Search Europe PMC",
+        type="primary",
+        use_container_width=True,
+    ):
+
+        if not topic.strip():
+
+            st.warning(
+                "Enter a research topic."
+            )
+
+        else:
+
+            query = topic.strip()
+
+            current_year = datetime.utcnow().year
+
+            if years == "Last 5 years":
+
+                query += (
+                    f" AND FIRST_PDATE:["
+                    f"{current_year-5}-01-01 TO "
+                    f"{current_year}-12-31]"
+                )
+
+            elif years == "Last 10 years":
+
+                query += (
+                    f" AND FIRST_PDATE:["
+                    f"{current_year-10}-01-01 TO "
+                    f"{current_year}-12-31]"
+                )
+
+            url = (
+                "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+                "?format=json"
+                f"&pageSize={limit}"
+                f"&query={urllib.parse.quote_plus(query)}"
+            )
+
+            try:
+
+                request = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent":
+                        "NEUROLENS Research Book"
+                    },
+                )
+
+                with st.spinner(
+                    "Searching literature..."
+                ):
+
+                    with urllib.request.urlopen(
+                        request,
+                        timeout=20,
+                    ) as response:
+
+                        data = json.loads(
+                            response.read().decode()
+                        )
+
+                results = (
+                    data.get(
+                        "resultList",
+                        {},
+                    ).get(
+                        "result",
+                        [],
+                    )
+                )
+
+                st.session_state.research_results = results
+
+                st.session_state.progress[
+                    "research"
+                ] += len(results)
+
+                st.success(
+                    f"{len(results)} paper(s) found."
+                )
+
+            except Exception as e:
+
+                st.error(
+                    "Research search failed."
+                )
+
+                st.caption(
+                    str(e)
+                )
+
+    for i, paper in enumerate(
+        st.session_state.research_results
+    ):
+
+        title = paper.get(
+            "title",
+            "Untitled",
+        )
+
+        with st.expander(
+            f"📄 {i+1}. {title}"
+        ):
+
+            st.write(
+                "**Authors:**",
+                paper.get(
+                    "authorString",
+                    "Not listed",
+                ),
+            )
+
+            st.write(
+                "**Journal:**",
+                paper.get(
+                    "journalTitle",
+                    "",
+                ),
+            )
+
+            st.write(
+                "**Year:**",
+                paper.get(
                     "pubYear",
                     "",
+                ),
+            )
+
+            abstract = paper.get(
+                "abstractText",
+                "",
+            )
+
+            if abstract:
+
+                st.markdown(
+                    "### Abstract"
                 )
 
-                pmid = paper.get(
-                    "pmid",
-                    "",
+                st.write(abstract)
+
+            pmid = paper.get(
+                "pmid"
+            )
+
+            if pmid:
+
+                st.link_button(
+                    "🔗 PubMed",
+                    f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                )
+
+            pmcid = paper.get(
+                "pmcid"
+            )
+
+            if pmcid:
+
+                st.link_button(
+                    "📖 Europe PMC",
+                    f"https://europepmc.org/articles/{pmcid}",
+                )
+
+            if st.button(
+                "🤖 Explain with Ayna",
+                key=f"explain_{i}",
+            ):
+
+                prompt = f"""
+Explain this research record.
+
+Title: {title}
+Authors: {paper.get('authorString','')}
+Journal: {paper.get('journalTitle','')}
+Year: {paper.get('pubYear','')}
+Abstract: {abstract}
+
+Explain:
+- research question
+- methods only if stated
+- main findings only if supported
+- limitations
+- relevance to cognitive neuroscience
+
+Do not invent missing information.
+"""
+
+                answer, source = ask_ai(
+                    prompt,
+                    max_tokens=650,
                 )
 
                 st.markdown(
-                    f"### {title}"
+                    "### 🧠 Ayna Explanation"
                 )
 
-                st.write(
-                    f"Year: {year} | PMID: {pmid}"
+                st.write(answer)
+
+                st.caption(source)
+
+                speak(
+                    answer,
+                    f"paper_voice_{i}",
                 )
 
-                if pmid:
-                    st.link_button(
-                        "Open Paper",
-                        f"https://europepmc.org/article/MED/{pmid}",
+            note = st.text_area(
+                "Research note",
+                key=f"note_{i}",
+            )
+
+            if st.button(
+                "💾 Save Note",
+                key=f"save_note_{i}",
+            ):
+
+                if note.strip():
+
+                    save_note(
+                        title,
+                        note,
                     )
 
-                if st.button(
-                    "AI Summary",
-                    key=f"summary_{pmid}",
-                ):
-
-                    summary = ask_ai(
-                        f"Summarize this research title scientifically:\n{title}",
-                        "Research Book",
+                    st.success(
+                        "Research note saved."
                     )
 
-                    st.write(summary)
 
-                st.divider()
-
-        except Exception as e:
-            st.error(
-                f"Research search error: {e}"
-            )
-
-    st.subheader(
-        "Research Notes"
-    )
-
-    title = st.text_input(
-        "Note title"
-    )
-
-    note = st.text_area(
-        "Research note"
-    )
-
-    if st.button(
-        "Save Research Note"
-    ):
-
-        if title and note:
-            save_note(
-                title,
-                note,
-            )
-            st.success(
-                "Research note saved."
-            )
-
-
-# ============================================================
+# =========================================================
 # BEHAVIOUR DECODING
-# ============================================================
+# =========================================================
 
-def consultation_page():
+elif st.session_state.page == "Behaviour Decoding":
 
-    st.header(
-        "🧠 Behaviour Decoding / 1-to-1"
-    )
+    st.subheader("🧠 Behaviour Decoding — 1-to-1 Session")
 
-    pricing = {
-        "20 minutes": 1000,
-        "30 minutes": 1500,
-        "45 minutes": 2000,
-    }
-
-    st.write(
-        "Educational discussion service"
-    )
-
-    duration = st.selectbox(
-        "Session",
-        list(pricing.keys()),
-    )
-
-    st.metric(
-        "Price",
-        f"PKR {pricing[duration]:,}",
+    st.caption(
+        "Educational cognitive/behaviour discussion. "
+        "Not diagnosis or forensic profiling."
     )
 
     name = st.text_input(
@@ -1774,76 +2736,138 @@ def consultation_page():
     )
 
     topic = st.text_area(
-        "Topic"
+        "Discussion topic",
+        height=100,
     )
 
-    payment_method = st.selectbox(
-        "Payment Method",
+    duration = st.selectbox(
+        "Session length",
         [
-            "Easypaisa",
-            "International payment",
+            "20 minutes — PKR 1,000",
+            "30 minutes — PKR 1,500",
+            "45 minutes — PKR 2,000",
         ],
     )
 
-    payment_reference = st.text_input(
+    amount = {
+        "20 minutes — PKR 1,000": 1000,
+        "30 minutes — PKR 1,500": 1500,
+        "45 minutes — PKR 2,000": 2000,
+    }[duration]
+
+    st.markdown(
+        f"### 💳 Amount: PKR {amount:,}"
+    )
+
+    payment_ref = st.text_input(
         "Payment reference"
     )
 
-    if st.button(
-        "Submit Request"
-    ):
-
-        conn = db()
-
-        conn.execute(
-            """
-            INSERT INTO consultations
-            (
-                created_at,
-                name,
-                contact,
-                topic,
-                duration,
-                payment_method,
-                payment_reference,
-                status
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                now(),
-                clean_text(name),
-                clean_text(contact),
-                clean_text(topic),
-                duration,
-                payment_method,
-                clean_text(payment_reference),
-                "Pending verification",
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-        st.success(
-            "Request submitted. Payment verification pending."
-        )
-
     st.info(
         "Automatic Easypaisa verification requires an official "
-        "merchant/API integration. This app does not fake payment verification."
+        "merchant/API integration. Until that exists, payment "
+        "verification remains manual."
     )
 
+    if st.button(
+        "📩 Submit Session Request",
+        type="primary",
+        use_container_width=True,
+    ):
 
-# ============================================================
+        if not name or not contact or not topic:
+
+            st.error(
+                "Complete the required fields."
+            )
+
+        else:
+
+            conn = db()
+
+            conn.execute(
+                """
+                INSERT INTO consultations
+                (name,contact,topic,duration,amount,payment_ref,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?)
+                """,
+                (
+                    name[:200],
+                    contact[:200],
+                    topic[:2000],
+                    duration,
+                    amount,
+                    payment_ref[:300],
+                    "Pending Verification",
+                    datetime.now().isoformat(
+                        timespec="seconds"
+                    ),
+                ),
+            )
+
+            conn.commit()
+            conn.close()
+
+            st.success(
+                "Request submitted. Payment status is Pending Verification."
+            )
+
+    st.divider()
+
+    st.markdown(
+        "### 🎙️ Voice Behaviour Interpretation"
+    )
+
+    try:
+        voice = st.audio_input(
+            "Send a voice sample",
+            key="behaviour_voice",
+        )
+    except Exception:
+        voice = None
+
+    if voice:
+
+        if st.button(
+            "🧠 Analyse Communication",
+            use_container_width=True,
+        ):
+
+            answer, source = ask_ai_audio(
+                voice,
+                """
+                Analyse observable communication characteristics
+                in this recording.
+
+                Return:
+                - emoji
+                - apparent expressed affect
+                - communication style
+                - uncertainty
+
+                Do not diagnose.
+                Do not infer hidden personality, criminality,
+                mental illness or sensitive traits.
+                """,
+            )
+
+            st.write(answer)
+
+            st.caption(source)
+
+            speak(
+                answer,
+                "behaviour_voice_output",
+            )
+
+
+# =========================================================
 # BRAIN EXERCISES
-# ============================================================
+# =========================================================
 
-def exercises_page():
+elif st.session_state.page == "Brain Exercises":
 
-    st.header(
-        "🎯 Brain Exercises"
-    )
+    st.subheader("🧠 Brain Exercises")
 
     exercise = st.selectbox(
         "Exercise",
@@ -1858,574 +2882,509 @@ def exercises_page():
 
     if exercise == "Working Memory":
 
-        sequence = "581936"
-
-        st.write(
-            "Memorize:"
+        st.info(
+            "Memorize: 3 8 1 6 4 9"
         )
-
-        st.code(sequence)
 
         answer = st.text_input(
-            "Enter sequence"
+            "Recall sequence"
         )
 
-        if st.button(
-            "Check"
-        ):
+        if st.button("Check Memory"):
 
-            score = (
-                100
-                if answer == sequence
-                else 0
+            correct = (
+                answer.replace(" ", "")
+                == "381649"
             )
 
-            st.metric(
-                "Score",
-                score,
-            )
+            if correct:
+                st.success("Correct!")
+            else:
+                st.warning("Not quite.")
 
-            save_activity(
-                "Exercise",
-                exercise,
-                score,
-                answer,
-            )
-
-    elif exercise == "Pattern Recognition":
-
-        st.write(
-            "2 → 4 → 8 → 16 → ?"
-        )
-
-        answer = st.number_input(
-            "Answer",
-            min_value=0,
-            value=0,
-        )
-
-        if st.button(
-            "Check Pattern"
-        ):
-
-            score = (
-                100
-                if answer == 32
-                else 0
-            )
-
-            st.metric(
-                "Score",
-                score,
-            )
-
-            save_activity(
-                "Exercise",
-                exercise,
-                score,
-                str(answer),
-            )
-
-    elif exercise == "Decision Challenge":
-
-        answer = st.radio(
-            "Choose",
-            [
-                "PKR 1,000 now",
-                "PKR 1,500 after 30 days",
-            ],
-        )
-
-        if st.button(
-            "Save Decision"
-        ):
-
-            save_activity(
-                "Exercise",
-                exercise,
-                None,
-                answer,
-            )
-
-            st.success(
-                "Decision saved."
-            )
+            st.session_state.progress[
+                "games"
+            ] += 1
 
     elif exercise == "Attention":
 
         st.write(
-            "Find X:"
+            "Find every X:"
         )
 
-        symbols = [
-            "O", "O", "O",
-            "O", "X", "O",
-            "O", "O", "O",
-        ]
+        st.markdown(
+            "A X K P X R M X Q T X"
+        )
 
-        cols = st.columns(3)
+        answer = st.number_input(
+            "How many X?",
+            0,
+            20,
+            0,
+        )
 
-        for i, value in enumerate(symbols):
+        if st.button("Check Attention"):
 
-            with cols[i % 3]:
+            if answer == 4:
+                st.success("Correct!")
+            else:
+                st.warning("Expected 4.")
 
-                if st.button(
-                    value,
-                    key=f"attention_ex_{i}",
-                    use_container_width=True,
-                ):
+            st.session_state.progress[
+                "games"
+            ] += 1
 
-                    score = (
-                        100
-                        if value == "X"
-                        else 0
-                    )
+    elif exercise == "Pattern Recognition":
 
-                    st.metric(
-                        "Score",
-                        score,
-                    )
+        st.markdown(
+            "### 2 → 4 → 8 → 16 → ?"
+        )
 
-                    save_activity(
-                        "Exercise",
-                        exercise,
-                        score,
-                        value,
-                    )
+        answer = st.number_input(
+            "Answer",
+            0,
+            100,
+            0,
+        )
+
+        if st.button("Check Pattern"):
+
+            if answer == 32:
+                st.success("Correct!")
+            else:
+                st.warning("Try again.")
+
+            st.session_state.progress[
+                "games"
+            ] += 1
+
+    elif exercise == "Decision Challenge":
+
+        choice = st.radio(
+            "Choose:",
+            [
+                "Rs. 1,000 now",
+                "Rs. 1,500 after 30 days",
+            ],
+        )
+
+        if st.button("Record Decision"):
+
+            st.success(
+                "Decision recorded."
+            )
+
+            st.info(
+                "This illustrates delayed-reward decision-making."
+            )
+
+            st.session_state.progress[
+                "games"
+            ] += 1
 
     else:
 
+        st.write(
+            "When the screen says GO, press the button."
+        )
+
         if "reaction_start" not in st.session_state:
 
-            st.write(
-                "Press Start, then press Stop."
+            st.session_state.reaction_start = None
+
+        if st.button(
+            "START",
+            use_container_width=True,
+        ):
+
+            st.session_state.reaction_start = (
+                time.perf_counter()
             )
 
-            if st.button(
-                "Start Reaction Test"
-            ):
+            st.success(
+                "GO — press STOP now!"
+            )
 
-                st.session_state.reaction_start = time.perf_counter()
-                st.success(
-                    "GO!"
-                )
+        if st.button(
+            "STOP",
+            use_container_width=True,
+        ):
 
-        else:
+            if st.session_state.reaction_start:
 
-            if st.button(
-                "STOP!"
-            ):
-
-                elapsed = (
+                rt = (
                     time.perf_counter()
                     - st.session_state.reaction_start
                 )
 
-                ms = elapsed * 1000
-
                 st.metric(
-                    "Reaction Time",
-                    f"{ms:.0f} ms",
-                )
-
-                save_activity(
-                    "Exercise",
-                    exercise,
-                    ms,
                     "Reaction time",
+                    f"{rt:.3f} sec",
                 )
 
-                del st.session_state.reaction_start
+                st.session_state.progress[
+                    "games"
+                ] += 1
+
+                st.session_state.reaction_start = None
 
 
-# ============================================================
-# BRAIN JOURNEY
-# ============================================================
+# =========================================================
+# DAILY EXPERIMENT
+# =========================================================
 
-def brain_journey():
+elif st.session_state.page == "Daily Experiment":
 
-    st.header(
-        "🧠 Visual Brain Journey"
-    )
+    st.subheader("🧪 Daily Cognitive Experiment")
 
-    region = st.selectbox(
-        "Brain System",
-        list(BRAIN_REGIONS.keys()),
-    )
+    day = datetime.now().timetuple().tm_yday
+
+    experiments = [
+        (
+            "Attention",
+            "How many X are present?  X A M X P Q X R",
+            "3",
+        ),
+        (
+            "Memory",
+            "Remember: 8 4 2 9 1",
+            "84291",
+        ),
+        (
+            "Pattern",
+            "Continue: 3, 6, 12, 24, ?",
+            "48",
+        ),
+    ]
+
+    domain, question, expected = experiments[
+        day % len(experiments)
+    ]
 
     st.markdown(
-        f"""
-        <div class="card">
-        <h2>{region}</h2>
-        <p>{BRAIN_REGIONS[region]}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"### {domain}"
     )
 
-    st.caption(
-        "NEUROLENS conceptual educational visualization."
+    st.write(question)
+
+    answer = st.text_input(
+        "Your answer"
+    )
+
+    if st.button(
+        "Submit Daily Experiment",
+        type="primary",
+    ):
+
+        correct = (
+            answer.replace(" ", "").lower()
+            == expected.lower()
+        )
+
+        if correct:
+            st.success("🎉 Correct!")
+        else:
+            st.warning(
+                f"Expected: {expected}"
+            )
+
+        st.session_state.daily_done = True
+
+        st.session_state.progress[
+            "experiments"
+        ] += 1
+
+        save_activity(
+            "Daily Experiment",
+            100 if correct else 0,
+            domain,
+        )
+
+    st.info(
+        "Daily experiments are educational practice tasks, "
+        "not clinical or neurological tests."
     )
 
 
-# ============================================================
+# =========================================================
 # PROGRESS
-# ============================================================
+# =========================================================
 
-def progress_page():
+elif st.session_state.page == "My Progress":
 
-    st.header(
-        "📊 My Progress"
+    st.subheader("📊 My Progress")
+
+    p = st.session_state.progress
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    c1.metric(
+        "Experiments",
+        p["experiments"],
     )
 
-    activity = get_table(
-        "SELECT * FROM activity ORDER BY id DESC"
+    c2.metric(
+        "Games",
+        p["games"],
     )
 
-    ai = get_table(
-        "SELECT * FROM ai_requests ORDER BY id DESC"
+    c3.metric(
+        "Puzzles",
+        p["puzzles"],
     )
 
-    notes = get_table(
-        "SELECT * FROM research_notes ORDER BY id DESC"
+    c4.metric(
+        "Research",
+        p["research"],
     )
 
-    consultations = get_table(
-        "SELECT * FROM consultations ORDER BY id DESC"
+    c5.metric(
+        "AI Requests",
+        p["ai"],
     )
 
-    c1, c2, c3, c4 = st.columns(4)
+    if go:
 
-    with c1:
-        st.metric(
-            "Activities",
-            len(activity),
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Bar(
+                x=[
+                    "Experiments",
+                    "Games",
+                    "Puzzles",
+                    "Research",
+                    "AI",
+                ],
+                y=[
+                    p["experiments"],
+                    p["games"],
+                    p["puzzles"],
+                    p["research"],
+                    p["ai"],
+                ],
+            )
         )
 
-    with c2:
-        st.metric(
-            "AI Requests",
-            len(ai),
+        fig.update_layout(
+            title="NEUROLENS Activity",
+            height=350,
         )
 
-    with c3:
-        st.metric(
-            "Research Notes",
-            len(notes),
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
         )
 
-    with c4:
-        st.metric(
-            "Consultations",
-            len(consultations),
+    st.markdown("### 🏆 Achievements")
+
+    achievements = []
+
+    if p["games"] >= 1:
+        achievements.append(
+            "🎮 First Cognitive Game"
         )
 
-    if not activity.empty:
+    if p["experiments"] >= 1:
+        achievements.append(
+            "🧪 First Experiment"
+        )
 
-        scores = activity[
-            activity["score"].notna()
-        ]
+    if p["puzzles"] >= 1:
+        achievements.append(
+            "🧩 First Brain Puzzle"
+        )
 
-        if not scores.empty:
+    if p["research"] >= 1:
+        achievements.append(
+            "📚 Research Explorer"
+        )
 
-            st.subheader(
-                "Score History"
+    if p["ai"] >= 1:
+        achievements.append(
+            "🤖 Asked Ayna"
+        )
+
+    if achievements:
+
+        for item in achievements:
+            st.markdown(
+                f'<span class="badge">{item}</span>',
+                unsafe_allow_html=True,
             )
 
-            st.line_chart(
-                scores[
-                    ["created_at", "score"]
-                ].set_index("created_at")
-            )
+    else:
 
-    st.subheader(
-        "Recent Activity"
-    )
-
-    st.dataframe(
-        activity.head(30),
-        use_container_width=True,
-    )
-
-    excel = make_excel()
-
-    st.download_button(
-        "📥 Download NEUROLENS Excel",
-        excel,
-        "neurolens_data.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-
-# ============================================================
-# SECURITY
-# ============================================================
-
-def security_page():
-
-    st.header(
-        "🔒 Security & Privacy Center"
-    )
+        st.info(
+            "Complete an activity to unlock achievements."
+        )
 
     st.markdown(
-        """
-### API Key Protection
-
-Gemini API key should remain inside:
-
-`.streamlit/secrets.toml`
-
-Never put it directly inside `app.py`.
-
-### PIN Security
-
-Private Ask Ayna uses salted PBKDF2-HMAC-SHA256.
-
-### Input Sanitization
-
-User text is cleaned before database storage and AI prompts.
-
-### AI Limitations
-
-NEUROLENS does not use AI to diagnose users.
-
-### EEG Privacy
-
-EEG data should be treated as sensitive research/biometric data.
-Do not upload or share it without appropriate consent and security.
-
-### Eye Tracking Privacy
-
-Webcam-derived gaze information can be sensitive.
-Only collect what is necessary and explain the purpose to participants.
-
-### Scientific Limitation
-
-NEUROLENS is an educational/research prototype.
-Webcam gaze estimation is not equivalent to laboratory eye tracking,
-and cognitive games do not directly measure brain activity.
-"""
+        "### 🧠 Puzzle Bests"
     )
 
+    c1, c2, c3 = st.columns(3)
 
-# ============================================================
-# SETTINGS
-# ============================================================
-
-def settings_page():
-
-    st.header(
-        "⚙️ Settings"
+    c1.metric(
+        "Best Score",
+        st.session_state.puzzle_best_score,
     )
 
-    st.selectbox(
-        "Language",
-        [
-            "English",
-            "Roman English",
-            "Urdu",
-        ],
-    )
-
-    model = get_secret(
-        "GEMINI_MODEL",
-        "gemini-2.5-flash",
-    )
-
-    st.write(
-        f"AI Model: `{model}`"
-    )
-
-    st.write(
-        "Gemini configured:",
-        bool(
-            get_secret("GEMINI_API_KEY")
+    c2.metric(
+        "Best Time",
+        (
+            f"{st.session_state.puzzle_best_time}s"
+            if st.session_state.puzzle_best_time
+            else "—"
         ),
     )
 
-    if st.button(
-        "Reset Session Progress"
-    ):
-
-        keys = list(
-            st.session_state.keys()
-        )
-
-        for key in keys:
-
-            if key.startswith(
-                "reaction"
-            ):
-                del st.session_state[key]
-
-        st.success(
-            "Temporary session state reset."
-        )
-
-
-# ============================================================
-# DIAGNOSTICS
-# ============================================================
-
-def diagnostics():
-
-    st.header(
-        "🛠️ System Diagnostics"
+    c3.metric(
+        "Fewest Moves",
+        (
+            st.session_state.puzzle_best_moves
+            if st.session_state.puzzle_best_moves
+            else "—"
+        ),
     )
 
-    checks = {
-        "Gemini SDK": GEMINI_AVAILABLE,
-        "BrainFlow": BRAINFLOW_AVAILABLE,
-        "OpenCV": CV_AVAILABLE,
-        "MediaPipe": MEDIAPIPE_AVAILABLE,
-        "WebRTC": WEBRTC_AVAILABLE,
-    }
 
-    for name, value in checks.items():
+# =========================================================
+# SECURITY
+# =========================================================
 
-        if value:
-            st.success(
-                f"PASS — {name}"
-            )
-        else:
-            st.warning(
-                f"NOT AVAILABLE — {name}"
-            )
+elif st.session_state.page == "Security & Privacy":
 
-    st.subheader(
-        "BrainFlow Boards Detected"
-    )
-
-    st.json(
-        board_candidates()
-    )
-
-    if st.button(
-        "Test Gemini"
-    ):
-
-        response = ask_ai(
-            "Reply with: NEUROLENS AI connection test successful.",
-            "Diagnostics",
-        )
-
-        st.write(response)
-
-    if st.button(
-        "Test Europe PMC"
-    ):
-
-        try:
-
-            import requests
-
-            r = requests.get(
-                "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
-                params={
-                    "query": "cognitive neuroscience",
-                    "format": "json",
-                    "pageSize": 1,
-                },
-                timeout=10,
-            )
-
-            st.success(
-                f"Europe PMC HTTP {r.status_code}"
-            )
-
-        except Exception as e:
-            st.error(str(e))
-
-
-# ============================================================
-# HOME
-# ============================================================
-
-def home():
-
-    st.markdown(
-        '<div class="neuro-title">🧠 NEUROLENS</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="neuro-sub">'
-        "Explore cognition, behavior & the brain"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.divider()
+    st.subheader("🔐 Security & Privacy Center")
 
     st.markdown(
         """
-## Welcome to NEUROLENS
+        ### API Key Protection
 
-An educational cognitive neuroscience platform combining:
+        - Gemini API key should stay in Streamlit Secrets.
+        - Never put the real API key directly in `app.py`.
+        - Do not expose API keys in screenshots or GitHub.
 
-🧠 Cognitive experiments  
-👁️ Webcam-based gaze estimation  
-🧠 Real / synthetic EEG  
-🤖 AI cognitive explanations  
-📚 Research discovery  
-📊 Progress tracking  
-🔐 Privacy tools
-"""
+        ### AI Protection
+
+        - Session AI request limit is enabled.
+        - Inputs are length-limited.
+        - AI prompts contain safety constraints.
+
+        ### Private Ask Ayna
+
+        - PIN is hashed with PBKDF2-HMAC-SHA256.
+        - Private chat is session-level.
+        - Do not use it for highly sensitive clinical or financial data.
+
+        ### Voice
+
+        Voice interpretation is an AI-assisted interpretation and is
+        not a clinical emotion detector.
+
+        ### EEG
+
+        Synthetic EEG is simulated. Real EEG requires compatible
+        hardware and a properly configured BrainFlow connection.
+
+        ### Eye Tracking
+
+        Webcam gaze estimation is not equivalent to research-grade
+        eye tracking hardware.
+
+        ### Payment
+
+        Automatic Easypaisa verification requires an official merchant/API
+        integration. A payment reference alone does not prove payment.
+        """
     )
 
-    st.info(
-        "For real EEG, connect compatible hardware to the machine "
-        "running the BrainFlow backend."
+
+# =========================================================
+# SETTINGS
+# =========================================================
+
+elif st.session_state.page == "Settings":
+
+    st.subheader("⚙️ Settings")
+
+    st.write(
+        "**AI model:**",
+        MODEL,
     )
 
-
-# ============================================================
-# ROUTER
-# ============================================================
-
-pages = {
-    "🏠 Home": home,
-    "🧪 Virtual Cognitive Lab": cognitive_lab,
-    "👁️ AI Eye Tracking": eye_tracking_page,
-    "🧠 EEG / Biosignal Lab": eeg_page,
-    "🧠 Brain Journey": brain_journey,
-    "🧩 Brain Puzzle": puzzle_page,
-    "🤖 Ask Ayna": ask_ayna_page,
-    "🔐 Private Ask Ayna": private_ask_page,
-    "😊 Mood & Behaviour": mood_page,
-    "📚 Research Book": research_book,
-    "🧠 Behaviour Decoding": consultation_page,
-    "🎯 Brain Exercises": exercises_page,
-    "📊 My Progress": progress_page,
-    "🔒 Security & Privacy": security_page,
-    "⚙️ Settings": settings_page,
-    "🛠️ Diagnostics": diagnostics,
-}
-
-with st.sidebar:
-
-    st.markdown(
-        "## 🧠 NEUROLENS"
+    st.write(
+        "**Gemini connection:**",
+        "Connected"
+        if api_key()
+        else "Not configured",
     )
 
-    st.caption(
-        "Cognitive Neuroscience × AI"
+    st.write(
+        "**Brain image:**",
+        "Found"
+        if BRAIN_PATH
+        else "Missing",
     )
 
-    selected_page = st.radio(
-        "Navigate",
-        list(pages.keys()),
+    st.write(
+        "**Ayna reboot video:**",
+        "Found"
+        if REBOOT_VIDEO
+        else "Optional / missing",
+    )
+
+    st.write(
+        "**Lab video:**",
+        "Found"
+        if LAB_VIDEO
+        else "Optional / missing",
+    )
+
+    st.write(
+        "**Brain journey video:**",
+        "Found"
+        if BRAIN_VIDEO
+        else "Optional / missing",
     )
 
     st.divider()
 
-    st.caption(
-        "Created by Ayna Jaffri"
-    )
+    if st.button(
+        "🗑️ Reset Session Progress",
+        use_container_width=True,
+    ):
 
-    st.caption(
-        "Educational / research prototype"
-    )
+        keys = [
+            "progress",
+            "messages",
+            "private_messages",
+            "research_results",
+            "experiment_history",
+        ]
+
+        for key in keys:
+
+            if key == "progress":
+                st.session_state[key] = default_progress()
+
+            else:
+                st.session_state[key] = []
+
+        st.success(
+            "Session progress reset."
+        )
+
+        st.rerun()
 
 
-pages[selected_page]()
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.divider()
+
+st.caption(
+    "NEUROLENS • Cognitive Neuroscience Education • "
+    "Created by Ayna Jaffri"
+)
