@@ -1,5 +1,5 @@
 streamlit>=1.58,<1.64
-supabase>=2.0.0
+supabase>=2.27.0
 streamlit-dnd==0.2.0
 google-genai>=1.0.0
 streamlit-webrtc>=0.47.7
