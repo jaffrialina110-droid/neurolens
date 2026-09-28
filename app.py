@@ -6293,7 +6293,7 @@ selected_page = render_sidebar()
 
 if selected_page == "🏠 Home":
 
-    page_home()
+    page_welcome()
 
 
 elif selected_page == "🧠 Brain Journey":
