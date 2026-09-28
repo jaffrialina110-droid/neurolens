@@ -7587,7 +7587,7 @@ def page_neurosocial():
 
             streaks = db_select(
                 "friend_streaks",
-                filters={
+                {
                     "user1_id": uid,
                     "user2_id": fid,
                 },
@@ -7613,8 +7613,18 @@ def page_neurosocial():
                 if streaks
                 else 0
             )
-
             st.metric(
                 f"🔥 @{fname}",
                 count,
-                     
+
+
+                
+
+
+
+
+
+
+
+
+
