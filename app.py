@@ -6303,7 +6303,7 @@ elif selected_page == "🧠 Brain Journey":
 
 elif selected_page == "🔬 Cognitive Lab":
 
-    page_cognitive_lab()
+    page_lab()
 
 
 elif selected_page == "🧩 Brain Puzzle":
