@@ -6318,7 +6318,7 @@ elif selected_page == "🎙️ Voice Mood":
 
 elif selected_page == "😊 Mood & Feelings":
 
-    page_mood_feelings()
+    page_mood_behaviour()
 
 
 elif selected_page == "🎮 Cognitive Games":
