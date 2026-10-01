@@ -1149,13 +1149,10 @@ def page_challenges():
 
             if answer.strip() == numbers:
 
-                
-
-      
 
 
 
-)
                 
                         "exercise": challenge,
                         "score":
+
