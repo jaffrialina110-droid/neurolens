@@ -1148,7 +1148,7 @@ def page_challenges():
         if st.button("Check Memory"):
 
             if answer.strip() == numbers:
-
+st.success("Correct!")
 
 
 
