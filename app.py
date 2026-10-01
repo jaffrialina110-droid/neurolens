@@ -1150,8 +1150,12 @@ def page_challenges():
             if answer.strip() == numbers:
 
                 st.success("Correct!")
-
-                st.session_state.exercise_scores.append(
-                    {
+st.session_state.exercise_scores.append(
+    {
+        "exercise": challenge,
+        "score": 1
+    }
+)
+                
                         "exercise": challenge,
                         "score":
