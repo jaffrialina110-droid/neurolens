@@ -1151,7 +1151,7 @@ def page_challenges():
 
                 
 
-  st.session_state.exercise_scores.append({"exercise": challenge, "score": 1})      
+      
 
 
 
