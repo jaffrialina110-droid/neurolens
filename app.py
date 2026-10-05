@@ -162,7 +162,7 @@ def ai_available():
         genai
         and GEMINI_API_KEY
     )   unsafe_allow_html=True,
-)
+
 
 
 # ============================================================
