@@ -44,12 +44,7 @@ except Exception:
     go = None
 
 try:
-    from streamlit_dnd import dnd
-except Exception:
-    dnd = None
-
-
-# ============================================================
+    # ============================================================
 # CONFIG
 # ============================================================
 
@@ -65,27 +60,60 @@ CREATOR = "Ayna Jaffri"
 TAGLINE = "Explore cognition, behavior & the brain"
 AI_SESSION_LIMIT = 20
 
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))
 
-GEMINI_API_KEY = st.secrets.get(
-    "GEMINI_API_KEY",
-    os.getenv("GEMINI_API_KEY", "")
+def get_secret(name, default=""):
+    try:
+        value = st.secrets.get(name, None)
+        if value is not None:
+            return str(value).strip()
+    except Exception:
+        pass
+
+    return str(os.getenv(name, default) or "").strip()
+
+
+# ============================================================
+# SUPABASE
+# ============================================================
+
+SUPABASE_URL = get_secret("SUPABASE_URL")
+
+SUPABASE_KEY = (
+    get_secret("SUPABASE_KEY")
+    or get_secret("SUPABASE_PUBLISHABLE_KEY")
+    or get_secret("SUPABASE_ANON_KEY")
 )
 
-GEMINI_MODEL = st.secrets.get(
+
+# ============================================================
+# GEMINI
+# ============================================================
+
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
+
+GEMINI_MODEL = get_secret(
     "GEMINI_MODEL",
-    os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    "gemini-2.5-flash",
 )
 
-EASYPAISA_NUMBER = st.secrets.get(
-    "EASYPAISA_NUMBER",
-    os.getenv("EASYPAISA_NUMBER", "")
+
+# ============================================================
+# PAYMENT
+# ============================================================
+
+EASYPAISA_NUMBER = get_secret("EASYPAISA_NUMBER")
+
+EASYPAISA_NAME = get_secret(
+    "EASYPAISA_NAME",
+    CREATOR,
 )
 
-INTERNATIONAL_PAYMENT_URL = st.secrets.get(
-    "INTERNATIONAL_PAYMENT_URL",
-    os.getenv("INTERNATIONAL_PAYMENT_URL", "")
+INTERNATIONAL_PAYMENT_URL = get_secret(
+    "INTERNATIONAL_PAYMENT_URL"
+)
+
+PAYMENT_ADMIN_KEY = get_secret(
+    "PAYMENT_ADMIN_KEY"
 )
 
 
@@ -98,7 +126,10 @@ supabase_error = ""
 
 if create_client and SUPABASE_URL and SUPABASE_KEY:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase = create_client(
+            SUPABASE_URL,
+            SUPABASE_KEY,
+        )
     except Exception as exc:
         supabase_error = str(exc)
 
@@ -107,130 +138,30 @@ def supabase_available():
     return supabase is not None
 
 
+def supabase_status():
+    if supabase_available():
+        return "🟢 Connected"
+
+    if not SUPABASE_URL:
+        return "🔴 SUPABASE_URL missing"
+
+    if not SUPABASE_KEY:
+        return "🔴 SUPABASE_KEY missing"
+
+    if not create_client:
+        return "🔴 supabase package missing"
+
+    if supabase_error:
+        return "🔴 Connection failed"
+
+    return "🔴 Not connected"
+
+
 def ai_available():
-    return bool(genai and GEMINI_API_KEY)
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-DEFAULTS = {
-    "page": "NeuroWorld",
-    "auth_user": None,
-    "ai_requests": 0,
-    "ai_history": [],
-    "ayna_messages": [],
-    "private_unlocked": False,
-    "private_pin_hash": "",
-    "private_pin_salt": "",
-    "lab_result": None,
-    "lab_history": [],
-    "experiment_started": False,
-    "experiment_completed": False,
-    "experiment_score": 0,
-    "puzzle_tiles": [],
-    "puzzle_grid": 3,
-    "puzzle_moves": 0,
-    "puzzle_completed": False,
-    "puzzle_started_at": 0,
-    "puzzle_elapsed": 0,
-    "puzzle_round": 1,
-    "puzzle_best_time": None,
-    "exercise_scores": [],
-    "voice_result": None,
-    "face_result": None,
-    "combined_result": None,
-    "research_results": [],
-    "research_notes": [],
-    "games_completed": 0,
-    "achievements": [],
-    "social_selected_friend": None,
-}
-
-for key, value in DEFAULTS.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-
-# ============================================================
-# CSS
-# ============================================================
-
-st.markdown(
-    """
-<style>
-html, body, [class*="css"] {
-    font-family: Inter, system-ui, sans-serif;
-}
-
-.neuro-hero {
-    padding: 28px;
-    border-radius: 24px;
-    background:
-        radial-gradient(circle at 20% 20%, rgba(80,150,255,.35), transparent 30%),
-        radial-gradient(circle at 80% 30%, rgba(190,90,255,.28), transparent 30%),
-        linear-gradient(135deg,#081329,#101d3d 55%,#17112d);
-    border: 1px solid rgba(255,255,255,.12);
-    margin-bottom: 22px;
-}
-
-.neuro-title {
-    font-size: 42px;
-    font-weight: 800;
-    letter-spacing: 2px;
-}
-
-.neuro-subtitle {
-    font-size: 20px;
-    opacity: .9;
-    margin-top: 5px;
-}
-
-.world-card {
-    padding: 22px;
-    border-radius: 20px;
-    background: rgba(255,255,255,.055);
-    border: 1px solid rgba(255,255,255,.10);
-    margin-bottom: 14px;
-}
-
-.brain-character {
-    text-align:center;
-    font-size:100px;
-    padding:20px;
-}
-
-.robot-character {
-    text-align:center;
-    font-size:82px;
-}
-
-.lab-card {
-    padding:20px;
-    border-radius:20px;
-    background:linear-gradient(135deg,#09182d,#122b42);
-    border:1px solid rgba(100,200,255,.2);
-}
-
-.small-muted {
-    opacity:.7;
-    font-size:13px;
-}
-
-.result-box {
-    padding:18px;
-    border-radius:18px;
-    background:rgba(255,255,255,.05);
-    border:1px solid rgba(255,255,255,.1);
-}
-
-button {
-    border-radius:12px !important;
-}
-</style>
-""",
-    unsafe_allow_html=True,
+    return bool(
+        genai
+        and GEMINI_API_KEY
+    )   unsafe_allow_html=True,
 )
 
 
