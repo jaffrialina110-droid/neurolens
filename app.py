@@ -3962,6 +3962,1587 @@ def page_research():
 # ============================================================
 # END OF PART 3
 # ============================================================
+# ============================================================
+# PART 4 — PRIVATE AYNA + NEUROSOCIAL + CONSULTATION
+#           + PROGRESS + SECURITY + SETTINGS + ACCOUNT
+#           + FINAL ROUTER
+# ============================================================
 
+
+# ------------------------------------------------------------
+# PRIVATE AYNA
+# ------------------------------------------------------------
+
+def hash_private_pin(pin, salt=None):
+    """
+    Secure local PIN hashing using PBKDF2-HMAC-SHA256.
+    The raw PIN is never stored in session state.
+    """
+
+    pin = clean_text(pin, 20)
+
+    if salt is None:
+        salt = os.urandom(16)
+
+    hashed = hashlib.pbkdf2_hmac(
+        "sha256",
+        pin.encode("utf-8"),
+        salt,
+        120000,
+    )
+
+    return (
+        base64.b64encode(salt).decode("utf-8"),
+        base64.b64encode(hashed).decode("utf-8"),
+    )
+
+
+def verify_private_pin(pin, stored_salt, stored_hash):
+
+    try:
+
+        salt = base64.b64decode(
+            stored_salt.encode("utf-8")
+        )
+
+        expected = base64.b64decode(
+            stored_hash.encode("utf-8")
+        )
+
+        actual = hashlib.pbkdf2_hmac(
+            "sha256",
+            clean_text(pin, 20).encode("utf-8"),
+            salt,
+            120000,
+        )
+
+        return hmac.compare_digest(
+            actual,
+            expected,
+        )
+
+    except Exception:
+
+        return False
+
+
+def page_private():
+
+    st.title("🔐 Private Ayna")
+
+    st.caption(
+        "A private local-session space for personal notes and conversations."
+    )
+
+    if "private_pin_hash" not in st.session_state:
+        st.session_state.private_pin_hash = None
+
+    if "private_pin_salt" not in st.session_state:
+        st.session_state.private_pin_salt = None
+
+    if "private_unlocked" not in st.session_state:
+        st.session_state.private_unlocked = False
+
+    if "private_messages" not in st.session_state:
+        st.session_state.private_messages = []
+
+    # --------------------------------------------------------
+    # PIN SETUP
+    # --------------------------------------------------------
+
+    if not st.session_state.private_pin_hash:
+
+        st.info(
+            "Create a 4–6 digit PIN for this private session."
+        )
+
+        new_pin = st.text_input(
+            "Create PIN",
+            type="password",
+            max_chars=6,
+            key="private_new_pin",
+        )
+
+        confirm_pin = st.text_input(
+            "Confirm PIN",
+            type="password",
+            max_chars=6,
+            key="private_confirm_pin",
+        )
+
+        if st.button(
+            "🔒 Create Private PIN",
+            type="primary",
+            use_container_width=True,
+            key="create_private_pin",
+        ):
+
+            if (
+                not new_pin.isdigit()
+                or not 4 <= len(new_pin) <= 6
+            ):
+
+                st.error(
+                    "PIN must contain 4–6 digits."
+                )
+
+            elif new_pin != confirm_pin:
+
+                st.error(
+                    "PINs do not match."
+                )
+
+            else:
+
+                salt, hashed = hash_private_pin(
+                    new_pin
+                )
+
+                st.session_state.private_pin_salt = salt
+                st.session_state.private_pin_hash = hashed
+                st.session_state.private_unlocked = True
+
+                st.success(
+                    "🔐 Private Ayna is now unlocked."
+                )
+
+                st.rerun()
+
+        return
+
+    # --------------------------------------------------------
+    # LOCKED STATE
+    # --------------------------------------------------------
+
+    if not st.session_state.private_unlocked:
+
+        st.subheader("🔒 Private space locked")
+
+        pin = st.text_input(
+            "Enter PIN",
+            type="password",
+            max_chars=6,
+            key="private_unlock_pin",
+        )
+
+        if st.button(
+            "Unlock",
+            type="primary",
+            use_container_width=True,
+            key="unlock_private",
+        ):
+
+            if verify_private_pin(
+                pin,
+                st.session_state.private_pin_salt,
+                st.session_state.private_pin_hash,
+            ):
+
+                st.session_state.private_unlocked = True
+
+                st.success(
+                    "Unlocked."
+                )
+
+                st.rerun()
+
+            else:
+
+                st.error(
+                    "Incorrect PIN."
+                )
+
+        return
+
+    # --------------------------------------------------------
+    # UNLOCKED
+    # --------------------------------------------------------
+
+    st.success(
+        "🔓 Private Ayna unlocked for this session."
+    )
+
+    if st.button(
+        "🔒 Lock Private Ayna",
+        use_container_width=True,
+        key="lock_private",
+    ):
+
+        st.session_state.private_unlocked = False
+        st.rerun()
+
+    st.divider()
+
+    st.subheader("💬 Private Conversation")
+
+    for message in st.session_state.private_messages:
+
+        role = message.get(
+            "role",
+            "assistant",
+        )
+
+        content = message.get(
+            "content",
+            "",
+        )
+
+        with st.chat_message(role):
+            st.write(content)
+
+    private_question = st.chat_input(
+        "Write privately to Ayna...",
+        key="private_chat_input",
+    )
+
+    if private_question:
+
+        private_question = clean_text(
+            private_question,
+            3000,
+        )
+
+        st.session_state.private_messages.append(
+            {
+                "role": "user",
+                "content": private_question,
+            }
+        )
+
+        if ai_available():
+
+            prompt = f"""
+You are Private Ayna inside NEUROLENS.
+
+Respond in a calm, supportive and privacy-conscious way.
+
+Do not:
+- diagnose
+- claim certainty about emotions
+- claim to read minds
+- provide dangerous instructions
+- invent facts
+
+User message:
+{private_question}
+"""
+
+            answer = ai_generate(prompt)
+
+        else:
+
+            answer = (
+                "Private Ayna is available, but Gemini AI "
+                "is not connected right now."
+            )
+
+        st.session_state.private_messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+            }
+        )
+
+        user_id = current_user_id()
+
+        if user_id:
+
+            db_insert(
+                "private_ayna_messages",
+                {
+                    "user_id": user_id,
+                    "role": "user",
+                    "content": private_question,
+                },
+            )
+
+        st.rerun()
+
+
+# ------------------------------------------------------------
+# NEUROSOCIAL
+# ------------------------------------------------------------
+
+def page_social():
+
+    st.title("🌐 NeuroSocial")
+
+    st.caption(
+        "A neuroscience-inspired social space for sharing ideas, "
+        "research interests and cognitive challenges."
+    )
+
+    tabs = st.tabs(
+        [
+            "👤 Profile",
+            "📝 Post",
+            "🏆 Challenges",
+            "📚 Research",
+        ]
+    )
+
+    # --------------------------------------------------------
+    # PROFILE
+    # --------------------------------------------------------
+
+    with tabs[0]:
+
+        st.subheader("👤 NeuroLens Profile")
+
+        display_name = st.text_input(
+            "Display name",
+            value=st.session_state.get(
+                "display_name",
+                "Ayna Jaffri",
+            ),
+            key="social_display_name",
+        )
+
+        bio = st.text_area(
+            "Bio",
+            value=st.session_state.get(
+                "profile_bio",
+                "Independent cognitive neuroscience researcher",
+            ),
+            key="social_bio",
+        )
+
+        if st.button(
+            "Save Profile",
+            type="primary",
+            use_container_width=True,
+            key="save_social_profile",
+        ):
+
+            st.session_state.display_name = clean_text(
+                display_name,
+                100,
+            )
+
+            st.session_state.profile_bio = clean_text(
+                bio,
+                500,
+            )
+
+            user_id = current_user_id()
+
+            if user_id:
+
+                db_insert(
+                    "profiles",
+                    {
+                        "id": user_id,
+                        "display_name": st.session_state.display_name,
+                        "bio": st.session_state.profile_bio,
+                    },
+                )
+
+            st.success(
+                "Profile information saved."
+            )
+
+    # --------------------------------------------------------
+    # POST
+    # --------------------------------------------------------
+
+    with tabs[1]:
+
+        st.subheader("📝 Share a NeuroThought")
+
+        post = st.text_area(
+            "Write something about cognition, behaviour or neuroscience",
+            max_chars=1000,
+            key="social_post",
+        )
+
+        if st.button(
+            "Publish",
+            type="primary",
+            use_container_width=True,
+            key="publish_social_post",
+        ):
+
+            post = clean_text(
+                post,
+                1000,
+            )
+
+            if not post:
+
+                st.warning(
+                    "Write something first."
+                )
+
+            else:
+
+                st.session_state.social_posts.insert(
+                    0,
+                    {
+                        "author": st.session_state.get(
+                            "display_name",
+                            "Ayna Jaffri",
+                        ),
+                        "text": post,
+                        "time": time.time(),
+                    },
+                )
+
+                st.success(
+                    "Your NeuroThought was added."
+                )
+
+    # --------------------------------------------------------
+    # CHALLENGES
+    # --------------------------------------------------------
+
+    with tabs[2]:
+
+        st.subheader("🏆 NeuroChallenges")
+
+        st.write(
+            "Challenge your friends or compare your own "
+            "cognitive-task performance."
+        )
+
+        st.info(
+            "Social challenge infrastructure is connected to the "
+            "NEUROLENS database when Supabase is configured."
+        )
+
+    # --------------------------------------------------------
+    # RESEARCH
+    # --------------------------------------------------------
+
+    with tabs[3]:
+
+        st.subheader("📚 Research Sharing")
+
+        st.write(
+            "Share research topics, literature interests and "
+            "scientific questions with the NeuroLens community."
+        )
+
+        research_topic = st.text_input(
+            "Research topic",
+            key="social_research_topic",
+        )
+
+        if st.button(
+            "Save Research Interest",
+            use_container_width=True,
+            key="save_research_interest",
+        ):
+
+            if research_topic.strip():
+
+                st.session_state.research_notes.append(
+                    {
+                        "title": research_topic,
+                        "abstract": (
+                            "Saved as a NeuroSocial research interest."
+                        ),
+                    }
+                )
+
+                st.success(
+                    "Research interest saved."
+                )
+
+
+# ------------------------------------------------------------
+# BEHAVIOUR DECODING / CONSULTATION
+# ------------------------------------------------------------
+
+CONSULTATION_PRICES = {
+    "20 min": {
+        "PKR": "PKR 1,000",
+        "International": "$8",
+    },
+    "30 min": {
+        "PKR": "PKR 1,500",
+        "International": "$10",
+    },
+    "45 min": {
+        "PKR": "PKR 2,000",
+        "International": "$12",
+    },
+    "Advice / Consultation": {
+        "PKR": "PKR 1,500",
+        "International": "$10",
+    },
+}
+
+
+def page_behaviour():
+
+    st.title("🧩 Behaviour Decoding")
+
+    st.caption(
+        "Educational behaviour and cognition discussion sessions."
+    )
+
+    st.warning(
+        "NEUROLENS sessions are educational and research-oriented. "
+        "They are not a substitute for medical, psychiatric or "
+        "clinical diagnosis."
+    )
+
+    st.subheader("💬 Session options")
+
+    session_type = st.selectbox(
+        "Choose session",
+        list(CONSULTATION_PRICES.keys()),
+        key="consultation_type",
+    )
+
+    price = CONSULTATION_PRICES[
+        session_type
+    ]
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.metric(
+            "Pakistan",
+            price["PKR"],
+        )
+
+    with col2:
+
+        st.metric(
+            "International",
+            price["International"],
+        )
+
+    st.divider()
+
+    name = st.text_input(
+        "Name",
+        max_chars=100,
+        key="consult_name",
+    )
+
+    contact = st.text_input(
+        "Email / Contact",
+        max_chars=150,
+        key="consult_contact",
+    )
+
+    topic = st.text_area(
+        "Topic / question",
+        max_chars=1500,
+        key="consult_topic",
+    )
+
+    payment_method = st.selectbox(
+        "Payment method",
+        [
+            "Easypaisa",
+            "International Payment",
+            "Other / discuss",
+        ],
+        key="consult_payment_method",
+    )
+
+    payment_reference = st.text_input(
+        "Payment reference / transaction ID",
+        max_chars=150,
+        key="consult_payment_reference",
+    )
+
+    if payment_method == "Easypaisa":
+
+        easypaisa_number = (
+            os.getenv(
+                "EASYPAISA_NUMBER",
+                "",
+            )
+            or ""
+        )
+
+        if not easypaisa_number:
+
+            st.info(
+                "Easypaisa merchant details have not been configured yet."
+            )
+
+        else:
+
+            st.info(
+                f"Easypaisa payment number: {easypaisa_number}"
+            )
+
+    elif payment_method == "International Payment":
+
+        payment_url = (
+            os.getenv(
+                "INTERNATIONAL_PAYMENT_URL",
+                "",
+            )
+            or ""
+        )
+
+        if payment_url:
+
+            st.markdown(
+                f"[Open International Payment Page]({payment_url})"
+            )
+
+        else:
+
+            st.info(
+                "International payment URL has not been configured yet."
+            )
+
+    st.divider()
+
+    if st.button(
+        "📩 Submit Consultation Request",
+        type="primary",
+        use_container_width=True,
+        key="submit_consultation",
+    ):
+
+        if not name.strip():
+
+            st.error(
+                "Please enter your name."
+            )
+
+        elif not contact.strip():
+
+            st.error(
+                "Please enter a contact method."
+            )
+
+        elif not topic.strip():
+
+            st.error(
+                "Please enter your topic."
+            )
+
+        else:
+
+            request_data = {
+                "name": clean_text(
+                    name,
+                    100,
+                ),
+                "contact": clean_text(
+                    contact,
+                    150,
+                ),
+                "topic": clean_text(
+                    topic,
+                    1500,
+                ),
+                "session_type": session_type,
+                "payment_method": payment_method,
+                "payment_reference": clean_text(
+                    payment_reference,
+                    150,
+                ),
+                "payment_status": "Pending verification",
+                "submitted_at": time.time(),
+            }
+
+            st.session_state.consultation_requests.append(
+                request_data
+            )
+
+            user_id = current_user_id()
+
+            if user_id:
+
+                db_insert(
+                    "consultation_requests",
+                    {
+                        "user_id": user_id,
+                        "request_data": request_data,
+                        "status": "pending",
+                    },
+                )
+
+            st.success(
+                "Request submitted. Payment status is currently "
+                "Pending verification."
+            )
+
+            st.info(
+                "Automatic Easypaisa verification requires an official "
+                "merchant/API integration. A payment reference alone "
+                "is not treated as verified."
+            )
+
+
+# ------------------------------------------------------------
+# PROGRESS
+# ------------------------------------------------------------
+
+def page_progress():
+
+    st.title("📈 My Progress")
+
+    st.caption(
+        "Your NEUROLENS learning and interaction history."
+    )
+
+    lab_count = len(
+        st.session_state.get(
+            "lab_results",
+            [],
+        )
+    )
+
+    exercise_count = len(
+        st.session_state.get(
+            "exercise_scores",
+            [],
+        )
+    )
+
+    puzzle_count = 0
+
+    if st.session_state.get(
+        "puzzle_completed",
+        False,
+    ):
+        puzzle_count = 1
+
+    ai_count = st.session_state.get(
+        "ai_requests",
+        0,
+    )
+
+    research_count = len(
+        st.session_state.get(
+            "research_notes",
+            [],
+        )
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.metric(
+            "🧪 Lab Sessions",
+            lab_count,
+        )
+
+        st.metric(
+            "🧠 Exercises",
+            exercise_count,
+        )
+
+        st.metric(
+            "🧩 Puzzle Completions",
+            puzzle_count,
+        )
+
+    with col2:
+
+        st.metric(
+            "🤖 AI Requests",
+            ai_count,
+        )
+
+        st.metric(
+            "🔬 Research Notes",
+            research_count,
+        )
+
+    st.divider()
+
+    st.subheader("🏆 Achievements")
+
+    achievements = []
+
+    if exercise_count >= 1:
+        achievements.append(
+            "🧠 First Cognitive Challenge"
+        )
+
+    if lab_count >= 1:
+        achievements.append(
+            "🧪 First Lab Session"
+        )
+
+    if research_count >= 1:
+        achievements.append(
+            "🔬 Research Explorer"
+        )
+
+    if ai_count >= 5:
+        achievements.append(
+            "🤖 AI Explorer"
+        )
+
+    if puzzle_count >= 1:
+        achievements.append(
+            "🧩 Puzzle Solver"
+        )
+
+    if not achievements:
+
+        st.info(
+            "Complete your first activity to unlock achievements."
+        )
+
+    else:
+
+        for achievement in achievements:
+
+            st.success(
+                achievement
+            )
+
+    st.divider()
+
+    st.subheader("📊 Exercise Performance")
+
+    scores = st.session_state.get(
+        "exercise_scores",
+        [],
+    )
+
+    if scores:
+
+        try:
+
+            if pd is not None and px is not None:
+
+                frame = pd.DataFrame(scores)
+
+                if not frame.empty:
+
+                    fig = px.bar(
+                        frame,
+                        x="exercise",
+                        y="score",
+                        title="Exercise scores",
+                        range_y=[0, 100],
+                    )
+
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                    )
+
+        except Exception:
+
+            st.info(
+                "Performance chart could not be rendered."
+            )
+
+    else:
+
+        st.info(
+            "Your exercise performance will appear here."
+        )
+
+    st.divider()
+
+    st.subheader("📝 Recent Research Notes")
+
+    for note in st.session_state.get(
+        "research_notes",
+        [],
+    )[-5:]:
+
+        st.markdown(
+            f"**{note.get('title','Research note')}**"
+        )
+
+
+# ------------------------------------------------------------
+# SECURITY & PRIVACY CENTER
+# ------------------------------------------------------------
+
+def page_security():
+
+    st.title("🛡️ Security & Privacy Center")
+
+    st.caption(
+        "Understand how NEUROLENS handles AI, account data and privacy."
+    )
+
+    st.subheader("🔑 API Key Protection")
+
+    st.write(
+        "Gemini API keys should be stored only in "
+        "Streamlit Secrets. They should never be hard-coded "
+        "into the public application."
+    )
+
+    st.subheader("🔐 PIN Security")
+
+    st.write(
+        "Private Ayna uses salted PBKDF2-HMAC-SHA256 hashing "
+        "for the session PIN. The raw PIN is not stored."
+    )
+
+    st.subheader("🤖 AI Safety")
+
+    st.write(
+        "AI responses are generated probabilistically. "
+        "NEUROLENS does not treat AI output as guaranteed truth."
+    )
+
+    st.subheader("🎭 Mood / Face Interpretation")
+
+    st.write(
+        "Voice and facial-expression analysis is limited to "
+        "AI-assisted interpretation of observable cues. "
+        "It is not mind-reading, personality analysis or diagnosis."
+    )
+
+    st.subheader("🧠 Cognitive Experiments")
+
+    st.write(
+        "NEUROLENS cognitive tasks are educational simulations. "
+        "They should not be described as EEG, fMRI or clinical "
+        "neuropsychological measurements."
+    )
+
+    st.subheader("💳 Payment Security")
+
+    st.write(
+        "A payment reference is not automatically considered "
+        "verified. Official payment-provider/API integration "
+        "is required for automated verification."
+    )
+
+    st.subheader("🗄️ Database")
+
+    st.write(
+        "When Supabase is configured, user-specific records can "
+        "be stored in the configured database tables."
+    )
+
+    st.subheader("⚠️ Important limitation")
+
+    st.write(
+        "No software system can guarantee absolute security. "
+        "Users should avoid entering passwords, financial secrets, "
+        "medical records or highly sensitive personal information "
+        "into ordinary AI conversations."
+    )
+
+
+# ------------------------------------------------------------
+# SETTINGS
+# ------------------------------------------------------------
+
+def page_settings():
+
+    st.title("⚙️ Settings")
+
+    st.caption(
+        "Configure your NEUROLENS experience."
+    )
+
+    st.subheader("🌐 Language")
+
+    language = st.selectbox(
+        "Interface language",
+        [
+            "English",
+            "Roman English",
+        ],
+        key="settings_language",
+    )
+
+    st.session_state.interface_language = language
+
+    st.subheader("🤖 AI Model")
+
+    current_model = GEMINI_MODEL
+
+    st.code(
+        current_model
+    )
+
+    st.caption(
+        "The model is controlled through Streamlit Secrets."
+    )
+
+    st.subheader("📊 AI Usage")
+
+    st.metric(
+        "AI requests this session",
+        st.session_state.get(
+            "ai_requests",
+            0,
+        ),
+    )
+
+    st.subheader("💳 Payment Configuration")
+
+    easypaisa_configured = bool(
+        os.getenv(
+            "EASYPAISA_NUMBER",
+            "",
+        )
+    )
+
+    international_configured = bool(
+        os.getenv(
+            "INTERNATIONAL_PAYMENT_URL",
+            "",
+        )
+    )
+
+    if easypaisa_configured:
+
+        st.success(
+            "Easypaisa configuration detected."
+        )
+
+    else:
+
+        st.warning(
+            "Easypaisa is not configured."
+        )
+
+    if international_configured:
+
+        st.success(
+            "International payment URL detected."
+        )
+
+    else:
+
+        st.warning(
+            "International payment URL is not configured."
+        )
+
+    st.divider()
+
+    st.subheader("♻️ Reset Session Progress")
+
+    st.write(
+        "This clears local session progress, challenge states "
+        "and temporary AI results."
+    )
+
+    if st.button(
+        "Reset Session Progress",
+        use_container_width=True,
+        key="reset_session_progress",
+    ):
+
+        keep_keys = {
+            "authenticated",
+            "user",
+            "page",
+            "display_name",
+            "interface_language",
+        }
+
+        for key in list(
+            st.session_state.keys()
+        ):
+
+            if key not in keep_keys:
+
+                try:
+                    del st.session_state[key]
+                except Exception:
+                    pass
+
+        st.success(
+            "Session progress reset."
+        )
+
+        st.rerun()
+
+
+# ------------------------------------------------------------
+# ACCOUNT
+# ------------------------------------------------------------
+
+def page_account():
+
+    st.title("👤 Account")
+
+    user = st.session_state.get(
+        "user"
+    )
+
+    if not user:
+
+        st.info(
+            "You are currently using NEUROLENS as a guest."
+        )
+
+        if st.button(
+            "Go to Account Login",
+            type="primary",
+            use_container_width=True,
+            key="go_account_login",
+        ):
+
+            st.session_state.page = "Account"
+            st.rerun()
+
+        return
+
+    email = user.get(
+        "email",
+        "",
+    )
+
+    st.subheader(
+        "Account information"
+    )
+
+    st.write(
+        f"**Email:** {email}"
+    )
+
+    st.write(
+        f"**User ID:** `{user.get('id','')}`"
+    )
+
+    st.divider()
+
+    st.subheader("🧠 Profile")
+
+    name = st.text_input(
+        "Display name",
+        value=st.session_state.get(
+            "display_name",
+            "Ayna Jaffri",
+        ),
+        key="account_display_name",
+    )
+
+    bio = st.text_area(
+        "Professional bio",
+        value=st.session_state.get(
+            "profile_bio",
+            "Independent cognitive neuroscience researcher",
+        ),
+        key="account_bio",
+    )
+
+    if st.button(
+        "Save Account Profile",
+        type="primary",
+        use_container_width=True,
+        key="save_account_profile",
+    ):
+
+        st.session_state.display_name = clean_text(
+            name,
+            100,
+        )
+
+        st.session_state.profile_bio = clean_text(
+            bio,
+            500,
+        )
+
+        if current_user_id():
+
+            db_insert(
+                "profiles",
+                {
+                    "id": current_user_id(),
+                    "display_name": st.session_state.display_name,
+                    "bio": st.session_state.profile_bio,
+                },
+            )
+
+        st.success(
+            "Profile saved."
+        )
+
+    st.divider()
+
+    if st.button(
+        "🚪 Log Out",
+        use_container_width=True,
+        key="account_logout",
+    ):
+
+        logout()
+
+
+# ------------------------------------------------------------
+# GUEST / ACCOUNT ROUTER
+# ------------------------------------------------------------
+
+def page_account_or_auth():
+
+    if st.session_state.get(
+        "authenticated",
+        False,
+    ):
+
+        page_account()
+
+    else:
+
+        page_auth()
+
+
+# ------------------------------------------------------------
+# FINAL PAGE ROUTER
+# ------------------------------------------------------------
+
+def render_page():
+
+    page = st.session_state.get(
+        "page",
+        "NeuroWorld",
+    )
+
+    if page == "NeuroWorld":
+
+        page_neuroworld()
+
+    elif page == "Cognitive Lab":
+
+        page_lab()
+
+    elif page == "Brain Journey":
+
+        page_brain_journey()
+
+    elif page == "Brain Challenges":
+
+        page_challenges()
+
+    elif page == "Brain Puzzle":
+
+        page_puzzle()
+
+    elif page == "Ask Ayna":
+
+        page_ask_ayna()
+
+    elif page == "AI Mood & Behaviour":
+
+        page_mood()
+
+    elif page == "Research World":
+
+        page_research()
+
+    elif page == "Private Ayna":
+
+        page_private()
+
+    elif page == "NeuroSocial":
+
+        page_social()
+
+    elif page == "Behaviour Decoding":
+
+        page_behaviour()
+
+    elif page == "My Progress":
+
+        page_progress()
+
+    elif page == "Security & Privacy":
+
+        page_security()
+
+    elif page == "Settings":
+
+        page_settings()
+
+    elif page == "Account":
+
+        page_account_or_auth()
+
+    else:
+
+        st.session_state.page = "NeuroWorld"
+
+        page_neuroworld()
+
+
+# ------------------------------------------------------------
+# MAIN APP
+# ------------------------------------------------------------
+
+def main():
+
+    # Safety initialization.
+    if "page" not in st.session_state:
+
+        st.session_state.page = "NeuroWorld"
+
+    if "authenticated" not in st.session_state:
+
+        st.session_state.authenticated = False
+
+    # --------------------------------------------------------
+    # SIDEBAR
+    # --------------------------------------------------------
+
+    with st.sidebar:
+
+        st.markdown(
+            """
+            <div style="
+                text-align:center;
+                padding:8px 0 15px 0;
+            ">
+                <div style="
+                    font-size:40px;
+                ">
+                    🧠
+                </div>
+                <div style="
+                    font-size:22px;
+                    font-weight:900;
+                ">
+                    NEUROLENS
+                </div>
+                <div style="
+                    font-size:12px;
+                    opacity:.7;
+                ">
+                    Explore cognition, behavior & the brain
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        if st.button(
+            "🌌 NeuroWorld",
+            use_container_width=True,
+            key="nav_world",
+        ):
+
+            st.session_state.page = "NeuroWorld"
+            st.rerun()
+
+        st.markdown(
+            "**🧪 Neuroscience**"
+        )
+
+        if st.button(
+            "🧪 Cognitive Lab",
+            use_container_width=True,
+            key="nav_lab",
+        ):
+
+            st.session_state.page = "Cognitive Lab"
+            st.rerun()
+
+        if st.button(
+            "🧠 Brain Journey",
+            use_container_width=True,
+            key="nav_journey",
+        ):
+
+            st.session_state.page = "Brain Journey"
+            st.rerun()
+
+        if st.button(
+            "🧩 Brain Puzzle",
+            use_container_width=True,
+            key="nav_puzzle",
+        ):
+
+            st.session_state.page = "Brain Puzzle"
+            st.rerun()
+
+        if st.button(
+            "🎯 Brain Challenges",
+            use_container_width=True,
+            key="nav_challenges",
+        ):
+
+            st.session_state.page = "Brain Challenges"
+            st.rerun()
+
+        st.markdown(
+            "**🤖 AI**"
+        )
+
+        if st.button(
+            "🤖 Ask Ayna",
+            use_container_width=True,
+            key="nav_ask",
+        ):
+
+            st.session_state.page = "Ask Ayna"
+            st.rerun()
+
+        if st.button(
+            "🎭 AI Mood & Behaviour",
+            use_container_width=True,
+            key="nav_mood",
+        ):
+
+            st.session_state.page = "AI Mood & Behaviour"
+            st.rerun()
+
+        st.markdown(
+            "**🌐 Neuro World**"
+        )
+
+        if st.button(
+            "🌐 NeuroSocial",
+            use_container_width=True,
+            key="nav_social",
+        ):
+
+            st.session_state.page = "NeuroSocial"
+            st.rerun()
+
+        if st.button(
+            "🧩 Behaviour Decoding",
+            use_container_width=True,
+            key="nav_behaviour",
+        ):
+
+            st.session_state.page = "Behaviour Decoding"
+            st.rerun()
+
+        if st.button(
+            "🔐 Private Ayna",
+            use_container_width=True,
+            key="nav_private",
+        ):
+
+            st.session_state.page = "Private Ayna"
+            st.rerun()
+
+        st.markdown(
+            "**🔬 Research**"
+        )
+
+        if st.button(
+            "🔬 Research World",
+            use_container_width=True,
+            key="nav_research",
+        ):
+
+            st.session_state.page = "Research World"
+            st.rerun()
+
+        if st.button(
+            "📈 My Progress",
+            use_container_width=True,
+            key="nav_progress",
+        ):
+
+            st.session_state.page = "My Progress"
+            st.rerun()
+
+        st.markdown(
+            "**⚙️ System**"
+        )
+
+        if st.button(
+            "🛡️ Security & Privacy",
+            use_container_width=True,
+            key="nav_security",
+        ):
+
+            st.session_state.page = "Security & Privacy"
+            st.rerun()
+
+        if st.button(
+            "⚙️ Settings",
+            use_container_width=True,
+            key="nav_settings",
+        ):
+
+            st.session_state.page = "Settings"
+            st.rerun()
+
+        if st.button(
+            "👤 Account",
+            use_container_width=True,
+            key="nav_account",
+        ):
+
+            st.session_state.page = "Account"
+            st.rerun()
+
+        st.divider()
+
+        if st.session_state.get(
+            "authenticated",
+            False,
+        ):
+
+            user = st.session_state.get(
+                "user",
+                {},
+            )
+
+            st.caption(
+                f"Signed in as {user.get('email','User')}"
+            )
+
+            if st.button(
+                "🚪 Log Out",
+                use_container_width=True,
+                key="sidebar_logout",
+            ):
+
+                logout()
+
+        else:
+
+            st.caption(
+                "Guest mode"
+            )
+
+    # --------------------------------------------------------
+    # PAGE
+    # --------------------------------------------------------
+
+    render_page()
+
+    # --------------------------------------------------------
+    # FOOTER
+    # --------------------------------------------------------
+
+    st.markdown(
+        """
+        <div style="
+            text-align:center;
+            margin-top:35px;
+            padding:20px 10px;
+            color:#7f8ea3;
+            font-size:12px;
+        ">
+            🧠 NEUROLENS · Explore cognition, behavior & the brain
+            <br>
+            Educational neuroscience + AI environment
+            <br>
+            AI-assisted results are probabilistic and not clinical diagnosis.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# START NEUROLENS
+# ============================================================
+
+if __name__ == "__main__":
+    main()
+
+
+# ============================================================
+# END OF PART 4
+# ============================================================
 
 
