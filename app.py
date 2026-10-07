@@ -1,16 +1,19 @@
 # ============================================================
-# NEUROLENS — FINAL BUILD
-# PART 1/4
-# Core + Database + AI + Auth + NeuroWorld
+# NEUROLENS
+# Explore cognition, behavior & the brain
+#
+# FRESH REBUILD — PART 1
 # ============================================================
 
 import os
 import re
 import json
 import time
+import base64
 import random
 import hashlib
-import secrets
+import hmac
+from pathlib import Path
 from datetime import datetime
 
 import streamlit as st
@@ -19,6 +22,7 @@ import streamlit.components.v1 as components
 
 # ============================================================
 # PAGE CONFIG
+# IMPORTANT: This must be the first Streamlit command.
 # ============================================================
 
 st.set_page_config(
@@ -34,14 +38,14 @@ st.set_page_config(
 # ============================================================
 
 try:
-    from PIL import Image
-except Exception:
-    Image = None
-
-try:
     import pandas as pd
 except Exception:
     pd = None
+
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 try:
     import plotly.express as px
@@ -54,16 +58,19 @@ except Exception:
     requests = None
 
 try:
+    from PIL import Image
+except Exception:
+    Image = None
+
+try:
     from supabase import create_client
 except Exception:
     create_client = None
 
 try:
     from google import genai
-    from google.genai import types
 except Exception:
     genai = None
-    types = None
 
 
 # ============================================================
@@ -71,35 +78,29 @@ except Exception:
 # ============================================================
 
 APP_NAME = "NEUROLENS"
-CREATOR = "Ayna Jaffri"
-TAGLINE = "Explore cognition, behavior & the brain"
+APP_TAGLINE = "Explore cognition, behavior & the brain"
+CREATOR_NAME = "Ayna Jaffri"
+PROFESSIONAL_ROLE = "Independent cognitive neuroscience researcher"
 
 
 # ============================================================
-# SECRETS
+# SAFE SECRETS
 # ============================================================
 
 def get_secret(name, default=""):
     try:
-        value = st.secrets.get(name, "")
-        if value:
-            return value
+        value = st.secrets.get(name, default)
+        if value is None:
+            return default
+        return str(value)
     except Exception:
-        pass
-
-    return os.getenv(name, default)
+        return default
 
 
 SUPABASE_URL = get_secret("SUPABASE_URL")
-
-SUPABASE_KEY = (
-    get_secret("SUPABASE_KEY")
-    or get_secret("SUPABASE_PUBLISHABLE_KEY")
-    or get_secret("SUPABASE_ANON_KEY")
-)
+SUPABASE_KEY = get_secret("SUPABASE_KEY")
 
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
-
 GEMINI_MODEL = get_secret(
     "GEMINI_MODEL",
     "gemini-2.5-flash",
@@ -125,10 +126,11 @@ PAYMENT_ADMIN_KEY = get_secret(
 supabase = None
 
 if (
-    create_client
+    create_client is not None
     and SUPABASE_URL
     and SUPABASE_KEY
 ):
+
     try:
         supabase = create_client(
             SUPABASE_URL,
@@ -144,10 +146,8 @@ if (
 
 gemini_client = None
 
-if (
-    genai
-    and GEMINI_API_KEY
-):
+if genai is not None and GEMINI_API_KEY:
+
     try:
         gemini_client = genai.Client(
             api_key=GEMINI_API_KEY
@@ -156,61 +156,466 @@ if (
         gemini_client = None
 
 
-def ai_available():
-    return bool(
-        gemini_client
-        and GEMINI_API_KEY
-    )
-
-
 # ============================================================
-# SESSION STATE
+# SESSION DEFAULTS
 # ============================================================
 
 DEFAULTS = {
     "page": "NeuroWorld",
-
+    "authenticated": False,
     "user": None,
-    "email": "",
 
+    # NeuroWorld
+    "world_stage": "welcome",
+
+    # Identity
+    "display_name": "Ayna Jaffri",
+    "profile_bio": PROFESSIONAL_ROLE,
+
+    # AI
     "ai_requests": 0,
-    "ai_limit": 20,
+    "ai_request_times": [],
+    "ai_request_history": [],
+    "ayna_messages": [],
 
-    "chat": [],
-
-    "lab_results": [],
-    "exercise_results": [],
-    "puzzle_results": [],
-    "research_notes": [],
-
+    # Voice / face
     "voice_result": None,
     "face_result": None,
 
-    "private_messages": [],
-    "private_unlocked": False,
-    "private_pin_hash": "",
-
+    # Lab
+    "lab_results": [],
+    "lab_history": [],
     "lab_experiment": "Attention",
+    "lab_character": "Researcher",
+    "lab_started": False,
+    "lab_completed": False,
     "lab_result": None,
 
-    "selected_brain_system": "Prefrontal Cortex",
+    # Brain Journey
+    "brain_journey_index": 0,
 
-    "puzzle_size": 3,
-    "puzzle_board": None,
-    "puzzle_solution": None,
-    "puzzle_moves": 0,
+    # Puzzle
+    "puzzle_grid": 3,
+    "puzzle_board": [],
+    "puzzle_solution": [],
     "puzzle_started": False,
-    "puzzle_finished": False,
+    "puzzle_completed": False,
+    "puzzle_moves": 0,
     "puzzle_start_time": None,
+    "puzzle_elapsed": 0,
 
-    "language": "English",
+    # Challenges
+    "exercise_scores": [],
+    "wm_sequence": "",
+    "wm_show": False,
+    "wm_score": None,
+    "attention_target": "",
+    "attention_options": [],
+    "attention_correct": None,
+    "pattern_question": None,
+    "stroop_item": None,
+    "reaction_started": False,
+    "reaction_start_time": None,
 
+    # Research
+    "research_results": [],
+    "research_notes": [],
+
+    # Private Ayna
+    "private_pin_hash": None,
+    "private_pin_salt": None,
+    "private_unlocked": False,
+    "private_messages": [],
+
+    # Social
+    "social_posts": [],
+    "social_notifications": [],
+
+    # Consultation
+    "consultation_requests": [],
+
+    # Settings
+    "interface_language": "English",
+
+    # Errors
     "last_error": "",
 }
 
+
 for key, value in DEFAULTS.items():
+
     if key not in st.session_state:
-        st.session_state[key] = value
+
+        if isinstance(value, list):
+            st.session_state[key] = []
+
+        elif isinstance(value, dict):
+            st.session_state[key] = {}
+
+        else:
+            st.session_state[key] = value
+
+
+# ============================================================
+# BASIC HELPERS
+# ============================================================
+
+def clean_text(value, max_length=2000):
+
+    if value is None:
+        return ""
+
+    value = str(value)
+
+    value = value.replace("\x00", "")
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value,
+    ).strip()
+
+    return value[:max_length]
+
+
+def current_user_id():
+
+    user = st.session_state.get(
+        "user"
+    )
+
+    if not user:
+        return None
+
+    return user.get("id")
+
+
+def current_user_email():
+
+    user = st.session_state.get(
+        "user"
+    )
+
+    if not user:
+        return ""
+
+    return user.get(
+        "email",
+        "",
+    )
+
+
+def safe_json(value):
+
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+        )
+    except Exception:
+        return "{}"
+
+
+# ============================================================
+# DATABASE HELPERS
+# ============================================================
+
+def db_insert(table, payload):
+
+    if supabase is None:
+        return None
+
+    try:
+
+        response = (
+            supabase
+            .table(table)
+            .insert(payload)
+            .execute()
+        )
+
+        return response
+
+    except Exception as exc:
+
+        st.session_state.last_error = str(
+            exc
+        )
+
+        return None
+
+
+def db_select(
+    table,
+    filters=None,
+    limit=50,
+):
+
+    if supabase is None:
+        return []
+
+    try:
+
+        query = supabase.table(
+            table
+        ).select("*")
+
+        filters = filters or {}
+
+        for column, value in filters.items():
+
+            query = query.eq(
+                column,
+                value,
+            )
+
+        response = (
+            query
+            .limit(limit)
+            .execute()
+        )
+
+        return response.data or []
+
+    except Exception as exc:
+
+        st.session_state.last_error = str(
+            exc
+        )
+
+        return []
+
+
+# ============================================================
+# ASSET SYSTEM
+# ============================================================
+
+APP_DIR = Path(__file__).resolve().parent
+
+ASSETS_DIR = APP_DIR / "assets"
+
+
+def find_asset(filename):
+
+    possible_paths = [
+        APP_DIR / filename,
+        ASSETS_DIR / filename,
+    ]
+
+    for path in possible_paths:
+
+        if path.exists():
+            return path
+
+    return None
+
+
+def image_exists(filename):
+
+    return find_asset(filename) is not None
+
+
+def show_asset(
+    filename,
+    width=None,
+    caption=None,
+):
+
+    path = find_asset(filename)
+
+    if path is None:
+
+        return False
+
+    try:
+
+        st.image(
+            str(path),
+            width=width,
+            caption=caption,
+        )
+
+        return True
+
+    except Exception:
+
+        return False
+
+
+def asset_data_uri(filename):
+
+    path = find_asset(filename)
+
+    if path is None:
+        return None
+
+    try:
+
+        suffix = path.suffix.lower()
+
+        mime = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+        }.get(
+            suffix,
+            "application/octet-stream",
+        )
+
+        encoded = base64.b64encode(
+            path.read_bytes()
+        ).decode("utf-8")
+
+        return f"data:{mime};base64,{encoded}"
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# AI HELPERS
+# ============================================================
+
+def ai_available():
+
+    return (
+        gemini_client is not None
+        and bool(GEMINI_API_KEY)
+    )
+
+
+def ai_limit_reached():
+
+    now = time.time()
+
+    recent = [
+        timestamp
+        for timestamp in st.session_state.ai_request_times
+        if now - timestamp < 60
+    ]
+
+    st.session_state.ai_request_times = recent
+
+    return len(recent) >= 10
+
+
+def register_ai_request():
+
+    now = time.time()
+
+    st.session_state.ai_request_times.append(
+        now
+    )
+
+    st.session_state.ai_requests += 1
+
+    st.session_state.ai_request_history.append(
+        {
+            "time": now,
+        }
+    )
+
+
+def ai_generate(
+    prompt,
+    max_output_tokens=1200,
+):
+
+    if not ai_available():
+
+        return (
+            "Gemini AI is not connected. "
+            "Please add GEMINI_API_KEY to Streamlit Secrets."
+        )
+
+    if ai_limit_reached():
+
+        return (
+            "AI request limit reached temporarily. "
+            "Please wait a moment and try again."
+        )
+
+    try:
+
+        register_ai_request()
+
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "max_output_tokens": max_output_tokens,
+            },
+        )
+
+        text = getattr(
+            response,
+            "text",
+            "",
+        )
+
+        return (
+            text.strip()
+            if text
+            else "No AI response was returned."
+        )
+
+    except Exception as exc:
+
+        st.session_state.last_error = str(
+            exc
+        )
+
+        return (
+            "I could not generate a reliable AI response right now."
+        )
+
+
+# ============================================================
+# BROWSER TEXT-TO-SPEECH
+# ============================================================
+
+def speak_text(text):
+
+    text = clean_text(
+        text,
+        5000,
+    )
+
+    if not text:
+        return
+
+    safe_text = json.dumps(
+        text,
+        ensure_ascii=False,
+    )
+
+    html = f"""
+    <script>
+    const text = {safe_text};
+
+    if ("speechSynthesis" in window) {{
+        window.speechSynthesis.cancel();
+
+        const utterance =
+            new SpeechSynthesisUtterance(text);
+
+        utterance.rate = 0.95;
+        utterance.pitch = 1.0;
+
+        window.speechSynthesis.speak(
+            utterance
+        );
+    }}
+    </script>
+    """
+
+    components.html(
+        html,
+        height=0,
+    )
 
 
 # ============================================================
@@ -219,438 +624,258 @@ for key, value in DEFAULTS.items():
 
 st.markdown(
     """
-<style>
+    <style>
 
-.stApp {
-    background:
-        radial-gradient(
-            circle at 15% 10%,
-            rgba(74, 144, 226, .16),
-            transparent 28%
-        ),
-        radial-gradient(
-            circle at 85% 15%,
-            rgba(147, 51, 234, .14),
-            transparent 30%
-        ),
-        linear-gradient(
-            135deg,
-            #050816 0%,
-            #081225 50%,
-            #050816 100%
-        );
-}
-
-.block-container {
-    max-width: 1250px;
-    padding-top: 1.5rem;
-}
-
-.hero {
-    padding: 30px;
-    border-radius: 28px;
-    background:
-        linear-gradient(
-            135deg,
-            rgba(15, 28, 65, .96),
-            rgba(28, 35, 80, .90)
-        );
-    border: 1px solid rgba(255,255,255,.08);
-    margin-bottom: 22px;
-}
-
-.hero h1 {
-    margin: 0;
-    font-size: clamp(38px, 7vw, 72px);
-    font-weight: 900;
-    letter-spacing: -3px;
-}
-
-.hero p {
-    color: #aebbd4;
-    font-size: 18px;
-}
-
-.neuro-card {
-    background: rgba(14, 25, 50, .82);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 22px;
-    padding: 22px;
-    margin-bottom: 16px;
-}
-
-.world-card {
-    background:
-        radial-gradient(
-            circle at center,
-            rgba(66, 211, 255, .13),
-            transparent 45%
-        ),
-        rgba(7, 16, 36, .88);
-    border: 1px solid rgba(88, 210, 255, .14);
-    border-radius: 30px;
-    padding: 36px 24px;
-    text-align: center;
-}
-
-.brain-guide {
-    font-size: 115px;
-    line-height: 1;
-    animation: brainFloat 3s ease-in-out infinite;
-}
-
-.robot-guide {
-    font-size: 70px;
-    margin-top: 12px;
-}
-
-@keyframes brainFloat {
-    0%,100% {
-        transform: translateY(0);
+    .stApp {
+        background:
+            radial-gradient(
+                circle at 20% 10%,
+                rgba(79, 70, 229, .10),
+                transparent 30%
+            ),
+            linear-gradient(
+                135deg,
+                #050816,
+                #081126
+            );
     }
 
-    50% {
-        transform: translateY(-10px);
-    }
-}
-
-.muted {
-    color: #8f9db7;
-    font-size: 14px;
-}
-
-.success-panel {
-    padding: 18px;
-    border-radius: 18px;
-    background: rgba(40, 200, 130, .12);
-    border: 1px solid rgba(40, 200, 130, .30);
-}
-
-.warning-panel {
-    padding: 18px;
-    border-radius: 18px;
-    background: rgba(255, 190, 50, .10);
-    border: 1px solid rgba(255, 190, 50, .25);
-}
-
-@media (max-width: 700px) {
-
-    .block-container {
-        padding-left: 12px;
-        padding-right: 12px;
+    .main .block-container {
+        max-width: 1180px;
+        padding-top: 2rem;
+        padding-bottom: 4rem;
     }
 
-    .hero {
-        padding: 22px 16px;
-        border-radius: 20px;
+    .nl-card {
+        padding: 22px;
+        border-radius: 22px;
+        border: 1px solid rgba(148,163,184,.18);
+        background: rgba(15,23,42,.72);
+        margin: 10px 0;
     }
 
-    .hero h1 {
+    .nl-hero {
+        padding: 32px;
+        border-radius: 30px;
+        border: 1px solid rgba(129,140,248,.25);
+        background:
+            radial-gradient(
+                circle at 20% 20%,
+                rgba(99,102,241,.28),
+                transparent 35%
+            ),
+            linear-gradient(
+                135deg,
+                #111a46,
+                #07101f
+            );
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .nl-hero-title {
+        font-size: clamp(28px, 5vw, 52px);
+        font-weight: 900;
+        margin: 8px 0;
+    }
+
+    .nl-hero-subtitle {
+        color: #c7d2fe;
+        font-size: 16px;
+        line-height: 1.7;
+    }
+
+    .brain-character {
+        font-size: 88px;
+        line-height: 1;
+        margin: 8px;
+    }
+
+    .robot-character {
+        font-size: 64px;
+        line-height: 1;
+    }
+
+    .feature-grid {
+        display: grid;
+        grid-template-columns:
+            repeat(
+                auto-fit,
+                minmax(220px, 1fr)
+            );
+        gap: 16px;
+        margin-top: 18px;
+    }
+
+    .feature-card {
+        padding: 20px;
+        border-radius: 22px;
+        background: rgba(255,255,255,.045);
+        border: 1px solid rgba(255,255,255,.09);
+        min-height: 150px;
+    }
+
+    .feature-icon {
         font-size: 42px;
-        letter-spacing: -2px;
+        margin-bottom: 8px;
     }
 
-    .hero p {
-        font-size: 15px;
+    .feature-title {
+        font-size: 19px;
+        font-weight: 800;
+        margin-bottom: 6px;
     }
 
-    .brain-guide {
-        font-size: 85px;
+    .feature-text {
+        color: #aebbd4;
+        font-size: 14px;
+        line-height: 1.55;
     }
 
-    .robot-guide {
-        font-size: 55px;
+    .small-muted {
+        color: #94a3b8;
+        font-size: 13px;
     }
-}
 
-</style>
-""",
+    @media (max-width: 700px) {
+
+        .main .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+        .nl-hero {
+            padding: 22px 16px;
+        }
+
+        .brain-character {
+            font-size: 70px;
+        }
+
+        .robot-character {
+            font-size: 52px;
+        }
+    }
+
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# GENERAL HELPERS
+# AUTH
 # ============================================================
 
-def clean_text(value, max_length=3000):
-    if value is None:
-        return ""
+def logout():
 
-    text = str(value)
+    st.session_state.authenticated = False
+    st.session_state.user = None
+    st.session_state.page = "NeuroWorld"
 
-    text = re.sub(
-        r"<script.*?>.*?</script>",
-        "",
-        text,
-        flags=re.I | re.S,
-    )
+    st.rerun()
 
-    text = re.sub(
-        r"<.*?>",
-        "",
-        text,
-    )
-
-    return text.strip()[:max_length]
-
-
-def current_user_id():
-    user = st.session_state.get("user")
-
-    if isinstance(user, dict):
-        return user.get("id")
-
-    return None
-
-
-def db_insert(table, payload):
-    if not supabase:
-        return None
-
-    try:
-        return (
-            supabase
-            .table(table)
-            .insert(payload)
-            .execute()
-        )
-    except Exception:
-        return None
-
-
-def db_select(table, limit=50):
-    if not supabase:
-        return []
-
-    try:
-        result = (
-            supabase
-            .table(table)
-            .select("*")
-            .limit(limit)
-            .execute()
-        )
-
-        return result.data or []
-
-    except Exception:
-        return []
-
-
-def asset_path(filename):
-    locations = [
-        filename,
-        os.path.join(
-            "assets",
-            filename,
-        ),
-    ]
-
-    for path in locations:
-        if os.path.exists(path):
-            return path
-
-    return None
-
-
-def show_image(
-    filename,
-    width=600,
-):
-    path = asset_path(filename)
-
-    if path and Image:
-
-        try:
-            st.image(
-                path,
-                width=width,
-            )
-            return True
-        except Exception:
-            pass
-
-    return False
-
-
-def safe_json(text):
-    if not text:
-        return {}
-
-    text = re.sub(
-        r"```(?:json)?",
-        "",
-        str(text),
-        flags=re.I,
-    )
-
-    text = text.replace(
-        "```",
-        "",
-    ).strip()
-
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-
-    match = re.search(
-        r"\{.*\}",
-        text,
-        flags=re.S,
-    )
-
-    if match:
-
-        try:
-            return json.loads(
-                match.group(0)
-            )
-        except Exception:
-            pass
-
-    return {}
-
-
-# ============================================================
-# AI HELPERS
-# ============================================================
-
-def ai_limit_reached():
-    return (
-        st.session_state.ai_requests
-        >= st.session_state.ai_limit
-    )
-
-
-def record_ai_request():
-    st.session_state.ai_requests += 1
-
-    if (
-        st.session_state.ai_requests
-        > st.session_state.ai_limit
-    ):
-        st.session_state.ai_requests = (
-            st.session_state.ai_limit
-        )
-
-
-def ai_generate(
-    prompt,
-    image_bytes=None,
-    mime_type=None,
-):
-    if not ai_available():
-        return ""
-
-    if ai_limit_reached():
-        return (
-            "AI request limit reached "
-            "for this session."
-        )
-
-    try:
-
-        contents = [prompt]
-
-        if (
-            image_bytes
-            and types
-        ):
-            contents.append(
-                types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type=(
-                        mime_type
-                        or "image/jpeg"
-                    ),
-                )
-            )
-
-        response = (
-            gemini_client
-            .models
-            .generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-            )
-        )
-
-        record_ai_request()
-
-        return (
-            getattr(
-                response,
-                "text",
-                "",
-            )
-            or ""
-        )
-
-    except Exception as exc:
-
-        st.session_state.last_error = (
-            str(exc)
-        )
-
-        return ""
-
-
-def speak_text(text):
-    text = clean_text(
-        text,
-        2500,
-    )
-
-    components.html(
-        f"""
-        <script>
-        const speechText = {json.dumps(text)};
-
-        if ("speechSynthesis" in window) {{
-            window.speechSynthesis.cancel();
-
-            const utterance =
-                new SpeechSynthesisUtterance(
-                    speechText
-                );
-
-            utterance.rate = 0.95;
-            utterance.pitch = 1.05;
-
-            window.speechSynthesis.speak(
-                utterance
-            );
-        }}
-        </script>
-        """,
-        height=10,
-    )
-
-
-# ============================================================
-# AUTH PAGE
-# ============================================================
 
 def page_auth():
 
-    st.markdown(
-        f"""
-        <div class="hero">
-            <h1>🧠 {APP_NAME}</h1>
-            <p>{TAGLINE}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.title("👤 NEUROLENS Account")
+
+    st.caption(
+        "Create an account or continue exploring as a guest."
     )
 
-    tab_signup, tab_login = st.tabs(
+    if supabase is None:
+
+        st.info(
+            "Supabase is not connected. Guest mode is available."
+        )
+
+        if st.button(
+            "Continue as Guest",
+            type="primary",
+            use_container_width=True,
+            key="guest_mode",
+        ):
+
+            st.session_state.authenticated = False
+            st.session_state.page = "NeuroWorld"
+            st.rerun()
+
+        return
+
+    tab_login, tab_signup = st.tabs(
         [
+            "Login",
             "Create Account",
-            "Sign In",
         ]
     )
+
+    with tab_login:
+
+        email = st.text_input(
+            "Email",
+            key="login_email",
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password",
+        )
+
+        if st.button(
+            "Login",
+            type="primary",
+            use_container_width=True,
+            key="login_button",
+        ):
+
+            if not email or not password:
+
+                st.error(
+                    "Enter your email and password."
+                )
+
+            else:
+
+                try:
+
+                    response = (
+                        supabase.auth.sign_in_with_password(
+                            {
+                                "email": email.strip(),
+                                "password": password,
+                            }
+                        )
+                    )
+
+                    if response.user:
+
+                        st.session_state.user = {
+                            "id": response.user.id,
+                            "email": response.user.email,
+                        }
+
+                        st.session_state.authenticated = True
+                        st.session_state.page = "NeuroWorld"
+
+                        st.success(
+                            "Login successful."
+                        )
+
+                        st.rerun()
+
+                    else:
+
+                        st.error(
+                            "Login could not be completed."
+                        )
+
+                except Exception:
+
+                    st.error(
+                        "Login failed. Check your email and password."
+                    )
 
     with tab_signup:
 
@@ -669,147 +894,70 @@ def page_auth():
             "Create Account",
             type="primary",
             use_container_width=True,
+            key="signup_button",
         ):
 
-            if not signup_email:
-                st.warning(
-                    "Please enter your email."
+            if not signup_email or not signup_password:
+
+                st.error(
+                    "Enter an email and password."
                 )
 
-            elif not signup_password:
-                st.warning(
-                    "Please enter a password."
-                )
+            elif len(signup_password) < 6:
 
-            elif not supabase:
-                st.warning(
-                    "Supabase is not connected."
+                st.error(
+                    "Password should contain at least 6 characters."
                 )
 
             else:
 
                 try:
 
-                    result = (
-                        supabase
-                        .auth
-                        .sign_up(
+                    response = (
+                        supabase.auth.sign_up(
                             {
-                                "email":
-                                    signup_email,
-                                "password":
-                                    signup_password,
+                                "email": signup_email.strip(),
+                                "password": signup_password,
                             }
                         )
                     )
 
-                    if result.user:
+                    if response.user:
 
-                        st.success(
-                            "Account created. "
-                            "Check your email if "
-                            "confirmation is enabled."
-                        )
+                        if response.session:
+
+                            st.session_state.user = {
+                                "id": response.user.id,
+                                "email": response.user.email,
+                            }
+
+                            st.session_state.authenticated = True
+                            st.session_state.page = "NeuroWorld"
+
+                            st.success(
+                                "Account created."
+                            )
+
+                            st.rerun()
+
+                        else:
+
+                            st.success(
+                                "Account created. "
+                                "Please check your email if confirmation is required."
+                            )
 
                     else:
 
                         st.error(
-                            "Account could not "
-                            "be created."
+                            "Account could not be created."
                         )
 
                 except Exception:
 
                     st.error(
-                        "Sign-up failed. "
-                        "Please check the details."
+                        "Account creation failed."
                     )
-
-    with tab_login:
-
-        login_email = st.text_input(
-            "Email",
-            key="login_email",
-        )
-
-        login_password = st.text_input(
-            "Password",
-            type="password",
-            key="login_password",
-        )
-
-        if st.button(
-            "Sign In",
-            type="primary",
-            use_container_width=True,
-        ):
-
-            if not supabase:
-
-                st.warning(
-                    "Supabase is not connected."
-                )
-
-            else:
-
-                try:
-
-                    result = (
-                        supabase
-                        .auth
-                        .sign_in_with_password(
-                            {
-                                "email":
-                                    login_email,
-                                "password":
-                                    login_password,
-                            }
-                        )
-                    )
-
-                    if result.user:
-
-                        st.session_state.user = {
-                            "id":
-                                result.user.id,
-                            "email":
-                                result.user.email,
-                        }
-
-                        st.session_state.email = (
-                            result.user.email
-                            or ""
-                        )
-
-                        st.session_state.page = (
-                            "NeuroWorld"
-                        )
-
-                        st.rerun()
-
-                except Exception:
-
-                    st.error(
-                        "Sign-in failed."
-                    )
-
-
-def logout():
-
-    try:
-
-        if supabase:
-            supabase.auth.sign_out()
-
-    except Exception:
-        pass
-
-    st.session_state.user = None
-    st.session_state.email = ""
-    st.session_state.page = "NeuroWorld"
-    st.session_state.private_unlocked = False
-
-    st.rerun()
 
 
 # ============================================================
@@ -818,320 +966,363 @@ def logout():
 
 def page_neuroworld():
 
-    st.markdown(
-        f"""
-        <div class="hero">
-            <h1>{APP_NAME}</h1>
-            <p>{TAGLINE}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    stage = st.session_state.get(
+        "world_stage",
+        "welcome",
     )
 
-    st.markdown(
-        """
-        <div class="world-card">
+    # --------------------------------------------------------
+    # WELCOME
+    # --------------------------------------------------------
 
-            <div class="brain-guide">
-                🧠
+    if stage == "welcome":
+
+        st.markdown(
+            """
+            <div class="nl-hero">
+
+                <div class="brain-character">
+                    🧠
+                </div>
+
+                <div class="nl-hero-title">
+                    NEUROLENS
+                </div>
+
+                <div class="nl-hero-subtitle">
+                    Explore cognition, behavior & the brain
+                </div>
+
             </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            <h2>
-                Hi, I am NeuroLens.
-            </h2>
+        st.markdown(
+            """
+            <div class="nl-card" style="text-align:center;">
 
-            <p>
-                Come with me —
-                I'll show you what you can explore.
-            </p>
+                <div style="font-size:52px;">
+                    🧠
+                </div>
 
-            <div class="robot-guide">
-                🤖
+                <h2>
+                    Welcome to your NeuroWorld
+                </h2>
+
+                <p>
+                    A space where neuroscience, cognition,
+                    AI and interactive learning come together.
+                </p>
+
             </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            <p class="muted">
-                Your female AI research companion
-                is ready to guide you.
-            </p>
+        if st.button(
+            "✨ Meet NeuroLens",
+            type="primary",
+            use_container_width=True,
+            key="meet_neurolens",
+        ):
 
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            st.session_state.world_stage = "intro"
 
-    st.write("")
+            st.rerun()
 
-    cards = [
-        (
-            "🧪",
-            "Cognitive Lab",
-            "Run interactive cognitive experiments.",
-        ),
-        (
-            "🧠",
-            "Brain Journey",
-            "Explore neurons, brain regions and networks.",
-        ),
-        (
-            "🎯",
-            "Brain Challenges",
-            "Train memory, attention and decision-making.",
-        ),
-        (
-            "🧩",
-            "Brain Puzzle",
-            "Reconstruct a 12-piece brain jigsaw.",
-        ),
-        (
-            "🤖",
-            "Ask Ayna",
-            "Talk with your AI neuroscience assistant.",
-        ),
-        (
-            "🔬",
-            "Research World",
-            "Search neuroscience research papers.",
-        ),
-        (
-            "🎙️",
-            "AI Mood & Behaviour",
-            "Explore AI-assisted voice and facial cues.",
-        ),
-        (
-            "🌐",
-            "NeuroSocial",
-            "Connect around neuroscience and cognition.",
-        ),
-        (
-            "📈",
-            "My Progress",
-            "Track your NEUROLENS journey.",
-        ),
-    ]
+        return
 
-    columns = st.columns(3)
+    # --------------------------------------------------------
+    # INTRO
+    # --------------------------------------------------------
 
-    for index, (
-        icon,
-        title,
-        description,
-    ) in enumerate(cards):
+    if stage == "intro":
 
-        with columns[index % 3]:
+        st.markdown(
+            """
+            <div class="nl-hero">
+
+                <div class="brain-character">
+                    🧠
+                </div>
+
+                <div class="nl-hero-title">
+                    Hi, I am NeuroLens.
+                </div>
+
+                <div class="nl-hero-subtitle">
+                    Come with me — I'll show you
+                    what you can explore.
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        robot_asset = find_asset(
+            "ayna_robot.png"
+        )
+
+        if robot_asset:
+
+            col1, col2 = st.columns(
+                [1, 2]
+            )
+
+            with col1:
+
+                st.image(
+                    str(robot_asset),
+                    use_container_width=True,
+                )
+
+            with col2:
+
+                st.markdown(
+                    """
+                    <div class="nl-card">
+
+                        <div style="font-size:48px;">
+                            🤖
+                        </div>
+
+                        <h2>
+                            Meet Ayna
+                        </h2>
+
+                        <p>
+                            Your female AI research companion
+                            inside NeuroLens.
+                        </p>
+
+                        <p>
+                            Together we can explore the brain,
+                            run cognitive experiments,
+                            solve challenges, explore research
+                            and ask neuroscience questions.
+                        </p>
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        else:
 
             st.markdown(
-                f"""
-                <div class="neuro-card">
-                    <h3>
-                        {icon} {title}
-                    </h3>
+                """
+                <div class="nl-card" style="text-align:center;">
+
+                    <div class="robot-character">
+                        🤖
+                    </div>
+
+                    <h2>
+                        Meet Ayna
+                    </h2>
 
                     <p>
-                        {description}
+                        Your female AI research companion
+                        inside NeuroLens.
                     </p>
+
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            if st.button(
-                f"Enter {title}",
-                key=f"world_card_{index}",
-                use_container_width=True,
-            ):
+        st.markdown(
+            "### 🌌 What can we explore?"
+        )
 
-                st.session_state.page = title
-                st.rerun()
+        st.markdown(
+            """
+            <div class="feature-grid">
 
+                <div class="feature-card">
+                    <div class="feature-icon">🧪</div>
+                    <div class="feature-title">
+                        Cognitive Lab
+                    </div>
+                    <div class="feature-text">
+                        Interactive attention, memory,
+                        decision and cognitive-control experiments.
+                    </div>
+                </div>
 
-# ============================================================
-# SIMPLE WELCOME / INTRO
-# ============================================================
+                <div class="feature-card">
+                    <div class="feature-icon">🧠</div>
+                    <div class="feature-title">
+                        Brain Journey
+                    </div>
+                    <div class="feature-text">
+                        Explore neurons, synapses and
+                        major cognitive brain systems.
+                    </div>
+                </div>
 
-def page_welcome():
+                <div class="feature-card">
+                    <div class="feature-icon">🧩</div>
+                    <div class="feature-title">
+                        Brain Challenges
+                    </div>
+                    <div class="feature-text">
+                        Test memory, attention, pattern
+                        recognition and reaction.
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔬</div>
+                    <div class="feature-title">
+                        Research World
+                    </div>
+                    <div class="feature-text">
+                        Search biomedical literature
+                        and build research notes.
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <div class="feature-title">
+                        Ask Ayna
+                    </div>
+                    <div class="feature-text">
+                        Discuss cognition, neuroscience,
+                        behaviour and AI.
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <div class="feature-title">
+                        NeuroSocial
+                    </div>
+                    <div class="feature-text">
+                        Share ideas, research interests
+                        and cognitive challenges.
+                    </div>
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("### 🚀 Ready?")
+
+        if st.button(
+            "🚀 Enter NEUROLENS",
+            type="primary",
+            use_container_width=True,
+            key="enter_neurolens",
+        ):
+
+            st.session_state.world_stage = "world"
+
+            st.session_state.page = "Cognitive Lab"
+
+            st.rerun()
+
+        return
+
+    # --------------------------------------------------------
+    # WORLD HOME
+    # --------------------------------------------------------
 
     st.markdown(
-        f"""
-        <div class="hero">
-            <h1>Welcome to {APP_NAME}</h1>
-            <p>{TAGLINE}</p>
+        """
+        <div class="nl-hero">
+
+            <div class="brain-character">
+                🧠
+            </div>
+
+            <div class="nl-hero-title">
+                NeuroWorld
+            </div>
+
+            <div class="nl-hero-subtitle">
+                Your interactive neuroscience environment
+            </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    video = asset_path(
-        "ayna_reboot_voiced.mp4"
-    )
-
-    if video:
-
-        st.video(video)
-
-    else:
-
-        st.markdown(
-            """
-            <div class="world-card">
-                <div class="brain-guide">🧠</div>
-
-                <h2>
-                    Welcome to NeuroLens.
-                </h2>
-
-                <p>
-                    Explore the brain,
-                    behavior and cognition
-                    through interactive experiences.
-                </p>
-
-                <div class="robot-guide">
-                    🤖
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
     if st.button(
-        "🚀 Enter NEUROLENS",
+        "🧪 Enter Cognitive Lab",
         type="primary",
         use_container_width=True,
+        key="world_enter_lab",
     ):
 
-        st.session_state.page = "NeuroWorld"
+        st.session_state.page = "Cognitive Lab"
+
         st.rerun()
 
+    st.markdown(
+        """
+        <div class="feature-grid">
 
-# ============================================================
-# BRAIN SYSTEM DATA
-# ============================================================
-
-BRAIN_SYSTEMS = {
-
-    "Prefrontal Cortex":
-        "Planning, working memory, "
-        "cognitive control and flexible "
-        "decision-making.",
-
-    "Hippocampus":
-        "Memory formation, contextual "
-        "learning and spatial processing.",
-
-    "Striatum":
-        "Action selection, reward learning "
-        "and habit-related processes.",
-
-    "Anterior Cingulate Cortex":
-        "Conflict monitoring, effort, "
-        "attention and adaptive control.",
-
-    "Attention Networks":
-        "Distributed systems involved in "
-        "alerting, orienting and goal-directed attention.",
-}
-
-
-# ============================================================
-# NAVIGATION SIDEBAR
-# ============================================================
-
-def render_sidebar():
-
-    with st.sidebar:
-
-        st.markdown(
-            """
-            <div style="
-                text-align:center;
-                padding:8px;
-            ">
-
-                <div style="
-                    font-size:48px;
-                ">
-                    🧠
+            <div class="feature-card">
+                <div class="feature-icon">🧪</div>
+                <div class="feature-title">
+                    Cognitive Lab
                 </div>
-
-                <h2>
-                    NEUROLENS
-                </h2>
-
-                <div class="muted">
-                    Ayna Jaffri
+                <div class="feature-text">
+                    Run interactive cognitive experiments.
                 </div>
-
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
-        st.divider()
+            <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <div class="feature-title">
+                    Brain Journey
+                </div>
+                <div class="feature-text">
+                    Travel through major brain systems.
+                </div>
+            </div>
 
-        pages = [
-            "Welcome",
-            "NeuroWorld",
-            "Cognitive Lab",
-            "Brain Journey",
-            "Brain Challenges",
-            "Brain Puzzle",
-            "Ask Ayna",
-            "AI Mood & Behaviour",
-            "Research World",
-            "Private Ayna",
-            "Behaviour Decoding",
-            "NeuroSocial",
-            "My Progress",
-            "Security & Privacy",
-            "Settings",
-            "Account",
-        ]
+            <div class="feature-card">
+                <div class="feature-icon">🧩</div>
+                <div class="feature-title">
+                    Brain Puzzle
+                </div>
+                <div class="feature-text">
+                    Reconstruct the brain image through
+                    interactive puzzle challenges.
+                </div>
+            </div>
 
-        current = st.session_state.page
+            <div class="feature-card">
+                <div class="feature-icon">🎯</div>
+                <div class="feature-title">
+                    Brain Challenges
+                </div>
+                <div class="feature-text">
+                    Work on memory, attention and
+                    decision-making tasks.
+                </div>
+            </div>
 
-        if current not in pages:
-            current = "NeuroWorld"
-
-        selected = st.radio(
-            "Explore",
-            pages,
-            index=pages.index(current),
-        )
-
-        if selected != st.session_state.page:
-
-            st.session_state.page = selected
-            st.rerun()
-
-        st.divider()
-
-        if st.session_state.user:
-
-            st.caption(
-                f"Signed in as "
-                f"{st.session_state.email}"
-            )
-
-        else:
-
-            st.caption(
-                "Guest exploration mode"
-            )
-
-        st.caption(
-            f"AI usage: "
-            f"{st.session_state.ai_requests}/"
-            f"{st.session_state.ai_limit}"        
-        )
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================
-# END OF PART 1
+# PART 1 END
 # ============================================================
 # ============================================================
-# NEUROLENS — FINAL BUILD
-# PART 2/4
-# Cognitive Lab + Brain Journey + 12-Piece Jigsaw Puzzle
+# NEUROLENS — PART 2
+# COGNITIVE LAB + BRAIN JOURNEY + BRAIN PUZZLE
 # ============================================================
 
 
@@ -1139,17 +1330,66 @@ def render_sidebar():
 # COGNITIVE LAB
 # ============================================================
 
-def lab_save_result(experiment, score, accuracy, observation):
+LAB_EXPERIMENTS = {
+    "Attention": {
+        "icon": "👁️",
+        "description": (
+            "Test selective attention by finding a target "
+            "among competing visual information."
+        ),
+    },
+    "Memory": {
+        "icon": "🧠",
+        "description": (
+            "Test short-term working-memory performance "
+            "with a temporary sequence."
+        ),
+    },
+    "Decision & Reward": {
+        "icon": "💰",
+        "description": (
+            "Explore a simplified reward-delay decision."
+        ),
+    },
+    "Stroop Cognitive Control": {
+        "icon": "🎨",
+        "description": (
+            "Test response control when word meaning "
+            "and colour information conflict."
+        ),
+    },
+    "Pattern Recognition": {
+        "icon": "🔢",
+        "description": (
+            "Identify a numerical pattern and predict "
+            "the next element."
+        ),
+    },
+}
+
+
+def lab_save_result(
+    experiment,
+    score,
+    observations,
+    extra=None,
+):
 
     result = {
         "experiment": experiment,
-        "score": score,
-        "accuracy": accuracy,
-        "observation": observation,
-        "timestamp": datetime.utcnow().isoformat(),
+        "score": float(score),
+        "observations": observations,
+        "extra": extra or {},
+        "timestamp": time.time(),
     }
 
-    st.session_state.lab_results.append(result)
+    st.session_state.lab_results.append(
+        result
+    )
+
+    st.session_state.lab_history.append(
+        result
+    )
 
     user_id = current_user_id()
 
@@ -1160,275 +1400,364 @@ def lab_save_result(experiment, score, accuracy, observation):
             {
                 "user_id": user_id,
                 "experiment": experiment,
-                "score": score,
-                "accuracy": accuracy,
-                "observation": observation,
+                "score": float(score),
+                "result_data": result,
             },
         )
 
 
-def run_attention_experiment():
+def run_attention_lab():
 
-    st.markdown("### 🎯 Attention Experiment")
-
-    st.write(
-        "You will see several symbols. "
-        "Select the target symbol as quickly as possible."
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>👁️ Attention Experiment</h3>
+            <p>
+                Find the target letter as quickly as possible.
+                This is a behavioural simulation and does not
+                measure actual neural activity.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    target = "X"
+    if "lab_attention_target" not in st.session_state:
 
-    if "attention_items" not in st.session_state:
+        st.session_state.lab_attention_target = None
+        st.session_state.lab_attention_options = []
+        st.session_state.lab_attention_correct = None
+        st.session_state.lab_attention_start = None
 
-        items = []
+    if st.session_state.lab_attention_target is None:
 
-        for _ in range(24):
+        if st.button(
+            "▶ Start Attention Experiment",
+            type="primary",
+            use_container_width=True,
+            key="lab_attention_start",
+        ):
 
-            items.append(
-                random.choice(
-                    ["X", "O", "△", "□", "◇"]
-                )
+            target = random.choice(
+                ["X", "K", "M", "R", "A"]
             )
 
-        target_position = random.randrange(
-            len(items)
-        )
+            options = [
+                random.choice(
+                    ["X", "K", "M", "R", "A"]
+                )
+                for _ in range(20)
+            ]
 
-        items[target_position] = target
+            correct = random.randint(
+                0,
+                len(options) - 1,
+            )
 
-        st.session_state.attention_items = items
-        st.session_state.attention_target = (
-            target_position
-        )
-        st.session_state.attention_start = time.time()
-        st.session_state.attention_done = False
+            options[correct] = target
 
-    items = st.session_state.attention_items
+            st.session_state.lab_attention_target = target
+            st.session_state.lab_attention_options = options
+            st.session_state.lab_attention_correct = correct
+            st.session_state.lab_attention_start = time.time()
 
-    cols = st.columns(6)
+            st.rerun()
 
-    for i, symbol in enumerate(items):
+        return
 
-        with cols[i % 6]:
+    target = st.session_state.lab_attention_target
+
+    st.markdown(
+        f"""
+        <div class="nl-card" style="text-align:center;">
+            <div class="small-muted">
+                Find this target:
+            </div>
+            <div style="
+                font-size:48px;
+                font-weight:900;
+                margin-top:8px;
+            ">
+                {target}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(5)
+
+    for index, value in enumerate(
+        st.session_state.lab_attention_options
+    ):
+
+        with cols[index % 5]:
 
             if st.button(
-                symbol,
-                key=f"attention_{i}",
+                value,
+                key=f"lab_attention_item_{index}",
                 use_container_width=True,
             ):
 
-                elapsed = round(
+                elapsed = (
                     time.time()
-                    - st.session_state.attention_start,
-                    2,
+                    - st.session_state.lab_attention_start
                 )
 
                 correct = (
-                    i
-                    == st.session_state.attention_target
+                    index
+                    == st.session_state.lab_attention_correct
                 )
 
                 if correct:
 
                     score = max(
-                        100
-                        - int(elapsed * 5),
-                        10,
+                        0,
+                        min(
+                            100,
+                            int(
+                                100
+                                - elapsed * 12
+                            ),
+                        ),
+                    )
+
+                    observations = (
+                        "The target was identified correctly. "
+                        "Performance reflects task accuracy and "
+                        "interaction speed in this simulation."
                     )
 
                     st.success(
-                        f"Correct! Reaction time: "
-                        f"{elapsed}s"
-                    )
-
-                    lab_save_result(
-                        "Attention",
-                        score,
-                        100,
-                        "Target detected correctly.",
+                        "🎯 Target identified correctly."
                     )
 
                 else:
 
                     score = 0
 
+                    observations = (
+                        "The selected item was not the target. "
+                        "This task is only an educational attention "
+                        "exercise."
+                    )
+
                     st.error(
-                        "That was not the target."
+                        "Not the target."
                     )
 
-                    lab_save_result(
-                        "Attention",
-                        score,
-                        0,
-                        "Target selection was incorrect.",
-                    )
+                lab_save_result(
+                    "Attention",
+                    score,
+                    observations,
+                    {
+                        "reaction_time_seconds": elapsed,
+                        "correct": correct,
+                    },
+                )
 
-                st.session_state.attention_done = True
+                st.session_state.lab_result = {
+                    "score": score,
+                    "observations": observations,
+                }
 
-    if st.button(
-        "🔄 New Attention Trial",
-        use_container_width=True,
-    ):
+                st.session_state.lab_completed = True
 
-        for key in [
-            "attention_items",
-            "attention_target",
-            "attention_start",
-            "attention_done",
-        ]:
+                st.session_state.lab_attention_target = None
 
-            st.session_state.pop(
-                key,
-                None,
-            )
-
-        st.rerun()
+                st.rerun()
 
 
-def run_memory_experiment():
+def run_memory_lab():
 
-    st.markdown("### 🧠 Memory Experiment")
-
-    st.write(
-        "Memorize the sequence and reproduce it."
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>🧠 Memory Experiment</h3>
+            <p>
+                Memorize the displayed sequence and reproduce it.
+                This is a simple working-memory simulation.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    if "memory_sequence" not in st.session_state:
+    difficulty = st.selectbox(
+        "Difficulty",
+        [
+            "Easy",
+            "Medium",
+            "Hard",
+        ],
+        key="lab_memory_difficulty",
+    )
 
-        sequence = [
-            random.randint(1, 9)
-            for _ in range(6)
-        ]
+    lengths = {
+        "Easy": 4,
+        "Medium": 6,
+        "Hard": 8,
+    }
 
-        st.session_state.memory_sequence = (
-            sequence
-        )
+    length = lengths[difficulty]
 
-        st.session_state.memory_hidden = False
+    if "lab_memory_sequence" not in st.session_state:
 
-    sequence = st.session_state.memory_sequence
+        st.session_state.lab_memory_sequence = None
+        st.session_state.lab_memory_show = False
 
-    if not st.session_state.memory_hidden:
+    if st.session_state.lab_memory_sequence is None:
 
-        st.info(
-            "Memorize this sequence:"
-        )
+        if st.button(
+            "▶ Start Memory Experiment",
+            type="primary",
+            use_container_width=True,
+            key="lab_memory_start",
+        ):
+
+            sequence = "".join(
+                str(
+                    random.randint(
+                        0,
+                        9,
+                    )
+                )
+                for _ in range(length)
+            )
+
+            st.session_state.lab_memory_sequence = sequence
+            st.session_state.lab_memory_show = True
+
+            st.rerun()
+
+        return
+
+    sequence = st.session_state.lab_memory_sequence
+
+    if st.session_state.lab_memory_show:
 
         st.markdown(
             f"""
-            <div style="
-                font-size:38px;
+            <div class="nl-card" style="
                 text-align:center;
-                letter-spacing:12px;
-                padding:25px;
+                padding:30px;
             ">
-                {" ".join(map(str, sequence))}
+
+                <div class="small-muted">
+                    Memorize this sequence
+                </div>
+
+                <div style="
+                    font-size:40px;
+                    font-weight:900;
+                    letter-spacing:8px;
+                    margin-top:15px;
+                ">
+                    {sequence}
+                </div>
+
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         if st.button(
-            "Hide Sequence",
+            "I Memorized It",
             type="primary",
             use_container_width=True,
+            key="memory_hide",
         ):
 
-            st.session_state.memory_hidden = True
+            st.session_state.lab_memory_show = False
             st.rerun()
 
-    else:
+        return
 
-        answer = st.text_input(
-            "Enter the sequence",
-            placeholder="Example: 123456",
+    answer = st.text_input(
+        "Enter the sequence",
+        max_chars=20,
+        key="lab_memory_answer",
+    )
+
+    if st.button(
+        "Check Memory",
+        type="primary",
+        use_container_width=True,
+        key="memory_check",
+    ):
+
+        correct = (
+            answer.strip()
+            == sequence
         )
 
-        if st.button(
-            "Check Memory",
-            type="primary",
-            use_container_width=True,
-        ):
+        score = 100 if correct else 0
 
-            expected = "".join(
-                map(str, sequence)
+        if correct:
+
+            observations = (
+                "The sequence was reproduced correctly "
+                "in this working-memory task."
             )
 
-            if answer.strip() == expected:
+            st.success(
+                "✅ Correct."
+            )
 
-                st.success(
-                    "Excellent! Sequence recalled correctly."
-                )
+        else:
 
-                lab_save_result(
-                    "Memory",
-                    100,
-                    100,
-                    "The sequence was reproduced correctly.",
-                )
+            observations = (
+                "The sequence was not reproduced correctly. "
+                "This does not by itself indicate a cognitive problem."
+            )
 
-            else:
+            st.error(
+                "❌ Incorrect."
+            )
 
-                st.error(
-                    "Not quite. The sequence was:"
-                )
+        lab_save_result(
+            "Memory",
+            score,
+            observations,
+            {
+                "difficulty": difficulty,
+                "correct": correct,
+            },
+        )
 
-                st.code(expected)
+        st.session_state.lab_result = {
+            "score": score,
+            "observations": observations,
+        }
 
-                lab_save_result(
-                    "Memory",
-                    0,
-                    0,
-                    "The sequence was not reproduced correctly.",
-                )
+        st.session_state.lab_completed = True
 
-        if st.button(
-            "🔄 New Memory Trial",
-            use_container_width=True,
-        ):
+        st.session_state.lab_memory_sequence = None
+        st.session_state.lab_memory_show = False
 
-            for key in [
-                "memory_sequence",
-                "memory_hidden",
-            ]:
-
-                st.session_state.pop(
-                    key,
-                    None,
-                )
-
-            st.rerun()
+        st.rerun()
 
 
-def run_decision_experiment():
-
-    st.markdown("### 💰 Decision & Reward")
-
-    st.write(
-        "Choose between an immediate reward "
-        "and a larger delayed reward."
-    )
+def run_decision_lab():
 
     st.markdown(
         """
-        <div class="neuro-card">
+        <div class="nl-card">
+            <h3>💰 Decision & Reward Experiment</h3>
 
-        <h3>Option A</h3>
+            <p>
+                Imagine you can choose between:
+            </p>
 
-        <p>
-        Receive <b>PKR 1,000 today</b>
-        </p>
+            <ul>
+                <li><b>PKR 1,000 today</b></li>
+                <li><b>PKR 1,500 after 30 days</b></li>
+            </ul>
 
-        </div>
-
-        <div class="neuro-card">
-
-        <h3>Option B</h3>
-
-        <p>
-        Receive <b>PKR 1,500 after 30 days</b>
-        </p>
-
+            <p>
+                Your choice is recorded as a decision preference
+                within this educational simulation.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1440,24 +1769,29 @@ def run_decision_experiment():
             "PKR 1,000 today",
             "PKR 1,500 after 30 days",
         ],
+        key="lab_decision_choice",
     )
 
     if st.button(
         "Submit Decision",
         type="primary",
         use_container_width=True,
+        key="lab_decision_submit",
     ):
 
-        if choice == "PKR 1,000 today":
+        if "30 days" in choice:
 
             observation = (
-                "The choice favors immediate reward."
+                "You selected the delayed larger reward. "
+                "This choice prioritizes a larger future payoff "
+                "over immediate availability."
             )
 
         else:
 
             observation = (
-                "The choice favors delayed reward."
+                "You selected the immediate reward. "
+                "This choice prioritizes immediate availability."
             )
 
         st.success(
@@ -1466,1307 +1800,165 @@ def run_decision_experiment():
 
         st.info(
             observation
-            + " This task demonstrates "
-            "a simplified reward-delay decision scenario; "
-            "it does not diagnose personality or behavior."
         )
 
         lab_save_result(
             "Decision & Reward",
             100,
-            100,
             observation,
+            {
+                "choice": choice,
+            },
         )
 
+        st.session_state.lab_result = {
+            "score": 100,
+            "observations": observation,
+        }
 
-def run_stroop_experiment():
+        st.session_state.lab_completed = True
+
+
+def run_stroop_lab():
 
     st.markdown(
-        "### 🧠 Stroop / Cognitive Control"
+        """
+        <div class="nl-card">
+            <h3>🎨 Stroop Cognitive Control</h3>
+
+            <p>
+                Identify the ink colour rather than the written word.
+                This demonstrates response conflict in a simplified
+                educational task.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.write(
-        "Read the COLOR of the word, "
-        "not the word itself."
+    if (
+        st.session_state.stroop_item
+        is None
+    ):
+
+        st.session_state.stroop_item = random.choice(
+            [
+                ("RED", "blue"),
+                ("BLUE", "red"),
+                ("GREEN", "yellow"),
+                ("YELLOW", "green"),
+            ]
+        )
+
+    word, colour = (
+        st.session_state.stroop_item
     )
-
-    words = [
-        ("RED", "blue"),
-        ("BLUE", "red"),
-        ("GREEN", "purple"),
-        ("YELLOW", "green"),
-    ]
-
-    word, color = random.choice(words)
 
     st.markdown(
         f"""
-        <div style="
+        <div class="nl-card" style="
             text-align:center;
-            font-size:48px;
-            font-weight:900;
-            color:{color};
-            padding:25px;
         ">
-            {word}
+
+            <div class="small-muted">
+                Select the ink colour
+            </div>
+
+            <div style="
+                font-size:46px;
+                font-weight:900;
+                color:{colour};
+                margin-top:12px;
+            ">
+                {word}
+            </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     answer = st.radio(
-        "What is the displayed color?",
+        "Ink colour",
         [
             "red",
             "blue",
             "green",
-            "purple",
             "yellow",
         ],
+        horizontal=True,
+        key="lab_stroop_answer",
     )
 
     if st.button(
-        "Submit Color",
+        "Check Response",
         type="primary",
         use_container_width=True,
+        key="lab_stroop_check",
     ):
 
-        if answer == color:
+        correct = (
+            answer == colour
+        )
 
-            st.success(
-                "Correct! Good cognitive control."
+        score = 100 if correct else 0
+
+        if correct:
+
+            observation = (
+                "Correct response in the simplified Stroop task."
             )
 
-            lab_save_result(
-                "Stroop",
-                100,
-                100,
-                "Color identification was correct.",
+            st.success(
+                "✅ Correct."
             )
 
         else:
 
-            st.error(
-                f"Incorrect. The displayed color was {color}."
+            observation = (
+                "The response conflicted with the ink colour."
             )
-
-            lab_save_result(
-                "Stroop",
-                0,
-                0,
-                "Color identification was incorrect.",
-            )
-
-
-def run_pattern_experiment():
-
-    st.markdown(
-        "### 🔢 Pattern Recognition"
-    )
-
-    st.write(
-        "Identify the next number."
-    )
-
-    sequence = [
-        2,
-        4,
-        8,
-        16,
-        32,
-    ]
-
-    st.markdown(
-        f"""
-        <div class="world-card">
-            <h2>
-                {" → ".join(map(str, sequence))} → ?
-            </h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    answer = st.number_input(
-        "Your answer",
-        min_value=0,
-        max_value=1000,
-        value=0,
-        step=1,
-    )
-
-    if st.button(
-        "Check Pattern",
-        type="primary",
-        use_container_width=True,
-    ):
-
-        if answer == 64:
-
-            st.success(
-                "Correct! The pattern doubles each time."
-            )
-
-            lab_save_result(
-                "Pattern Recognition",
-                100,
-                100,
-                "Correctly identified the doubling pattern.",
-            )
-
-        else:
 
             st.error(
-                "Not quite. The correct answer is 64."
+                "❌ Incorrect."
             )
 
-            lab_save_result(
-                "Pattern Recognition",
-                0,
-                0,
-                "Pattern was not identified correctly.",
-            )
-
-
-def page_lab():
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>🧪 Cognitive Lab</h1>
-            <p>
-                Run interactive cognitive experiments
-                in a simulated neuroscience environment.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.warning(
-        "All neural signals and laboratory measurements "
-        "shown in NEUROLENS are simulated/conceptual "
-        "unless explicitly stated otherwise. They are "
-        "not real EEG, fMRI or clinical measurements."
-    )
-
-    experiment = st.selectbox(
-        "Choose experiment",
-        [
-            "Attention",
-            "Memory",
-            "Decision & Reward",
-            "Stroop / Cognitive Control",
-            "Pattern Recognition",
-        ],
-    )
-
-    st.markdown(
-        """
-        <div class="neuro-card">
-            <h3>🔬 Virtual Equipment</h3>
-            <p>
-            EEG Simulator · Eye Tracker ·
-            Reaction-Time System · Cognitive Task Monitor ·
-            Physiological Sensor
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if experiment == "Attention":
-        run_attention_experiment()
-
-    elif experiment == "Memory":
-        run_memory_experiment()
-
-    elif experiment == "Decision & Reward":
-        run_decision_experiment()
-
-    elif experiment == "Stroop / Cognitive Control":
-        run_stroop_experiment()
-
-    elif experiment == "Pattern Recognition":
-        run_pattern_experiment()
-
-    st.divider()
-
-    st.markdown("### 📊 Recent Lab Results")
-
-    if st.session_state.lab_results:
-
-        for result in reversed(
-            st.session_state.lab_results[-5:]
-        ):
-
-            st.markdown(
-                f"""
-                <div class="neuro-card">
-
-                <b>
-                    {result["experiment"]}
-                </b>
-
-                <br>
-
-                Score:
-                {result["score"]}
-
-                <br>
-
-                Accuracy:
-                {result["accuracy"]}%
-
-                <br>
-
-                <span class="muted">
-                    {result["observation"]}
-                </span>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    else:
-
-        st.info(
-            "Complete an experiment to see results here."
-        )
-
-
-# ============================================================
-# BRAIN JOURNEY
-# ============================================================
-
-def page_brain_journey():
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>🧠 Brain Journey</h1>
-            <p>
-                Explore major concepts and systems
-                involved in cognition and behavior.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    concepts = [
-        (
-            "Neuron",
-            "neuron.png",
-            "The neuron is a basic functional unit of the nervous system. "
-            "Neurons receive, process and transmit information."
-        ),
-
-        (
-            "Synapse",
-            "synapse.png",
-            "A synapse is a communication junction between neurons "
-            "or between a neuron and another target cell."
-        ),
-
-        (
-            "Neural Signaling",
-            "neural_signaling.gif",
-            "Neural signaling involves electrical activity within neurons "
-            "and chemical or electrical communication between cells."
-        ),
-
-        (
-            "Prefrontal Cortex",
-            "prefrontal_cortex.png",
-            BRAIN_SYSTEMS["Prefrontal Cortex"],
-        ),
-
-        (
-            "Hippocampus",
-            "hippocampus.png",
-            BRAIN_SYSTEMS["Hippocampus"],
-        ),
-
-        (
-            "Striatum",
-            "striatum.png",
-            BRAIN_SYSTEMS["Striatum"],
-        ),
-
-        (
-            "Anterior Cingulate Cortex",
-            "acc.png",
-            BRAIN_SYSTEMS["Anterior Cingulate Cortex"],
-        ),
-
-        (
-            "Attention Networks",
-            "attention_network.png",
-            BRAIN_SYSTEMS["Attention Networks"],
-        ),
-    ]
-
-    names = [
-        item[0]
-        for item in concepts
-    ]
-
-    if (
-        st.session_state.selected_brain_system
-        not in names
-    ):
-
-        st.session_state.selected_brain_system = names[0]
-
-    selected = st.selectbox(
-        "Choose a concept",
-        names,
-        index=names.index(
-            st.session_state.selected_brain_system
-        ),
-    )
-
-    st.session_state.selected_brain_system = selected
-
-    selected_data = next(
-        item
-        for item in concepts
-        if item[0] == selected
-    )
-
-    title, image_file, description = selected_data
-
-    st.markdown(
-        f"""
-        <div class="world-card">
-            <h2>{title}</h2>
-            <p>{description}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if not show_image(
-        image_file,
-        width=750,
-    ):
-
-        st.markdown(
-            f"""
-            <div class="neuro-card"
-                 style="text-align:center">
-
-                <div style="font-size:90px">
-                    🧠
-                </div>
-
-                <h3>
-                    {title}
-                </h3>
-
-                <p>
-                    Add <b>{image_file}</b>
-                    to your assets folder to display
-                    the dedicated visual.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if st.button(
-        "🤖 Ask Ayna About This System",
-        use_container_width=True,
-    ):
-
-        st.session_state.page = "Ask Ayna"
-
-        st.session_state.chat.append(
+        lab_save_result(
+            "Stroop Cognitive Control",
+            score,
+            observation,
             {
-                "role": "user",
-                "text":
-                    f"Explain {title} in cognitive neuroscience.",
-            }
-        )
-
-        st.rerun()
-
-    st.divider()
-
-    col1, col2, col3 = st.columns(3)
-
-    current_index = names.index(selected)
-
-    with col1:
-
-        if st.button(
-            "⬅️ Previous",
-            use_container_width=True,
-        ):
-
-            new_index = (
-                current_index - 1
-            ) % len(names)
-
-            st.session_state.selected_brain_system = (
-                names[new_index]
-            )
-
-            st.rerun()
-
-    with col2:
-
-        if st.button(
-            "🔄 Restart",
-            use_container_width=True,
-        ):
-
-            st.session_state.selected_brain_system = (
-                names[0]
-            )
-
-            st.rerun()
-
-    with col3:
-
-        if st.button(
-            "Next ➡️",
-            use_container_width=True,
-        ):
-
-            new_index = (
-                current_index + 1
-            ) % len(names)
-
-            st.session_state.selected_brain_system = (
-                names[new_index]
-            )
-
-            st.rerun()
-
-
-# ============================================================
-# 12-PIECE BRAIN JIGSAW
-# ============================================================
-
-def create_puzzle_board(size):
-
-    total = size * size
-
-    solved = list(
-        range(total)
-    )
-
-    board = solved.copy()
-
-    for _ in range(
-        max(30, total * 8)
-    ):
-
-        a = random.randrange(total)
-        b = random.randrange(total)
-
-        board[a], board[b] = (
-            board[b],
-            board[a],
-        )
-
-    if board == solved:
-
-        board[0], board[1] = (
-            board[1],
-            board[0],
-        )
-
-    return board, solved
-
-
-def puzzle_grid_html(
-    board,
-    size,
-    solution,
-):
-
-    cells = []
-
-    for index, tile in enumerate(board):
-
-        correct = (
-            tile == solution[index]
-        )
-
-        status = (
-            "correct"
-            if correct
-            else "tile"
-        )
-
-        cells.append(
-            f"""
-            <div class="{status}">
-                {tile + 1}
-            </div>
-            """
-        )
-
-    return "".join(cells)
-
-
-def page_puzzle():
-
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>🧩 Brain Jigsaw</h1>
-            <p>
-                Reconstruct the brain picture
-                by solving the puzzle.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.info(
-        "This is a cognitive puzzle challenge. "
-        "It does not measure intelligence or brain activity."
-    )
-
-    # --------------------------------------------------------
-    # PUZZLE CONTROLS
-    # --------------------------------------------------------
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        size_option = st.selectbox(
-            "Puzzle size",
-            [
-                "3 × 4 — 12 pieces",
-                "4 × 4 — 16 pieces",
-                "5 × 5 — 25 pieces",
-            ],
-        )
-
-    with col2:
-
-        challenge_mode = st.selectbox(
-            "Challenge mode",
-            [
-                "Standard",
-                "Time Challenge",
-                "Minimum Moves",
-            ],
-        )
-
-    with col3:
-
-        if st.button(
-            "🔄 New Puzzle",
-            type="primary",
-            use_container_width=True,
-        ):
-
-            st.session_state.puzzle_board = None
-            st.session_state.puzzle_solution = None
-            st.session_state.puzzle_moves = 0
-            st.session_state.puzzle_finished = False
-            st.session_state.puzzle_started = False
-            st.session_state.puzzle_start_time = None
-
-            st.rerun()
-
-    # --------------------------------------------------------
-    # 12 PIECE MODE
-    # --------------------------------------------------------
-
-    if size_option.startswith("3 × 4"):
-
-        rows = 3
-        cols = 4
-        total = 12
-
-    elif size_option.startswith("4 × 4"):
-
-        rows = 4
-        cols = 4
-        total = 16
-
-    else:
-
-        rows = 5
-        cols = 5
-        total = 25
-
-    # --------------------------------------------------------
-    # CREATE PUZZLE
-    # --------------------------------------------------------
-
-    if (
-        st.session_state.puzzle_board is None
-        or
-        st.session_state.puzzle_solution is None
-    ):
-
-        board = list(
-            range(total)
-        )
-
-        solution = list(
-            range(total)
-        )
-
-        random.shuffle(board)
-
-        if board == solution:
-
-            board[0], board[1] = (
-                board[1],
-                board[0],
-            )
-
-        st.session_state.puzzle_board = board
-        st.session_state.puzzle_solution = solution
-        st.session_state.puzzle_moves = 0
-        st.session_state.puzzle_finished = False
-        st.session_state.puzzle_started = True
-        st.session_state.puzzle_start_time = time.time()
-
-    board = st.session_state.puzzle_board
-    solution = st.session_state.puzzle_solution
-
-    # --------------------------------------------------------
-    # IMAGE PREVIEW
-    # --------------------------------------------------------
-
-    brain_path = asset_path(
-        "brain.png"
-    )
-
-    if brain_path:
-
-        st.markdown(
-            "### 🧠 Reference Image"
-        )
-
-        st.image(
-            brain_path,
-            use_container_width=True,
-        )
-
-    else:
-
-        st.warning(
-            "Add `brain.png` to the project root "
-            "or `assets/brain.png` to use the brain image."
-        )
-
-    # --------------------------------------------------------
-    # PUZZLE INFORMATION
-    # --------------------------------------------------------
-
-    if st.session_state.puzzle_start_time:
-
-        elapsed = int(
-            time.time()
-            - st.session_state.puzzle_start_time
-        )
-
-    else:
-
-        elapsed = 0
-
-    minutes = elapsed // 60
-    seconds = elapsed % 60
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(
-            "🧩 Pieces",
-            total,
-        )
-
-    with col2:
-        st.metric(
-            "🔢 Moves",
-            st.session_state.puzzle_moves,
-        )
-
-    with col3:
-        st.metric(
-            "⏱️ Time",
-            f"{minutes:02d}:{seconds:02d}",
-        )
-
-    with col4:
-
-        correct_count = sum(
-            1
-            for i, tile in enumerate(board)
-            if tile == solution[i]
-        )
-
-        st.metric(
-            "✅ Correct",
-            f"{correct_count}/{total}",
-        )
-
-    # --------------------------------------------------------
-    # ACTUAL VISUAL PUZZLE
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 🧩 Arrange the Pieces"
-    )
-
-    st.caption(
-        "On supported browsers, drag pieces with your finger "
-        "or mouse. The visual puzzle area below provides "
-        "the interactive board."
-    )
-
-    puzzle_html = f"""
-    <div id="neurolens-puzzle"
-         style="
-            width:100%;
-            max-width:720px;
-            margin:auto;
-            display:grid;
-            grid-template-columns:repeat({cols},1fr);
-            gap:5px;
-            background:#0b1225;
-            padding:8px;
-            border-radius:20px;
-         ">
-
-    """
-
-    for index, tile in enumerate(board):
-
-        correct = (
-            tile == solution[index]
-        )
-
-        puzzle_html += f"""
-        <div
-            draggable="true"
-            data-index="{index}"
-            data-tile="{tile}"
-            style="
-                aspect-ratio:1/1;
-                border-radius:12px;
-                border:2px solid
-                    {'#38d996' if correct else 'rgba(255,255,255,.12)'};
-                background:
-                    {'linear-gradient(135deg,#123c32,#1d6b55)'
-                     if correct
-                     else 'linear-gradient(135deg,#172343,#25345d)'};
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                color:white;
-                font-size:clamp(18px,4vw,30px);
-                font-weight:800;
-                cursor:grab;
-                user-select:none;
-                touch-action:none;
-                transition:.18s;
-                box-sizing:border-box;
-            "
-        >
-            {tile + 1}
-        </div>
-        """
-
-    puzzle_html += """
-    </div>
-
-    <div id="puzzle-status"
-         style="
-            text-align:center;
-            margin-top:14px;
-            color:#aebbd4;
-            font-size:14px;
-         ">
-        Drag one piece onto another piece to swap them.
-    </div>
-
-    <script>
-
-    const board = document.getElementById(
-        "neurolens-puzzle"
-    );
-
-    const status = document.getElementById(
-        "puzzle-status"
-    );
-
-    let dragged = null;
-
-    board.querySelectorAll("[draggable=true]").forEach(
-        function(tile) {
-
-            tile.addEventListener(
-                "dragstart",
-                function(event) {
-
-                    dragged = tile;
-
-                    tile.style.opacity = "0.45";
-
-                    event.dataTransfer.effectAllowed =
-                        "move";
-                }
-            );
-
-            tile.addEventListener(
-                "dragend",
-                function() {
-
-                    tile.style.opacity = "1";
-                    dragged = null;
-                }
-            );
-
-            tile.addEventListener(
-                "dragover",
-                function(event) {
-
-                    event.preventDefault();
-
-                    tile.style.transform =
-                        "scale(0.96)";
-                }
-            );
-
-            tile.addEventListener(
-                "dragleave",
-                function() {
-
-                    tile.style.transform =
-                        "scale(1)";
-                }
-            );
-
-            tile.addEventListener(
-                "drop",
-                function(event) {
-
-                    event.preventDefault();
-
-                    tile.style.transform =
-                        "scale(1)";
-
-                    if (
-                        !dragged ||
-                        dragged === tile
-                    ) {
-                        return;
-                    }
-
-                    const first =
-                        dragged.parentNode;
-
-                    const firstIndex =
-                        Number(
-                            dragged.dataset.index
-                        );
-
-                    const secondIndex =
-                        Number(
-                            tile.dataset.index
-                        );
-
-                    const firstClone =
-                        dragged.cloneNode(true);
-
-                    const secondClone =
-                        tile.cloneNode(true);
-
-                    first.replaceChild(
-                        secondClone,
-                        dragged
-                    );
-
-                    first.replaceChild(
-                        firstClone,
-                        tile
-                    );
-
-                    status.textContent =
-                        "Pieces swapped. "
-                        + "Press the button below "
-                        + "to check the puzzle.";
-
-                    dragged = null;
-                }
-            );
-        }
-    );
-
-    </script>
-    """
-
-    components.html(
-        puzzle_html,
-        height=760,
-        scrolling=False,
-    )
-
-    # --------------------------------------------------------
-    # IMPORTANT COMPATIBILITY FALLBACK
-    # --------------------------------------------------------
-
-    st.caption(
-        "Puzzle interaction is rendered in the browser. "
-        "The reference image remains visible above."
-    )
-
-    # --------------------------------------------------------
-    # CHECK / DEMO SOLVE
-    # --------------------------------------------------------
-
-    st.markdown("### 🔍 Puzzle Controls")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        if st.button(
-            "✅ Check Puzzle",
-            type="primary",
-            use_container_width=True,
-        ):
-
-            if board == solution:
-
-                st.session_state.puzzle_finished = True
-
-                score = max(
-                    1000
-                    - st.session_state.puzzle_moves * 10
-                    - elapsed,
-                    100,
-                )
-
-                st.success(
-                    f"🎉 Puzzle complete! "
-                    f"Score: {score}"
-                )
-
-                st.balloons()
-
-                result = {
-                    "pieces": total,
-                    "moves":
-                        st.session_state.puzzle_moves,
-                    "time": elapsed,
-                    "score": score,
-                }
-
-                st.session_state.puzzle_results.append(
-                    result
-                )
-
-                user_id = current_user_id()
-
-                if user_id:
-
-                    db_insert(
-                        "brain_puzzle_results",
-                        {
-                            "user_id": user_id,
-                            "score": score,
-                            "moves":
-                                st.session_state.puzzle_moves,
-                        },
-                    )
-
-            else:
-
-                st.warning(
-                    "The puzzle is not complete yet."
-                )
-
-    with col2:
-
-        if st.button(
-            "🔄 Reset Puzzle",
-            use_container_width=True,
-        ):
-
-            st.session_state.puzzle_board = None
-            st.session_state.puzzle_solution = None
-            st.session_state.puzzle_moves = 0
-            st.session_state.puzzle_finished = False
-            st.session_state.puzzle_started = False
-            st.session_state.puzzle_start_time = None
-
-            st.rerun()
-
-    # --------------------------------------------------------
-    # PUZZLE NOTE
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <div class="warning-panel">
-
-        <b>Research note</b><br>
-
-        This puzzle is designed as an interactive
-        visual/cognitive challenge. Completion time,
-        moves and score are game metrics only and should
-        not be interpreted as clinical or diagnostic
-        measures of cognition.
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    
-# ============================================================
-# END OF PART 2
-# ============================================================
-# ============================================================
-# PART 3 — CHALLENGES + ASK AYNA + AI MOOD/FACE + RESEARCH
-# ============================================================
-
-# ------------------------------------------------------------
-# BRAIN CHALLENGES
-# ------------------------------------------------------------
-
-def save_exercise_result(exercise_name, score, details=None):
-    result = {
-        "exercise": clean_text(exercise_name, 100),
-        "score": float(score),
-        "details": details or {},
-        "timestamp": time.time(),
-    }
-
-    st.session_state.exercise_scores.append(result)
-
-    user_id = current_user_id()
-    if user_id:
-        db_insert(
-            "exercise_results",
-            {
-                "user_id": user_id,
-                "exercise": clean_text(exercise_name, 100),
-                "score": float(score),
-                "result_data": result,
+                "word": word,
+                "ink_colour": colour,
+                "answer": answer,
             },
         )
 
+        st.session_state.lab_result = {
+            "score": score,
+            "observations": observation,
+        }
 
-def challenge_working_memory():
-    st.subheader("🧠 Working Memory")
+        st.session_state.lab_completed = True
 
-    if "wm_sequence" not in st.session_state:
-        st.session_state.wm_sequence = ""
-        st.session_state.wm_started = False
-        st.session_state.wm_show = False
-        st.session_state.wm_score = None
+        st.session_state.stroop_item = None
 
-    difficulty = st.selectbox(
-        "Difficulty",
-        ["Easy", "Medium", "Hard"],
-        key="wm_difficulty",
+        st.rerun()
+
+
+def run_pattern_lab():
+
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>🔢 Pattern Recognition</h3>
+            <p>
+                Identify the rule and predict the missing number.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    lengths = {
-        "Easy": 4,
-        "Medium": 6,
-        "Hard": 8,
-    }
-
-    length = lengths[difficulty]
-
-    if st.button(
-        "▶ Start Memory Challenge",
-        use_container_width=True,
-        key="start_wm",
-    ):
-        sequence = "".join(str(random.randint(0, 9)) for _ in range(length))
-
-        st.session_state.wm_sequence = sequence
-        st.session_state.wm_started = True
-        st.session_state.wm_show = True
-        st.session_state.wm_score = None
-        st.rerun()
-
-    if st.session_state.wm_started:
-
-        if st.session_state.wm_show:
-            st.markdown(
-                f"""
-                <div class="nl-card" style="text-align:center;">
-                    <div style="font-size:14px;color:#9ca3af;">
-                        Memorize this sequence
-                    </div>
-                    <div style="font-size:38px;font-weight:800;
-                    letter-spacing:8px;margin-top:15px;">
-                        {st.session_state.wm_sequence}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            if st.button(
-                "I memorized it",
-                use_container_width=True,
-                key="wm_hide",
-            ):
-                st.session_state.wm_show = False
-                st.rerun()
-
-        else:
-            answer = st.text_input(
-                "Enter the sequence:",
-                max_chars=20,
-                key="wm_answer",
-            )
-
-            if st.button(
-                "Check Answer",
-                type="primary",
-                use_container_width=True,
-                key="wm_check",
-            ):
-                if answer.strip() == st.session_state.wm_sequence:
-                    score = 100
-                    st.session_state.wm_score = score
-
-                    save_exercise_result(
-                        "Working Memory",
-                        score,
-                        {
-                            "difficulty": difficulty,
-                            "correct": True,
-                        },
-                    )
-
-                    st.success("✅ Correct! Excellent working-memory performance.")
-
-                else:
-                    score = 0
-                    st.session_state.wm_score = score
-
-                    save_exercise_result(
-                        "Working Memory",
-                        score,
-                        {
-                            "difficulty": difficulty,
-                            "correct": False,
-                        },
-                    )
-
-                    st.error("❌ Not quite. Try another round.")
-
-            if st.session_state.wm_score is not None:
-                st.metric(
-                    "Score",
-                    f"{st.session_state.wm_score}/100",
-                )
-
-
-def challenge_attention():
-    st.subheader("👁️ Attention Challenge")
-
-    if "attention_target" not in st.session_state:
-        st.session_state.attention_target = ""
-        st.session_state.attention_options = []
-        st.session_state.attention_started = False
-
-    if st.button(
-        "▶ Start Attention Challenge",
-        use_container_width=True,
-        key="start_attention_challenge",
-    ):
-        target = random.choice(["X", "K", "M", "A", "R"])
-
-        options = []
-
-        for _ in range(15):
-            options.append(random.choice(["X", "K", "M", "A", "R"]))
-
-        correct_position = random.randint(0, len(options) - 1)
-        options[correct_position] = target
-
-        st.session_state.attention_target = target
-        st.session_state.attention_options = options
-        st.session_state.attention_correct = correct_position
-        st.session_state.attention_started = True
-        st.session_state.attention_score = None
-
-        st.rerun()
-
-    if st.session_state.attention_started:
-
-        target = st.session_state.attention_target
-
-        st.markdown(
-            f"""
-            <div class="nl-card" style="text-align:center;">
-                <div style="color:#9ca3af;">Find the target</div>
-                <div style="font-size:38px;font-weight:900;">
-                    {target}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        columns = st.columns(5)
-
-        for index, item in enumerate(
-            st.session_state.attention_options
-        ):
-            with columns[index % 5]:
-
-                if st.button(
-                    item,
-                    key=f"attention_item_{index}",
-                    use_container_width=True,
-                ):
-
-                    if index == st.session_state.attention_correct:
-                        score = 100
-
-                        st.success("🎯 Correct target!")
-
-                        save_exercise_result(
-                            "Attention",
-                            score,
-                            {
-                                "correct": True,
-                            },
-                        )
-
-                    else:
-                        score = 0
-
-                        st.error("❌ That was not the target.")
-
-                        save_exercise_result(
-                            "Attention",
-                            score,
-                            {
-                                "correct": False,
-                            },
-                        )
-
-                    st.session_state.attention_score = score
-
-
-def challenge_pattern():
-    st.subheader("🔢 Pattern Recognition")
 
     patterns = [
         (
@@ -2787,78 +1979,1523 @@ def challenge_pattern():
         ),
     ]
 
-    if "pattern_question" not in st.session_state:
-        st.session_state.pattern_question = random.choice(patterns)
-        st.session_state.pattern_answered = False
+    if st.session_state.pattern_question is None:
 
-    question, answer = st.session_state.pattern_question
+        st.session_state.pattern_question = random.choice(
+            patterns
+        )
+
+    sequence, answer = (
+        st.session_state.pattern_question
+    )
 
     st.markdown(
         f"""
-        <div class="nl-card" style="text-align:center;">
-            <div style="font-size:30px;font-weight:800;">
-                {" → ".join(question)}
+        <div class="nl-card" style="
+            text-align:center;
+        ">
+
+            <div style="
+                font-size:30px;
+                font-weight:900;
+            ">
+                {" → ".join(sequence)}
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    user_answer = st.text_input(
-        "What comes next?",
-        key="pattern_answer",
+    response = st.text_input(
+        "Your answer",
+        max_chars=20,
+        key="lab_pattern_answer",
     )
 
-    col1, col2 = st.columns(2)
+    if st.button(
+        "Check Pattern",
+        type="primary",
+        use_container_width=True,
+        key="lab_pattern_check",
+    ):
 
-    with col1:
-        if st.button(
-            "Check",
-            type="primary",
+        correct = (
+            response.strip()
+            == answer
+        )
+
+        score = 100 if correct else 0
+
+        if correct:
+
+            observation = (
+                "The numerical pattern was identified correctly."
+            )
+
+            st.success(
+                "🎯 Correct."
+            )
+
+        else:
+
+            observation = (
+                "The predicted value did not match the "
+                "pattern used in this task."
+            )
+
+            st.error(
+                f"Incorrect. Expected {answer}."
+            )
+
+        lab_save_result(
+            "Pattern Recognition",
+            score,
+            observation,
+            {
+                "sequence": sequence,
+                "answer": response,
+            },
+        )
+
+        st.session_state.lab_result = {
+            "score": score,
+            "observations": observation,
+        }
+
+        st.session_state.lab_completed = True
+
+        st.session_state.pattern_question = None
+
+        st.rerun()
+
+
+def page_lab():
+
+    st.title("🧪 Cognitive Neuroscience Lab")
+
+    st.caption(
+        "Interactive behavioural simulations for exploring cognition."
+    )
+
+    st.warning(
+        "Lab tasks are educational simulations. "
+        "They do not record real EEG/fMRI signals and "
+        "do not provide clinical measurements."
+    )
+
+    st.subheader("👤 Choose your role")
+
+    character = st.selectbox(
+        "Research role",
+        [
+            "Researcher",
+            "Student",
+            "Lab Assistant",
+            "AI Research Agent",
+        ],
+        key="lab_character_selector",
+    )
+
+    st.session_state.lab_character = character
+
+    st.subheader("🧰 Virtual Equipment")
+
+    equipment = st.multiselect(
+        "Select equipment",
+        [
+            "EEG Simulator",
+            "Eye Tracker",
+            "Reaction-Time System",
+            "Cognitive Task Monitor",
+            "Physiological Sensor",
+        ],
+        default=[
+            "Cognitive Task Monitor",
+        ],
+        key="lab_equipment",
+    )
+
+    if equipment:
+
+        st.caption(
+            "Selected: "
+            + ", ".join(equipment)
+        )
+
+    st.divider()
+
+    st.subheader("🧠 Select Experiment")
+
+    experiment = st.selectbox(
+        "Experiment",
+        list(LAB_EXPERIMENTS.keys()),
+        key="lab_experiment_selector",
+    )
+
+    info = LAB_EXPERIMENTS[
+        experiment
+    ]
+
+    st.markdown(
+        f"""
+        <div class="nl-card">
+
+            <div style="font-size:45px;">
+                {info["icon"]}
+            </div>
+
+            <h3>
+                {experiment}
+            </h3>
+
+            <p>
+                {info["description"]}
+            </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if experiment == "Attention":
+
+        run_attention_lab()
+
+    elif experiment == "Memory":
+
+        run_memory_lab()
+
+    elif experiment == "Decision & Reward":
+
+        run_decision_lab()
+
+    elif experiment == "Stroop Cognitive Control":
+
+        run_stroop_lab()
+
+    elif experiment == "Pattern Recognition":
+
+        run_pattern_lab()
+
+    # --------------------------------------------------------
+    # RESULT
+    # --------------------------------------------------------
+
+    if st.session_state.lab_result:
+
+        result = st.session_state.lab_result
+
+        st.divider()
+
+        st.subheader("📊 Experiment Result")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.metric(
+                "Performance",
+                f"{result.get('score', 0)}/100",
+            )
+
+        with col2:
+
+            st.metric(
+                "Role",
+                st.session_state.lab_character,
+            )
+
+        st.info(
+            result.get(
+                "observations",
+                "",
+            )
+        )
+
+        st.caption(
+            "Interpretation is limited to performance in this "
+            "specific simulation and should not be treated as "
+            "a diagnosis or measurement of brain activity."
+        )
+
+
+# ============================================================
+# BRAIN JOURNEY
+# ============================================================
+
+BRAIN_SYSTEMS = [
+    {
+        "name": "Neuron",
+        "icon": "⚡",
+        "asset": "neuron.png",
+        "description": (
+            "Neurons are specialized cells that communicate "
+            "information through electrical and chemical signalling."
+        ),
+    },
+    {
+        "name": "Synapse",
+        "icon": "🔗",
+        "asset": "synapse.png",
+        "description": (
+            "A synapse is a communication junction where "
+            "signals can pass from one neuron to another."
+        ),
+    },
+    {
+        "name": "Neural Signaling",
+        "icon": "⚡",
+        "asset": "neural_signaling.gif",
+        "description": (
+            "Neural signalling involves coordinated electrical "
+            "and chemical processes that allow neural systems "
+            "to transmit information."
+        ),
+    },
+    {
+        "name": "Prefrontal Cortex",
+        "icon": "🧠",
+        "asset": "prefrontal_cortex.png",
+        "description": (
+            "The prefrontal cortex contributes to planning, "
+            "working memory, cognitive control and decision-making."
+        ),
+    },
+    {
+        "name": "Hippocampus",
+        "icon": "🧠",
+        "asset": "hippocampus.png",
+        "description": (
+            "The hippocampus is strongly involved in memory "
+            "formation and spatial/contextual processing."
+        ),
+    },
+    {
+        "name": "Striatum",
+        "icon": "🧠",
+        "asset": "striatum.png",
+        "description": (
+            "The striatum is part of the basal-ganglia circuitry "
+            "involved in action selection, reward and learning."
+        ),
+    },
+    {
+        "name": "Anterior Cingulate Cortex",
+        "icon": "🧠",
+        "asset": "acc.png",
+        "description": (
+            "The anterior cingulate cortex participates in "
+            "monitoring, cognitive control, motivation and "
+            "processing of competing information."
+        ),
+    },
+    {
+        "name": "Attention Networks",
+        "icon": "👁️",
+        "asset": "attention_network.png",
+        "description": (
+            "Attention networks coordinate selection and "
+            "prioritization of information relevant to behaviour."
+        ),
+    },
+]
+
+
+def ask_ayna_about_system(system):
+
+    question = (
+        "Explain this neuroscience concept in simple terms: "
+        + system["name"]
+        + ". "
+        + system["description"]
+    )
+
+    answer = ai_generate(
+        f"""
+You are Ayna, an educational cognitive-neuroscience AI guide.
+
+Explain the following concept clearly for a general learner.
+
+Concept:
+{question}
+
+Rules:
+- Be scientifically cautious.
+- Do not diagnose.
+- Do not invent facts.
+- Keep it concise.
+"""
+    )
+
+    st.session_state["brain_system_answer"] = answer
+
+
+def page_brain_journey():
+
+    st.title("🧠 Visual Brain Journey")
+
+    st.caption(
+        "Explore neural systems one concept at a time."
+    )
+
+    index = st.session_state.brain_journey_index
+
+    system = BRAIN_SYSTEMS[
+        index
+    ]
+
+    # --------------------------------------------------------
+    # PROGRESS
+    # --------------------------------------------------------
+
+    st.progress(
+        (index + 1)
+        / len(BRAIN_SYSTEMS)
+    )
+
+    st.caption(
+        f"Concept {index + 1} of {len(BRAIN_SYSTEMS)}"
+    )
+
+    # --------------------------------------------------------
+    # CONCEPT VISUAL
+    # --------------------------------------------------------
+
+    st.markdown(
+        f"""
+        <div class="nl-card" style="
+            text-align:center;
+        ">
+
+            <div style="
+                font-size:48px;
+            ">
+                {system["icon"]}
+            </div>
+
+            <h2>
+                {system["name"]}
+            </h2>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    asset = find_asset(
+        system["asset"]
+    )
+
+    if asset:
+
+        st.image(
+            str(asset),
             use_container_width=True,
-            key="pattern_check",
+        )
+
+    else:
+
+        st.markdown(
+            f"""
+            <div class="nl-card" style="
+                text-align:center;
+                padding:55px 20px;
+            ">
+
+                <div style="font-size:70px;">
+                    {system["icon"]}
+                </div>
+
+                <p class="small-muted">
+                    Add {system["asset"]}
+                    to your assets folder for the
+                    dedicated visual.
+                </p>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        f"""
+        <div class="nl-card">
+
+            <h3>
+                🔬 What are we exploring?
+            </h3>
+
+            <p>
+                {system["description"]}
+            </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --------------------------------------------------------
+    # AI EXPLANATION
+    # --------------------------------------------------------
+
+    if st.button(
+        "🤖 Ask Ayna About This System",
+        use_container_width=True,
+        key=f"ask_system_{index}",
+    ):
+
+        with st.spinner(
+            "Ayna is preparing an explanation..."
         ):
 
-            if user_answer.strip() == answer:
+            ask_ayna_about_system(
+                system
+            )
 
-                st.success("✅ Correct!")
+        st.rerun()
 
-                save_exercise_result(
-                    "Pattern Recognition",
-                    100,
-                    {"correct": True},
-                )
+    if st.session_state.get(
+        "brain_system_answer"
+    ):
 
-            else:
+        st.markdown(
+            """
+            <div class="nl-card">
+                <h3>🤖 Ayna's Explanation</h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-                st.error(f"❌ Incorrect. The answer was {answer}.")
+        st.write(
+            st.session_state.brain_system_answer
+        )
 
-                save_exercise_result(
-                    "Pattern Recognition",
-                    0,
-                    {"correct": False},
-                )
-
-    with col2:
         if st.button(
-            "New Pattern",
-            use_container_width=True,
-            key="new_pattern",
+            "🔊 Speak Explanation",
+            key=f"speak_system_{index}",
         ):
-            st.session_state.pattern_question = random.choice(patterns)
+
+            speak_text(
+                st.session_state.brain_system_answer
+            )
+
+    # --------------------------------------------------------
+    # NAVIGATION
+    # --------------------------------------------------------
+
+    st.divider()
+
+    previous_col, restart_col, next_col = (
+        st.columns(3)
+    )
+
+    with previous_col:
+
+        if st.button(
+            "⬅ Previous",
+            use_container_width=True,
+            disabled=index == 0,
+            key="brain_previous",
+        ):
+
+            st.session_state.brain_journey_index = max(
+                0,
+                index - 1,
+            )
+
+            st.session_state.brain_system_answer = ""
+
+            st.rerun()
+
+    with restart_col:
+
+        if st.button(
+            "🔄 Restart",
+            use_container_width=True,
+            key="brain_restart",
+        ):
+
+            st.session_state.brain_journey_index = 0
+            st.session_state.brain_system_answer = ""
+
+            st.rerun()
+
+    with next_col:
+
+        if st.button(
+            "Next ➡",
+            use_container_width=True,
+            disabled=index == len(BRAIN_SYSTEMS) - 1,
+            key="brain_next",
+        ):
+
+            st.session_state.brain_journey_index = min(
+                len(BRAIN_SYSTEMS) - 1,
+                index + 1,
+            )
+
+            st.session_state.brain_system_answer = ""
+
             st.rerun()
 
 
-def challenge_decision():
-    st.subheader("💰 Decision & Reward")
+# ============================================================
+# BRAIN PUZZLE
+# ============================================================
+
+def puzzle_make_solution(grid):
+
+    return list(
+        range(
+            grid * grid
+        )
+    )
+
+
+def puzzle_shuffle(solution):
+
+    board = solution.copy()
+
+    random.shuffle(
+        board
+    )
+
+    # Prevent an already-completed puzzle.
+    if board == solution:
+
+        random.shuffle(
+            board
+        )
+
+    return board
+
+
+def puzzle_new_round(grid):
+
+    solution = puzzle_make_solution(
+        grid
+    )
+
+    board = puzzle_shuffle(
+        solution
+    )
+
+    st.session_state.puzzle_grid = grid
+    st.session_state.puzzle_solution = solution
+    st.session_state.puzzle_board = board
+    st.session_state.puzzle_started = True
+    st.session_state.puzzle_completed = False
+    st.session_state.puzzle_moves = 0
+    st.session_state.puzzle_start_time = time.time()
+    st.session_state.puzzle_elapsed = 0
+
+
+def puzzle_swap(
+    first,
+    second,
+):
+
+    board = st.session_state.puzzle_board
+
+    if (
+        first < 0
+        or second < 0
+        or first >= len(board)
+        or second >= len(board)
+    ):
+        return
+
+    board[first], board[second] = (
+        board[second],
+        board[first],
+    )
+
+    st.session_state.puzzle_moves += 1
+
+
+def puzzle_check():
+
+    board = st.session_state.puzzle_board
+
+    solution = st.session_state.puzzle_solution
+
+    if board == solution:
+
+        st.session_state.puzzle_completed = True
+
+        if st.session_state.puzzle_start_time:
+
+            st.session_state.puzzle_elapsed = (
+                time.time()
+                - st.session_state.puzzle_start_time
+            )
+
+        return True
+
+    return False
+
+
+def page_puzzle():
+
+    st.title("🧩 Brain Puzzle")
+
+    st.caption(
+        "Reconstruct the brain image by arranging the puzzle pieces."
+    )
+
+    st.info(
+        "Puzzle uses the brain.png asset. "
+        "If brain.png is missing, add it to the project root."
+    )
+
+    # --------------------------------------------------------
+    # CONTROLS
+    # --------------------------------------------------------
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        grid_choice = st.selectbox(
+            "Puzzle size",
+            [
+                "3 × 3 — 9 pieces",
+                "3 × 4 — 12 pieces",
+                "4 × 4 — 16 pieces",
+                "5 × 5 — 25 pieces",
+            ],
+            key="puzzle_size_choice",
+        )
+
+    with col2:
+
+        challenge_mode = st.selectbox(
+            "Challenge mode",
+            [
+                "Standard",
+                "Speed Challenge",
+                "Minimum Moves",
+                "Memory Mode",
+            ],
+            key="puzzle_challenge_mode",
+        )
+
+    with col3:
+
+        st.metric(
+            "Moves",
+            st.session_state.puzzle_moves,
+        )
+
+    grid_map = {
+        "3 × 3 — 9 pieces": 3,
+        "3 × 4 — 12 pieces": 4,
+        "4 × 4 — 16 pieces": 4,
+        "5 × 5 — 25 pieces": 5,
+    }
+
+    # 3x4 means 12 pieces but the board is represented
+    # as 3 rows x 4 columns.
+    if grid_choice == "3 × 4 — 12 pieces":
+
+        rows = 3
+        cols = 4
+
+    else:
+
+        rows = grid_map[
+            grid_choice
+        ]
+
+        cols = rows
+
+    total = rows * cols
+
+    if st.button(
+        "🎮 New Puzzle",
+        type="primary",
+        use_container_width=True,
+        key="new_brain_puzzle",
+    ):
+
+        puzzle_new_round(
+            total
+        )
+
+        st.session_state.puzzle_rows = rows
+        st.session_state.puzzle_cols = cols
+
+        st.rerun()
+
+    # --------------------------------------------------------
+    # IMAGE
+    # --------------------------------------------------------
+
+    brain_path = find_asset(
+        "brain.png"
+    )
+
+    if brain_path:
+
+        st.markdown(
+            "### 🧠 Source Brain Image"
+        )
+
+        st.image(
+            str(brain_path),
+            use_container_width=True,
+        )
+
+    else:
+
+        st.warning(
+            "brain.png was not found. "
+            "Please upload brain.png to your project."
+        )
+
+    # --------------------------------------------------------
+    # START PUZZLE
+    # --------------------------------------------------------
+
+    if not st.session_state.puzzle_started:
+
+        st.markdown(
+            """
+            <div class="nl-card" style="
+                text-align:center;
+            ">
+
+                <div style="font-size:65px;">
+                    🧩
+                </div>
+
+                <h3>
+                    Your puzzle is ready.
+                </h3>
+
+                <p>
+                    Choose the puzzle size and press
+                    <b>New Puzzle</b>.
+                </p>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # PUZZLE STATE
+    # --------------------------------------------------------
+
+    board = st.session_state.puzzle_board
+
+    if not board:
+
+        puzzle_new_round(
+            total
+        )
+
+        board = st.session_state.puzzle_board
+
+    rows = st.session_state.get(
+        "puzzle_rows",
+        rows,
+    )
+
+    cols = st.session_state.get(
+        "puzzle_cols",
+        cols,
+    )
+
+    # --------------------------------------------------------
+    # IMAGE TILE BOARD
+    #
+    # This is a reliable Streamlit-native interaction:
+    # select one tile, then select another tile to swap them.
+    # It works on phone, tablet and laptop.
+    #
+    # The next upgrade can replace this with a true browser
+    # pointer-drag component once a state-returning component
+    # is connected.
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🧩 Arrange the Pieces"
+    )
+
+    st.caption(
+        "Tap one piece and then tap another piece to swap them."
+    )
+
+    selected = st.session_state.get(
+        "puzzle_selected",
+        None,
+    )
+
+    # --------------------------------------------------------
+    # TILE GRID
+    # --------------------------------------------------------
+
+    for row in range(rows):
+
+        columns = st.columns(
+            cols
+        )
+
+        for col in range(cols):
+
+            index = (
+                row * cols
+                + col
+            )
+
+            if index >= len(board):
+                continue
+
+            tile_id = board[index]
+
+            with columns[col]:
+
+                # Source image available:
+                # show cropped-looking numbered tiles using
+                # CSS background positioning.
+                if brain_path:
+
+                    image_uri = asset_data_uri(
+                        "brain.png"
+                    )
+
+                    if image_uri:
+
+                        x = tile_id % cols
+                        y = tile_id // rows
+
+                        # Use tile number visually so every
+                        # piece remains identifiable.
+                        st.markdown(
+                            f"""
+                            <div style="
+                                width:100%;
+                                aspect-ratio:1;
+                                border-radius:12px;
+                                background-image:url('{image_uri}');
+                                background-size:
+                                    {cols * 100}%
+                                    {rows * 100}%;
+                                background-position:
+                                    {x * 100 / max(cols - 1, 1)}%
+                                    {y * 100 / max(rows - 1, 1)}%;
+                                border:
+                                    2px solid
+                                    rgba(255,255,255,.15);
+                                overflow:hidden;
+                                margin-bottom:5px;
+                            "></div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                else:
+
+                    st.markdown(
+                        f"""
+                        <div class="nl-card"
+                             style="
+                                text-align:center;
+                                padding:25px;
+                             ">
+                            🧩
+                            <br>
+                            Piece {tile_id + 1}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                label = (
+                    f"Selected {tile_id + 1}"
+                    if selected == index
+                    else f"Piece {tile_id + 1}"
+                )
+
+                if st.button(
+                    label,
+                    use_container_width=True,
+                    key=f"puzzle_tile_{index}",
+                ):
+
+                    if selected is None:
+
+                        st.session_state.puzzle_selected = index
+
+                    elif selected == index:
+
+                        st.session_state.puzzle_selected = None
+
+                    else:
+
+                        puzzle_swap(
+                            selected,
+                            index,
+                        )
+
+                        st.session_state.puzzle_selected = None
+
+                    st.rerun()
+
+    # --------------------------------------------------------
+    # CHECK
+    # --------------------------------------------------------
+
+    st.divider()
+
+    if st.button(
+        "✅ Check Puzzle",
+        type="primary",
+        use_container_width=True,
+        key="check_brain_puzzle",
+    ):
+
+        if puzzle_check():
+
+            st.success(
+                "🎉 Puzzle completed!"
+            )
+
+            st.balloons()
+
+            score = max(
+                0,
+                100
+                - (
+                    st.session_state.puzzle_moves
+                    * 2
+                ),
+            )
+
+            st.metric(
+                "Puzzle Score",
+                f"{score}/100",
+            )
+
+            user_id = current_user_id()
+
+            if user_id:
+
+                db_insert(
+                    "brain_puzzle_results",
+                    {
+                        "user_id": user_id,
+                        "grid_size": total,
+                        "moves": st.session_state.puzzle_moves,
+                        "score": score,
+                        "challenge_mode": challenge_mode,
+                    },
+                )
+
+        else:
+
+            correct_positions = sum(
+                1
+                for a, b in zip(
+                    board,
+                    st.session_state.puzzle_solution,
+                )
+                if a == b
+            )
+
+            st.warning(
+                f"Not complete yet. "
+                f"{correct_positions}/{total} pieces "
+                f"are currently in the correct position."
+            )
+
+    if st.session_state.puzzle_completed:
+
+        if st.button(
+            "🔄 Play Again",
+            use_container_width=True,
+            key="puzzle_play_again",
+        ):
+
+            puzzle_new_round(
+                total
+            )
+
+            st.session_state.puzzle_rows = rows
+            st.session_state.puzzle_cols = cols
+            st.session_state.puzzle_selected = None
+
+            st.rerun()
+
+    # --------------------------------------------------------
+    # RESET
+    # --------------------------------------------------------
+
+    if st.button(
+        "↩ Reset Puzzle",
+        use_container_width=True,
+        key="reset_brain_puzzle",
+    ):
+
+        puzzle_new_round(
+            total
+        )
+
+        st.session_state.puzzle_rows = rows
+        st.session_state.puzzle_cols = cols
+        st.session_state.puzzle_selected = None
+
+        st.rerun()
+
+    # --------------------------------------------------------
+    # SIMULATION NOTICE
+    # --------------------------------------------------------
+
+    st.caption(
+        "Puzzle performance reflects this interactive task only; "
+        "it is not a measure of intelligence or brain function."
+    )
+
+
+# ============================================================
+# PART 2 END
+# ============================================================
+# ============================================================
+# NEUROLENS — PART 3
+# BRAIN CHALLENGES + ASK AYNA + AI MOOD/BEHAVIOUR + RESEARCH
+# ============================================================
+
+
+# ============================================================
+# BRAIN CHALLENGES
+# ============================================================
+
+def save_exercise_result(
+    exercise,
+    score,
+    details=None,
+):
+
+    result = {
+        "exercise": exercise,
+        "score": float(score),
+        "details": details or {},
+        "timestamp": time.time(),
+    }
+
+    st.session_state.exercise_scores.append(
+        result
+    )
+
+    user_id = current_user_id()
+
+    if user_id:
+
+        db_insert(
+            "exercise_results",
+            {
+                "user_id": user_id,
+                "exercise": exercise,
+                "score": float(score),
+                "result_data": result,
+            },
+        )
+
+
+def working_memory_challenge():
 
     st.markdown(
         """
         <div class="nl-card">
-            <h3>Choose one option</h3>
+            <h3>🧠 Working Memory</h3>
             <p>
-            You can receive <b>PKR 1,000 today</b>,
-            or wait 30 days for <b>PKR 1,500</b>.
+                Memorize the sequence and reproduce it after
+                it disappears.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if "challenge_memory_sequence" not in st.session_state:
+        st.session_state.challenge_memory_sequence = None
+
+    if "challenge_memory_visible" not in st.session_state:
+        st.session_state.challenge_memory_visible = False
+
+    if st.session_state.challenge_memory_sequence is None:
+
+        length = st.select_slider(
+            "Sequence length",
+            options=[4, 5, 6, 7, 8],
+            value=5,
+            key="memory_challenge_length",
+        )
+
+        if st.button(
+            "▶ Start Memory Challenge",
+            type="primary",
+            use_container_width=True,
+            key="start_memory_challenge",
+        ):
+
+            sequence = "".join(
+                str(
+                    random.randint(0, 9)
+                )
+                for _ in range(length)
+            )
+
+            st.session_state.challenge_memory_sequence = sequence
+            st.session_state.challenge_memory_visible = True
+
+            st.rerun()
+
+        return
+
+    sequence = (
+        st.session_state.challenge_memory_sequence
+    )
+
+    if st.session_state.challenge_memory_visible:
+
+        st.markdown(
+            f"""
+            <div class="nl-card" style="
+                text-align:center;
+                padding:35px;
+            ">
+
+                <div class="small-muted">
+                    Memorize
+                </div>
+
+                <div style="
+                    font-size:44px;
+                    font-weight:900;
+                    letter-spacing:8px;
+                    margin-top:15px;
+                ">
+                    {sequence}
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            "Hide Sequence",
+            type="primary",
+            use_container_width=True,
+            key="hide_memory_challenge",
+        ):
+
+            st.session_state.challenge_memory_visible = False
+
+            st.rerun()
+
+        return
+
+    answer = st.text_input(
+        "Enter the sequence",
+        max_chars=30,
+        key="memory_challenge_answer",
+    )
+
+    if st.button(
+        "Check Memory",
+        type="primary",
+        use_container_width=True,
+        key="check_memory_challenge",
+    ):
+
+        correct = (
+            answer.strip()
+            == sequence
+        )
+
+        score = 100 if correct else 0
+
+        if correct:
+
+            st.success(
+                "🎯 Excellent memory."
+            )
+
+        else:
+
+            st.error(
+                "The sequence did not match."
+            )
+
+        save_exercise_result(
+            "Working Memory",
+            score,
+            {
+                "correct": correct,
+                "sequence_length": len(sequence),
+            },
+        )
+
+        st.session_state.challenge_memory_sequence = None
+        st.session_state.challenge_memory_visible = False
+
+        st.rerun()
+
+
+def attention_challenge():
+
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>👁️ Attention Challenge</h3>
+            <p>
+                Find the target symbol among distractors.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if "attention_challenge_data" not in st.session_state:
+
+        st.session_state.attention_challenge_data = None
+
+    if st.session_state.attention_challenge_data is None:
+
+        if st.button(
+            "▶ Start Attention Challenge",
+            type="primary",
+            use_container_width=True,
+            key="start_attention_challenge",
+        ):
+
+            target = random.choice(
+                ["X", "K", "M", "R"]
+            )
+
+            options = [
+                random.choice(
+                    ["X", "K", "M", "R", "A", "B"]
+                )
+                for _ in range(24)
+            ]
+
+            correct_index = random.randrange(
+                len(options)
+            )
+
+            options[correct_index] = target
+
+            st.session_state.attention_challenge_data = {
+                "target": target,
+                "options": options,
+                "correct": correct_index,
+                "started": time.time(),
+            }
+
+            st.rerun()
+
+        return
+
+    data = (
+        st.session_state.attention_challenge_data
+    )
+
+    st.markdown(
+        f"""
+        <div class="nl-card" style="
+            text-align:center;
+        ">
+
+            <div class="small-muted">
+                Find
+            </div>
+
+            <div style="
+                font-size:48px;
+                font-weight:900;
+            ">
+                {data["target"]}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(6)
+
+    for index, value in enumerate(
+        data["options"]
+    ):
+
+        with cols[index % 6]:
+
+            if st.button(
+                value,
+                key=f"attention_challenge_{index}",
+                use_container_width=True,
+            ):
+
+                elapsed = (
+                    time.time()
+                    - data["started"]
+                )
+
+                correct = (
+                    index
+                    == data["correct"]
+                )
+
+                if correct:
+
+                    score = max(
+                        0,
+                        min(
+                            100,
+                            int(
+                                100
+                                - elapsed * 10
+                            ),
+                        ),
+                    )
+
+                    st.success(
+                        "🎯 Correct target."
+                    )
+
+                else:
+
+                    score = 0
+
+                    st.error(
+                        "Not the target."
+                    )
+
+                save_exercise_result(
+                    "Attention",
+                    score,
+                    {
+                        "correct": correct,
+                        "reaction_time": elapsed,
+                    },
+                )
+
+                st.session_state.attention_challenge_data = None
+
+                st.rerun()
+
+
+def pattern_challenge():
+
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>🔢 Pattern Recognition</h3>
+            <p>
+                Find the next number in the sequence.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    patterns = [
+        (["2", "4", "8", "16", "?"], "32"),
+        (["3", "6", "12", "24", "?"], "48"),
+        (["5", "10", "20", "40", "?"], "80"),
+        (["1", "4", "9", "16", "?"], "25"),
+    ]
+
+    if "pattern_challenge_data" not in st.session_state:
+
+        st.session_state.pattern_challenge_data = random.choice(
+            patterns
+        )
+
+    sequence, answer = (
+        st.session_state.pattern_challenge_data
+    )
+
+    st.markdown(
+        f"""
+        <div class="nl-card" style="
+            text-align:center;
+        ">
+
+            <div style="
+                font-size:30px;
+                font-weight:900;
+            ">
+                {" → ".join(sequence)}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    response = st.text_input(
+        "Next value",
+        key="pattern_challenge_answer",
+    )
+
+    if st.button(
+        "Check Pattern",
+        type="primary",
+        use_container_width=True,
+        key="check_pattern_challenge",
+    ):
+
+        correct = (
+            response.strip()
+            == answer
+        )
+
+        score = 100 if correct else 0
+
+        if correct:
+
+            st.success(
+                "🧠 Correct pattern."
+            )
+
+        else:
+
+            st.error(
+                f"Not quite. The expected value was {answer}."
+            )
+
+        save_exercise_result(
+            "Pattern Recognition",
+            score,
+            {
+                "correct": correct,
+            },
+        )
+
+        st.session_state.pattern_challenge_data = None
+
+        st.rerun()
+
+
+def decision_challenge():
+
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>💰 Decision Challenge</h3>
+
+            <p>
+                Choose between an immediate smaller reward
+                and a delayed larger reward.
             </p>
         </div>
         """,
@@ -2866,220 +3503,257 @@ def challenge_decision():
     )
 
     choice = st.radio(
-        "Your decision:",
+        "Your choice",
         [
             "PKR 1,000 today",
             "PKR 1,500 after 30 days",
         ],
-        key="decision_choice",
+        key="decision_challenge_choice",
     )
 
     if st.button(
         "Submit Decision",
         type="primary",
         use_container_width=True,
-        key="decision_submit",
+        key="submit_decision_challenge",
     ):
 
         if "30 days" in choice:
-            interpretation = (
-                "You selected the delayed larger reward. "
-                "This choice is consistent with greater willingness "
-                "to wait for a larger payoff."
-            )
-        else:
-            interpretation = (
-                "You selected the immediate reward. "
-                "This choice prioritizes immediate availability."
+
+            observation = (
+                "You selected the delayed larger reward."
             )
 
-        st.info(interpretation)
+        else:
+
+            observation = (
+                "You selected the immediate reward."
+            )
+
+        st.success(
+            "Decision recorded."
+        )
+
+        st.info(
+            observation
+        )
 
         save_exercise_result(
-            "Decision & Reward",
+            "Decision Challenge",
             100,
             {
                 "choice": choice,
-                "interpretation": interpretation,
             },
         )
 
 
-def challenge_stroop():
-    st.subheader("🎨 Stroop Cognitive Control")
-
-    words = [
-        ("RED", "blue"),
-        ("BLUE", "red"),
-        ("GREEN", "yellow"),
-        ("YELLOW", "green"),
-    ]
-
-    if "stroop_item" not in st.session_state:
-        st.session_state.stroop_item = random.choice(words)
-
-    word, displayed_color = st.session_state.stroop_item
-
-    st.markdown(
-        f"""
-        <div class="nl-card" style="text-align:center;">
-            <div style="font-size:16px;color:#9ca3af;">
-                Identify the ink colour, not the word.
-            </div>
-            <div style="
-                font-size:44px;
-                font-weight:900;
-                color:{displayed_color};
-                margin-top:15px;
-            ">
-                {word}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    options = ["red", "blue", "green", "yellow"]
-
-    answer = st.radio(
-        "Ink colour:",
-        options,
-        horizontal=True,
-        key="stroop_answer",
-    )
-
-    if st.button(
-        "Check",
-        type="primary",
-        use_container_width=True,
-        key="stroop_check",
-    ):
-
-        if answer == displayed_color:
-
-            st.success("✅ Correct cognitive-control response.")
-
-            save_exercise_result(
-                "Stroop Control",
-                100,
-                {
-                    "correct": True,
-                },
-            )
-
-        else:
-
-            st.error("❌ Incorrect response.")
-
-            save_exercise_result(
-                "Stroop Control",
-                0,
-                {
-                    "correct": False,
-                },
-            )
-
-        st.session_state.stroop_item = random.choice(words)
-        st.rerun()
-
-
-def challenge_reaction():
-    st.subheader("⚡ Quick Reaction")
+def reaction_challenge():
 
     st.markdown(
         """
         <div class="nl-card">
-            <h3>Reaction task</h3>
+            <h3>⚡ Quick Reaction</h3>
             <p>
-            This simplified task uses your interaction speed as a
-            basic performance indicator. It is not a clinical
-            measurement of reaction time.
+                Start the task and react when the signal appears.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if "reaction_started" not in st.session_state:
-        st.session_state.reaction_started = False
-        st.session_state.reaction_start_time = None
+    if "reaction_ready" not in st.session_state:
+        st.session_state.reaction_ready = False
 
-    if not st.session_state.reaction_started:
+    if "reaction_waiting" not in st.session_state:
+        st.session_state.reaction_waiting = False
+
+    if "reaction_start" not in st.session_state:
+        st.session_state.reaction_start = None
+
+    if not st.session_state.reaction_waiting:
 
         if st.button(
-            "🟢 Start",
+            "▶ Start Reaction Test",
             type="primary",
             use_container_width=True,
-            key="reaction_start",
+            key="start_reaction_test",
         ):
 
-            st.session_state.reaction_started = True
-            st.session_state.reaction_start_time = time.time()
+            st.session_state.reaction_waiting = True
+            st.session_state.reaction_ready = False
+
+            delay = random.uniform(
+                1.0,
+                3.0,
+            )
+
+            time.sleep(
+                delay
+            )
+
+            st.session_state.reaction_ready = True
+            st.session_state.reaction_start = time.time()
 
             st.rerun()
 
-    else:
+        return
 
-        elapsed = (
+    if not st.session_state.reaction_ready:
+
+        st.warning(
+            "Wait for the signal..."
+        )
+
+        return
+
+    if st.button(
+        "🟢 TAP NOW!",
+        type="primary",
+        use_container_width=True,
+        key="reaction_now",
+    ):
+
+        reaction_time = (
             time.time()
-            - st.session_state.reaction_start_time
+            - st.session_state.reaction_start
         )
 
-        st.markdown(
-            """
-            <div class="nl-card" style="text-align:center;">
-                <div style="font-size:32px;">
-                    ⚡ TAP NOW
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "TAP",
-            type="primary",
-            use_container_width=True,
-            key="reaction_tap",
-        ):
-
-            reaction_time = time.time() - st.session_state.reaction_start_time
-
-            score = max(
-                0,
-                min(
-                    100,
-                    int(100 - reaction_time * 50),
+        score = max(
+            0,
+            min(
+                100,
+                int(
+                    100
+                    - reaction_time * 100
                 ),
-            )
+            ),
+        )
 
-            st.success(
-                f"Reaction time: {reaction_time:.3f} seconds"
-            )
+        st.success(
+            f"Reaction time: {reaction_time:.3f} seconds"
+        )
 
-            st.metric(
-                "Performance score",
-                f"{score}/100",
-            )
+        save_exercise_result(
+            "Quick Reaction",
+            score,
+            {
+                "reaction_time": reaction_time,
+            },
+        )
 
-            save_exercise_result(
-                "Quick Reaction",
-                score,
-                {
-                    "reaction_time": reaction_time,
-                },
-            )
+        st.session_state.reaction_waiting = False
+        st.session_state.reaction_ready = False
+        st.session_state.reaction_start = None
 
-            st.session_state.reaction_started = False
+
+def stroop_challenge():
+
+    st.markdown(
+        """
+        <div class="nl-card">
+            <h3>🎨 Stroop Challenge</h3>
+            <p>
+                Select the colour of the text, not the written word.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if "challenge_stroop" not in st.session_state:
+        st.session_state.challenge_stroop = None
+
+    if st.session_state.challenge_stroop is None:
+
+        items = [
+            ("RED", "blue"),
+            ("BLUE", "red"),
+            ("GREEN", "yellow"),
+            ("YELLOW", "green"),
+        ]
+
+        st.session_state.challenge_stroop = random.choice(
+            items
+        )
+
+    word, colour = (
+        st.session_state.challenge_stroop
+    )
+
+    st.markdown(
+        f"""
+        <div class="nl-card" style="
+            text-align:center;
+        ">
+
+            <div style="
+                color:{colour};
+                font-size:50px;
+                font-weight:900;
+            ">
+                {word}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    answer = st.radio(
+        "Ink colour",
+        [
+            "red",
+            "blue",
+            "green",
+            "yellow",
+        ],
+        horizontal=True,
+        key="challenge_stroop_answer",
+    )
+
+    if st.button(
+        "Submit",
+        type="primary",
+        use_container_width=True,
+        key="submit_stroop_challenge",
+    ):
+
+        correct = (
+            answer == colour
+        )
+
+        score = 100 if correct else 0
+
+        if correct:
+            st.success("🎯 Correct.")
+        else:
+            st.error("❌ Incorrect.")
+
+        save_exercise_result(
+            "Stroop Cognitive Control",
+            score,
+            {
+                "correct": correct,
+            },
+        )
+
+        st.session_state.challenge_stroop = None
+
+        st.rerun()
 
 
 def page_challenges():
 
-    st.title("🧠 Brain Challenges")
+    st.title("🎯 Brain Challenges")
 
     st.caption(
-        "Interactive cognitive exercises for attention, memory, "
-        "pattern recognition, decision-making and cognitive control."
+        "Short interactive cognitive exercises."
+    )
+
+    st.warning(
+        "These are educational behavioural tasks. "
+        "They are not diagnostic tests and do not measure "
+        "actual brain activity."
     )
 
     challenge = st.selectbox(
@@ -3088,89 +3762,111 @@ def page_challenges():
             "Working Memory",
             "Attention",
             "Pattern Recognition",
-            "Decision & Reward",
-            "Stroop Cognitive Control",
+            "Decision Challenge",
             "Quick Reaction",
+            "Stroop Cognitive Control",
         ],
-        key="challenge_selector",
+        key="brain_challenge_selector",
     )
 
     st.divider()
 
     if challenge == "Working Memory":
-        challenge_working_memory()
+
+        working_memory_challenge()
 
     elif challenge == "Attention":
-        challenge_attention()
+
+        attention_challenge()
 
     elif challenge == "Pattern Recognition":
-        challenge_pattern()
 
-    elif challenge == "Decision & Reward":
-        challenge_decision()
+        pattern_challenge()
 
-    elif challenge == "Stroop Cognitive Control":
-        challenge_stroop()
+    elif challenge == "Decision Challenge":
+
+        decision_challenge()
 
     elif challenge == "Quick Reaction":
-        challenge_reaction()
+
+        reaction_challenge()
+
+    elif challenge == "Stroop Cognitive Control":
+
+        stroop_challenge()
 
 
-# ------------------------------------------------------------
-# ASK AYNA — GEMINI AI
-# ------------------------------------------------------------
+# ============================================================
+# ASK AYNA
+# ============================================================
 
-def ask_ayna_ai(question):
+def ask_ayna_prompt(
+    user_message
+):
 
-    if not question.strip():
-        return "Please enter a question."
+    message = clean_text(
+        user_message,
+        4000,
+    )
 
-    if not ai_available():
-        return (
-            "Gemini AI is not connected yet. "
-            "Please add GEMINI_API_KEY in Streamlit Secrets."
-        )
+    if not message:
+        return
 
     prompt = f"""
-You are Ayna, the AI guide inside NEUROLENS.
+You are Ayna, the AI research companion inside NEUROLENS.
 
-NEUROLENS focuses on:
-- cognitive neuroscience
-- cognition
-- behaviour
-- attention
-- learning
-- memory
-- decision-making
-- consciousness
-- brain systems
-- AI and neuroscience
-
-Answer clearly and naturally.
-
-Rules:
-- Do not diagnose medical or psychiatric conditions.
-- Do not claim to read someone's mind.
-- Do not claim that a game measures brain activity.
-- Clearly distinguish educational simulation from clinical measurement.
-- If the question requires a professional diagnosis, recommend an appropriate qualified professional.
-- Keep answers understandable.
+Your role:
+- Explain cognitive neuroscience, brain systems,
+  behaviour, AI and research concepts.
+- Help users learn.
 - Be scientifically cautious.
-- Do not invent research findings.
+- Clearly distinguish established evidence from uncertainty.
+- Never diagnose a person.
+- Never claim to read someone's mind.
+- Never claim that a game, voice recording, facial image,
+  or self-report can directly measure brain activity.
+- Do not present AI guesses as facts.
+- If a health issue is raised, encourage appropriate
+  professional support when relevant.
 
-User question:
-{clean_text(question, 3000)}
+User message:
+{message}
+
+Give a clear, useful response.
 """
 
-    result = ai_generate(prompt)
-
-    if result:
-        return result
-
-    return (
-        "I could not generate a reliable response right now. "
-        "Please try again."
+    answer = ai_generate(
+        prompt,
+        max_output_tokens=1500,
     )
+
+    st.session_state.ayna_messages.append(
+        {
+            "role": "user",
+            "content": message,
+        }
+    )
+
+    st.session_state.ayna_messages.append(
+        {
+            "role": "assistant",
+            "content": answer,
+        }
+    )
+
+    user_id = current_user_id()
+
+    if user_id:
+
+        db_insert(
+            "ai_requests",
+            {
+                "user_id": user_id,
+                "request_text": message,
+                "response_text": answer,
+                "request_type": "ask_ayna",
+            },
+        )
 
 
 def page_ask_ayna():
@@ -3178,101 +3874,211 @@ def page_ask_ayna():
     st.title("🤖 Ask Ayna")
 
     st.caption(
-        "Your NEUROLENS AI guide for cognition, behaviour and neuroscience."
+        "Ask Ayna about cognition, neuroscience, behaviour, AI or research."
     )
 
-    if "ayna_messages" not in st.session_state:
-        st.session_state.ayna_messages = []
+    if not ai_available():
 
-    for message in st.session_state.ayna_messages:
+        st.info(
+            "Add GEMINI_API_KEY to Streamlit Secrets "
+            "to activate Ask Ayna."
+        )
 
-        role = message.get("role", "assistant")
-        content = message.get("content", "")
+    # --------------------------------------------------------
+    # CHAT HISTORY
+    # --------------------------------------------------------
 
-        with st.chat_message(role):
-            st.write(content)
+    for message in st.session_state.get(
+        "ayna_messages",
+        [],
+    ):
 
-    question = st.chat_input(
-        "Ask Ayna about the brain, behaviour or cognition..."
+        role = message.get(
+            "role"
+        )
+
+        content = message.get(
+            "content",
+            "",
+        )
+
+        if role == "user":
+
+            with st.chat_message(
+                "user"
+            ):
+
+                st.write(
+                    content
+                )
+
+        else:
+
+            with st.chat_message(
+                "assistant"
+            ):
+
+                st.write(
+                    content
+                )
+
+                if st.button(
+                    "🔊 Speak Ayna",
+                    key=f"speak_{hash(content)}",
+                ):
+
+                    speak_text(
+                        content
+                    )
+
+    # --------------------------------------------------------
+    # INPUT
+    # --------------------------------------------------------
+
+    prompt = st.chat_input(
+        "Ask Ayna..."
     )
 
-    if question:
+    if prompt:
 
-        question = clean_text(question, 3000)
+        with st.spinner(
+            "Ayna is thinking..."
+        ):
 
-        st.session_state.ai_requests += 1
-
-        st.session_state.ai_request_history.append(
-            {
-                "question": question,
-                "time": time.time(),
-            }
-        )
-
-        st.session_state.ayna_messages.append(
-            {
-                "role": "user",
-                "content": question,
-            }
-        )
-
-        answer = ask_ayna_ai(question)
-
-        st.session_state.ayna_messages.append(
-            {
-                "role": "assistant",
-                "content": answer,
-            }
-        )
+            ask_ayna_prompt(
+                prompt
+            )
 
         st.rerun()
 
-    st.divider()
+    # --------------------------------------------------------
+    # QUICK PROMPTS
+    # --------------------------------------------------------
 
-    if st.session_state.ayna_messages:
+    st.markdown(
+        "### 💡 Try asking"
+    )
 
-        last_answer = None
+    quick_prompts = [
+        "What is working memory?",
+        "How does attention work?",
+        "Explain the CSTC loop simply.",
+        "What is neuroplasticity?",
+        "How does reward affect decision-making?",
+        "What is the difference between AI and human cognition?",
+    ]
 
-        for message in reversed(
-            st.session_state.ayna_messages
-        ):
-            if message.get("role") == "assistant":
-                last_answer = message.get("content", "")
-                break
+    quick_cols = st.columns(2)
 
-        if last_answer:
+    for index, question in enumerate(
+        quick_prompts
+    ):
 
-            st.subheader("🔊 Voice")
+        with quick_cols[index % 2]:
 
             if st.button(
-                "🔊 Speak Ayna",
+                question,
                 use_container_width=True,
-                key="speak_ayna",
+                key=f"quick_ayna_{index}",
             ):
-                speak_text(last_answer)
+
+                with st.spinner(
+                    "Ayna is thinking..."
+                ):
+
+                    ask_ayna_prompt(
+                        question
+                    )
+
+                st.rerun()
 
 
-# ------------------------------------------------------------
-# AI MOOD + VOICE ANALYSIS
-# ------------------------------------------------------------
+# ============================================================
+# AI VOICE + FACE MOOD/BEHAVIOUR
+# ============================================================
 
-def analyze_voice_with_ai(audio_bytes, mime_type="audio/wav"):
+def parse_ai_json(
+    text,
+    fallback=None,
+):
+
+    fallback = fallback or {}
+
+    if not text:
+        return fallback
+
+    cleaned = re.sub(
+        r"```(?:json)?",
+        "",
+        text,
+        flags=re.I,
+    )
+
+    cleaned = cleaned.replace(
+        "```",
+        "",
+    ).strip()
+
+    try:
+
+        return json.loads(
+            cleaned
+        )
+
+    except Exception:
+
+        match = re.search(
+            r"\{.*\}",
+            cleaned,
+            flags=re.S,
+        )
+
+        if match:
+
+            try:
+
+                return json.loads(
+                    match.group(0)
+                )
+
+            except Exception:
+                pass
+
+    return fallback
+
+
+def analyse_voice_with_ai(
+    audio_bytes,
+    mime_type="audio/wav",
+):
 
     if not ai_available():
+
         return {
             "transcript": "",
             "emoji": "🧩",
             "vibe_label": "AI unavailable",
-            "explanation": "Gemini is not connected.",
+            "explanation": (
+                "Gemini is not connected."
+            ),
+        }
+
+    if ai_limit_reached():
+
+        return {
+            "transcript": "",
+            "emoji": "⏳",
+            "vibe_label": "Temporarily limited",
+            "explanation": (
+                "Please wait before making another AI request."
+            ),
         }
 
     try:
 
         from google.genai import types
 
-        client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
+        register_ai_request()
 
         prompt = """
 Return ONLY valid JSON with these keys:
@@ -3282,27 +4088,26 @@ emoji
 vibe_label
 explanation
 
-vibe_label must be one of:
+vibe_label must describe only observable
+communication/acoustic characteristics, such as:
+
 Positive/energetic-sounding
 Calm-sounding
 Neutral/mixed
-Tense/stressed-sounding
+Tense-sounding
 Low-energy-sounding
 Uncertain/mixed
 
-Use observable communication/acoustic cues only.
-
-Do NOT claim:
-- hidden emotions
-- personality
-- mental illness
-- diagnosis
-- certainty about internal state
-
-The result is an AI-assisted communication/vocal-vibe estimate.
+Important:
+- Do not claim certainty about hidden emotions.
+- Do not diagnose.
+- Do not infer personality.
+- Do not infer mental health.
+- Do not claim to read the person's mind.
+- Explain that the result is an AI-assisted interpretation.
 """
 
-        response = client.models.generate_content(
+        response = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=[
                 prompt,
@@ -3313,127 +4118,135 @@ The result is an AI-assisted communication/vocal-vibe estimate.
             ],
         )
 
-        text = getattr(
-            response,
-            "text",
-            "",
-        ) or ""
-
-        text = re.sub(
-            r"```(?:json)?|```",
-            "",
-            text,
-            flags=re.I,
-        ).strip()
-
-        try:
-            return json.loads(text)
-
-        except Exception:
-
-            return {
-                "transcript": text,
+        result = parse_ai_json(
+            getattr(
+                response,
+                "text",
+                "",
+            ),
+            {
+                "transcript": "",
                 "emoji": "🧩",
                 "vibe_label": "Uncertain/mixed",
                 "explanation": (
-                    "The AI response could not be structured "
-                    "reliably."
+                    "The AI could not provide a reliable structured interpretation."
                 ),
-            }
+            },
+        )
+
+        return result
 
     except Exception as exc:
 
-        st.session_state.last_error = str(exc)
+        st.session_state.last_error = str(
+            exc
+        )
 
         return {
             "transcript": "",
             "emoji": "⚠️",
-            "vibe_label": "Analysis unavailable",
+            "vibe_label": "Unavailable",
             "explanation": (
-                "The voice analysis could not be completed safely."
+                "Voice analysis could not be completed safely."
             ),
         }
 
 
-def analyze_face_with_ai(image_bytes):
+def analyse_face_with_ai(
+    image_bytes,
+    mime_type="image/jpeg",
+):
 
     if not ai_available():
+
         return {
             "emoji": "🧩",
             "expression": "AI unavailable",
-            "explanation": "Gemini is not connected.",
+            "explanation": (
+                "Gemini is not connected."
+            ),
+        }
+
+    if ai_limit_reached():
+
+        return {
+            "emoji": "⏳",
+            "expression": "Temporarily limited",
+            "explanation": (
+                "Please wait before making another AI request."
+            ),
         }
 
     try:
 
         from google.genai import types
 
-        client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
+        register_ai_request()
 
         prompt = """
-Analyze the visible facial expression only.
+Return ONLY valid JSON with:
 
-Return ONLY valid JSON:
+emoji
+expression
+explanation
 
-{
-  "emoji": "one suitable emoji",
-  "expression": "brief visible expression label",
-  "explanation": "brief explanation based only on visible facial cues"
-}
+Describe only visible facial expression cues.
 
-Important:
+Examples:
+smiling
+neutral
+focused-looking
+surprised-looking
+frowning
+uncertain
+
+Rules:
 - Do not identify the person.
 - Do not infer personality.
-- Do not infer hidden thoughts.
-- Do not diagnose mental health conditions.
-- Do not claim certainty about emotion.
-- Use wording such as "appears", "may suggest", or "visible expression".
+- Do not infer hidden emotions with certainty.
+- Do not diagnose.
+- Do not infer mental health.
+- Do not claim to know what the person is thinking.
+- Clearly describe the result as an AI-assisted visual estimate.
 """
 
-        response = client.models.generate_content(
+        response = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=[
                 prompt,
                 types.Part.from_bytes(
                     data=image_bytes,
-                    mime_type="image/jpeg",
+                    mime_type=mime_type,
                 ),
             ],
         )
 
-        text = getattr(
-            response,
-            "text",
-            "",
-        ) or ""
-
-        text = re.sub(
-            r"```(?:json)?|```",
-            "",
-            text,
-            flags=re.I,
-        ).strip()
-
-        try:
-            return json.loads(text)
-
-        except Exception:
-
-            return {
+        return parse_ai_json(
+            getattr(
+                response,
+                "text",
+                "",
+            ),
+            {
                 "emoji": "🧩",
                 "expression": "Uncertain",
-                "explanation": text,
-            }
+                "explanation": (
+                    "The visual interpretation could not be structured reliably."
+                ),
+            },
+        )
 
-    except Exception:
+    except Exception as exc:
+
+        st.session_state.last_error = str(
+            exc
+        )
 
         return {
             "emoji": "⚠️",
-            "expression": "Analysis unavailable",
+            "expression": "Unavailable",
             "explanation": (
-                "The facial-expression analysis could not be completed."
+                "Face interpretation could not be completed."
             ),
         }
 
@@ -3443,229 +4256,385 @@ def page_mood():
     st.title("🎭 AI Mood & Behaviour")
 
     st.caption(
-        "AI-assisted interpretation of visible voice and facial-expression cues."
+        "AI-assisted interpretation of observable voice and facial-expression cues."
     )
 
     st.warning(
-        "This is an educational AI estimate, not mind-reading, "
-        "a psychological diagnosis, or a measurement of true internal emotion."
+        "This feature does not read minds, measure brain activity, "
+        "diagnose mental health, or determine a person's true "
+        "emotional state. Results are probabilistic AI estimates."
     )
 
     tab_voice, tab_face, tab_combined = st.tabs(
         [
             "🎙️ Voice",
             "📷 Face",
-            "🧠 Combined",
+            "🔗 Combined",
         ]
     )
 
+    # ========================================================
+    # VOICE
+    # ========================================================
+
     with tab_voice:
 
-        st.subheader("🎙️ Voice Vibe")
+        st.subheader(
+            "🎙️ Voice Interpretation"
+        )
 
-        if not hasattr(st, "audio_input"):
-            st.info(
-                "Your current Streamlit version does not expose "
-                "the audio recorder."
-            )
-        else:
+        voice = st.audio_input(
+            "Record your voice",
+            key="mood_voice_input",
+        )
 
-            voice = st.audio_input(
-                "Record a short voice sample",
-                key="mood_voice_input",
-            )
+        if voice:
 
-            if voice:
+            if st.button(
+                "📤 SEND VOICE",
+                type="primary",
+                use_container_width=True,
+                key="send_mood_voice",
+            ):
 
-                if st.button(
-                    "📤 Analyze Voice",
-                    type="primary",
-                    use_container_width=True,
-                    key="analyze_voice",
+                with st.spinner(
+                    "Ayna is analysing the voice..."
                 ):
 
-                    with st.spinner(
-                        "Analyzing vocal communication cues..."
-                    ):
-
-                        result = analyze_voice_with_ai(
-                            voice.getvalue(),
-                            voice.type or "audio/wav",
-                        )
-
-                    st.session_state.voice_result = result
-
-                    user_id = current_user_id()
-
-                    if user_id:
-                        db_insert(
-                            "voice_mood_results",
-                            {
-                                "user_id": user_id,
-                                "result_data": result,
-                            },
-                        )
-
-                    st.rerun()
-
-            if st.session_state.voice_result:
-
-                result = st.session_state.voice_result
-
-                st.markdown(
-                    f"""
-                    <div class="nl-card">
-                        <div style="font-size:42px;">
-                            {result.get("emoji","🧩")}
-                        </div>
-                        <h3>
-                            {result.get(
-                                "vibe_label",
-                                "Uncertain/mixed"
-                            )}
-                        </h3>
-                        <p>
-                            {result.get(
-                                "explanation",
-                                ""
-                            )}
-                        </p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                st.subheader("📝 Transcript")
-
-                st.write(
-                    result.get(
-                        "transcript",
-                        "",
+                    result = analyse_voice_with_ai(
+                        voice.getvalue(),
+                        voice.type or "audio/wav",
                     )
-                )
 
-    with tab_face:
+                st.session_state.voice_result = result
 
-        st.subheader("📷 Facial Expression")
+                user_id = current_user_id()
 
-        if hasattr(st, "camera_input"):
+                if user_id:
 
-            photo = st.camera_input(
-                "Take a photo",
-                key="mood_camera",
+                    db_insert(
+                        "voice_mood_results",
+                        {
+                            "user_id": user_id,
+                            "result_data": result,
+                            "source_type": "voice",
+                        },
+                    )
+
+                st.rerun()
+
+        if st.session_state.voice_result:
+
+            result = (
+                st.session_state.voice_result
             )
-
-            if photo:
-
-                if st.button(
-                    "🔍 Analyze Visible Expression",
-                    type="primary",
-                    use_container_width=True,
-                    key="analyze_face",
-                ):
-
-                    with st.spinner(
-                        "Analyzing visible facial-expression cues..."
-                    ):
-
-                        face_result = analyze_face_with_ai(
-                            photo.getvalue()
-                        )
-
-                    st.session_state.face_result = face_result
-
-                    st.rerun()
-
-        if st.session_state.face_result:
-
-            result = st.session_state.face_result
 
             st.markdown(
                 f"""
-                <div class="nl-card" style="text-align:center;">
-                    <div style="font-size:48px;">
-                        {result.get("emoji","🧩")}
+                <div class="nl-card">
+
+                    <div style="
+                        font-size:48px;
+                    ">
+                        {result.get("emoji", "🧩")}
                     </div>
+
                     <h3>
                         {result.get(
-                            "expression",
-                            "Uncertain"
+                            "vibe_label",
+                            "Uncertain/mixed"
                         )}
                     </h3>
+
                     <p>
                         {result.get(
                             "explanation",
                             ""
                         )}
                     </p>
+
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
+            st.markdown(
+                "### 📝 Transcript"
+            )
+
+            st.write(
+                result.get(
+                    "transcript",
+                    "",
+                )
+            )
+
+            st.caption(
+                "AI-assisted voice-vibe interpretation based on "
+                "observable communication/acoustic cues."
+            )
+
+    # ========================================================
+    # FACE
+    # ========================================================
+
+    with tab_face:
+
+        st.subheader(
+            "📷 Facial Expression Interpretation"
+        )
+
+        camera_image = st.camera_input(
+            "Take a photo",
+            key="mood_face_camera",
+        )
+
+        if camera_image:
+
+            st.image(
+                camera_image,
+                caption="Captured image",
+                use_container_width=True,
+            )
+
+            if st.button(
+                "🔎 Analyse Expression",
+                type="primary",
+                use_container_width=True,
+                key="analyse_face",
+            ):
+
+                with st.spinner(
+                    "Ayna is analysing visible expression cues..."
+                ):
+
+                    result = analyse_face_with_ai(
+                        camera_image.getvalue(),
+                        camera_image.type or "image/jpeg",
+                    )
+
+                st.session_state.face_result = result
+
+                user_id = current_user_id()
+
+                if user_id:
+
+                    db_insert(
+                        "voice_mood_results",
+                        {
+                            "user_id": user_id,
+                            "result_data": result,
+                            "source_type": "face",
+                        },
+                    )
+
+                st.rerun()
+
+        if st.session_state.face_result:
+
+            result = (
+                st.session_state.face_result
+            )
+
+            st.markdown(
+                f"""
+                <div class="nl-card">
+
+                    <div style="
+                        font-size:48px;
+                    ">
+                        {result.get("emoji", "🧩")}
+                    </div>
+
+                    <h3>
+                        {result.get(
+                            "expression",
+                            "Uncertain"
+                        )}
+                    </h3>
+
+                    <p>
+                        {result.get(
+                            "explanation",
+                            ""
+                        )}
+                    </p>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # ========================================================
+    # COMBINED
+    # ========================================================
+
     with tab_combined:
 
-        st.subheader("🧠 Combined Interpretation")
+        st.subheader(
+            "🔗 Combined Voice + Face"
+        )
 
-        voice_result = st.session_state.voice_result
-        face_result = st.session_state.face_result
+        st.write(
+            "Record a voice sample and capture a facial image. "
+            "The two AI estimates can then be compared."
+        )
 
-        if not voice_result and not face_result:
+        voice_combined = st.audio_input(
+            "Voice sample",
+            key="combined_voice",
+        )
 
-            st.info(
-                "Run a voice analysis or facial-expression analysis first."
-            )
+        face_combined = st.camera_input(
+            "Facial image",
+            key="combined_face",
+        )
 
-        else:
+        if st.button(
+            "🔗 Run Combined Interpretation",
+            type="primary",
+            use_container_width=True,
+            key="run_combined_mood",
+        ):
 
-            if voice_result:
+            if not voice_combined and not face_combined:
 
-                st.markdown(
-                    f"""
-                    **Voice:** {voice_result.get(
-                        "emoji",
-                        "🧩"
-                    )} {voice_result.get(
-                        "vibe_label",
-                        "Uncertain/mixed"
-                    )}
-                    """
+                st.error(
+                    "Provide at least a voice sample or facial image."
                 )
 
-            if face_result:
+            else:
 
-                st.markdown(
-                    f"""
-                    **Face:** {face_result.get(
-                        "emoji",
-                        "🧩"
-                    )} {face_result.get(
-                        "expression",
-                        "Uncertain"
-                    )}
-                    """
+                voice_result = None
+                face_result = None
+
+                if voice_combined:
+
+                    with st.spinner(
+                        "Analysing voice..."
+                    ):
+
+                        voice_result = analyse_voice_with_ai(
+                            voice_combined.getvalue(),
+                            voice_combined.type or "audio/wav",
+                        )
+
+                if face_combined:
+
+                    with st.spinner(
+                        "Analysing visible expression..."
+                    ):
+
+                        face_result = analyse_face_with_ai(
+                            face_combined.getvalue(),
+                            face_combined.type or "image/jpeg",
+                        )
+
+                st.session_state.voice_result = (
+                    voice_result
                 )
 
-            st.info(
-                "Different signals can disagree. That does not mean "
-                "one signal is 'lying'; it means these AI estimates "
-                "should be treated cautiously."
-            )
+                st.session_state.face_result = (
+                    face_result
+                )
+
+                st.success(
+                    "Combined analysis completed."
+                )
+
+                if voice_result:
+
+                    st.markdown(
+                        f"""
+                        <div class="nl-card">
+
+                            <h4>
+                                🎙️ Voice
+                            </h4>
+
+                            <div style="
+                                font-size:32px;
+                            ">
+                                {voice_result.get(
+                                    "emoji",
+                                    "🧩"
+                                )}
+                            </div>
+
+                            <p>
+                                {voice_result.get(
+                                    "vibe_label",
+                                    "Uncertain"
+                                )}
+                            </p>
+
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                if face_result:
+
+                    st.markdown(
+                        f"""
+                        <div class="nl-card">
+
+                            <h4>
+                                📷 Face
+                            </h4>
+
+                            <div style="
+                                font-size:32px;
+                            ">
+                                {face_result.get(
+                                    "emoji",
+                                    "🧩"
+                                )}
+                            </div>
+
+                            <p>
+                                {face_result.get(
+                                    "expression",
+                                    "Uncertain"
+                                )}
+                            </p>
+
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.caption(
+                    "If the two signals differ, that does not mean "
+                    "the person is hiding an emotion. Different "
+                    "modalities can simply provide different cues."
+                )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # RESEARCH WORLD
-# ------------------------------------------------------------
+# ============================================================
 
-def europe_pmc_search(query, page_size=8):
+def europe_pmc_search(
+    query,
+    page_size=10,
+):
 
-    query = clean_text(query, 250)
+    if requests is None:
+
+        return []
+
+    query = clean_text(
+        query,
+        500,
+    )
 
     if not query:
         return []
 
     url = (
-        "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+        "https://www.ebi.ac.uk/europepmc/webservices/"
+        "rest/search"
     )
 
     params = {
@@ -3688,43 +4657,92 @@ def europe_pmc_search(query, page_size=8):
 
         return data.get(
             "resultList",
-            {}).get(
-                "result",
-                [],
-            )
+            {}
+        ).get(
+            "result",
+            [],
+        )
 
-    except Exception:
+    except Exception as exc:
+
+        st.session_state.last_error = str(
+            exc
+        )
 
         return []
 
 
-def research_ai_summary(title, abstract):
-
-    if not abstract:
-        return (
-            "No abstract was available for this paper."
-        )
+def research_ai_summary(
+    title,
+    abstract,
+):
 
     prompt = f"""
-Create a concise scientific summary of the following research paper.
+You are Ayna, a cautious research assistant.
+
+Summarize this scientific paper for a cognitive-neuroscience
+researcher.
 
 Title:
-{clean_text(title, 500)}
+{clean_text(title, 1000)}
 
 Abstract:
-{clean_text(abstract, 6000)}
+{clean_text(abstract, 5000)}
 
-Return:
-1. Research focus
+Provide:
+1. Main question
 2. Main finding
-3. Method/context
-4. Important limitation
-5. Why it matters
+3. Possible relevance
+4. One limitation or caution
 
-Do not invent information not present in the abstract.
+Do not invent information not present in the supplied text.
 """
 
-    return ai_generate(prompt)
+    return ai_generate(
+        prompt,
+        max_output_tokens=1000,
+    )
+
+
+def save_research_note(
+    title,
+    note,
+    paper_url="",
+):
+
+    payload = {
+        "title": clean_text(
+            title,
+            500,
+        ),
+        "note": clean_text(
+            note,
+            5000,
+        ),
+        "paper_url": clean_text(
+            paper_url,
+            1000,
+        ),
+        "timestamp": time.time(),
+    }
+
+    st.session_state.research_notes.append(
+        payload
+    )
+
+    user_id = current_user_id()
+
+    if user_id:
+
+        db_insert(
+            "research_notes",
+            {
+                "user_id": user_id,
+                "title": payload["title"],
+                "note": payload["note"],
+                "paper_url": payload["paper_url"],
+            },
+        )
 
 
 def page_research():
@@ -3732,58 +4750,94 @@ def page_research():
     st.title("🔬 Research World")
 
     st.caption(
-        "Explore biomedical and neuroscience literature through Europe PMC."
+        "Search biomedical literature through Europe PMC and build research notes."
     )
 
     query = st.text_input(
-        "Search research papers",
+        "Research topic",
         placeholder=(
-            "e.g. cognitive neuroscience attention consciousness"
+            "e.g. attention and reward learning"
         ),
         key="research_query",
     )
 
-    if st.button(
-        "🔎 Search Literature",
-        type="primary",
-        use_container_width=True,
-        key="research_search",
-    ):
+    col1, col2 = st.columns(2)
 
-        if not query.strip():
+    with col1:
 
-            st.warning(
-                "Enter a research topic first."
-            )
+        if st.button(
+            "🔎 Search Europe PMC",
+            type="primary",
+            use_container_width=True,
+            key="search_research",
+        ):
 
-        else:
+            if not query.strip():
 
-            with st.spinner(
-                "Searching Europe PMC..."
-            ):
-
-                results = europe_pmc_search(
-                    query,
-                    page_size=8,
+                st.warning(
+                    "Enter a research topic first."
                 )
 
-            st.session_state.research_results = results
+            else:
+
+                with st.spinner(
+                    "Searching biomedical literature..."
+                ):
+
+                    results = europe_pmc_search(
+                        query,
+                        page_size=10,
+                    )
+
+                st.session_state.research_results = results
+
+                if not results:
+
+                    st.info(
+                        "No results found."
+                    )
+
+    with col2:
+
+        if st.button(
+            "🗑 Clear Results",
+            use_container_width=True,
+            key="clear_research",
+        ):
+
+            st.session_state.research_results = []
 
             st.rerun()
 
-    results = st.session_state.research_results
+    # --------------------------------------------------------
+    # RESULTS
+    # --------------------------------------------------------
+
+    results = st.session_state.get(
+        "research_results",
+        [],
+    )
 
     if results:
 
-        st.success(
-            f"{len(results)} research results found."
+        st.divider()
+
+        st.subheader(
+            f"📚 {len(results)} Research Results"
         )
 
-        for index, paper in enumerate(results):
+        for index, paper in enumerate(
+            results
+        ):
 
             title = paper.get(
                 "title",
                 "Untitled paper",
+            )
+
+            abstract = paper.get(
+                "abstractText",
+                "",
             )
 
             journal = paper.get(
@@ -3796,153 +4850,157 @@ def page_research():
                 "",
             )
 
-            authors = paper.get(
-                "authorString",
-                "",
-            )
-
-            abstract = paper.get(
-                "abstractText",
-                "",
-            )
-
             pmid = paper.get(
                 "pmid",
                 "",
             )
 
-            st.markdown(
-                f"### {index + 1}. {title}"
+            doi = paper.get(
+                "doi",
+                "",
             )
-
-            if journal or year:
-                st.caption(
-                    f"{journal} · {year}"
-                )
-
-            if authors:
-                st.caption(
-                    authors
-                )
-
-            if abstract:
-
-                with st.expander(
-                    "Read abstract"
-                ):
-                    st.write(abstract)
 
             if pmid:
 
-                url = (
-                    "https://europepmc.org/article/MED/"
+                paper_url = (
+                    "https://pubmed.ncbi.nlm.nih.gov/"
                     + str(pmid)
+                    + "/"
                 )
 
-                st.markdown(
-                    f"[Open paper on Europe PMC]({url})"
+            elif doi:
+
+                paper_url = (
+                    "https://doi.org/"
+                    + str(doi)
                 )
 
-            col1, col2 = st.columns(2)
+            else:
 
-            with col1:
+                paper_url = ""
+
+            with st.expander(
+                f"{index + 1}. {title}"
+            ):
+
+                if journal or year:
+
+                    st.caption(
+                        f"{journal} {year}".strip()
+                    )
+
+                if abstract:
+
+                    st.write(
+                        abstract
+                    )
+
+                else:
+
+                    st.info(
+                        "No abstract was available from the result."
+                    )
+
+                if paper_url:
+
+                    st.markdown(
+                        f"[📄 Open paper record]({paper_url})"
+                    )
+
+                st.divider()
 
                 if st.button(
-                    "🤖 AI Summary",
-                    key=f"paper_summary_{index}",
-                    use_container_width=True,
+                    "🤖 Summarize with Ayna",
+                    key=f"research_summary_{index}",
                 ):
 
-                    if not ai_available():
+                    with st.spinner(
+                        "Preparing research summary..."
+                    ):
 
-                        st.warning(
-                            "Add GEMINI_API_KEY to use AI summaries."
+                        summary = research_ai_summary(
+                            title,
+                            abstract,
                         )
 
-                    else:
+                    st.session_state[
+                        f"research_summary_{index}"
+                    ] = summary
 
-                        with st.spinner(
-                            "Preparing scientific summary..."
-                        ):
+                    st.rerun()
 
-                            summary = research_ai_summary(
-                                title,
-                                abstract,
+                summary = st.session_state.get(
+                    f"research_summary_{index}",
+                    "",
+                )
+
+                if summary:
+
+                    st.markdown(
+                        "### 🤖 Ayna's Research Summary"
+                    )
+
+                    st.write(
+                        summary
+                    )
+
+                    note = st.text_area(
+                        "Research note",
+                        key=f"research_note_{index}",
+                        placeholder=(
+                            "Write your own research observation..."
+                        ),
+                    )
+
+                    if st.button(
+                        "💾 Save Research Note",
+                        key=f"save_research_note_{index}",
+                    ):
+
+                        if not note.strip():
+
+                            st.warning(
+                                "Write a note first."
                             )
 
-                        st.session_state[
-                            f"summary_{index}"
-                        ] = summary
+                        else:
 
-            with col2:
+                            save_research_note(
+                                title,
+                                note,
+                                paper_url,
+                            )
 
-                if st.button(
-                    "📝 Save Research Note",
-                    key=f"save_note_{index}",
-                    use_container_width=True,
-                ):
+                            st.success(
+                                "Research note saved."
+                            )
 
-                    note = {
-                        "title": title,
-                        "journal": journal,
-                        "year": year,
-                        "pmid": pmid,
-                        "abstract": abstract[:5000],
-                    }
+    # --------------------------------------------------------
+    # SAVED NOTES
+    # --------------------------------------------------------
 
-                    st.session_state.research_notes.append(
-                        note
-                    )
+    st.divider()
 
-                    user_id = current_user_id()
+    st.subheader(
+        "📓 My Research Notes"
+    )
 
-                    if user_id:
-
-                        db_insert(
-                            "research_notes",
-                            {
-                                "user_id": user_id,
-                                "title": title,
-                                "note": abstract[:5000],
-                            },
-                        )
-
-                    st.success(
-                        "Research note saved."
-                    )
-
-            summary_key = f"summary_{index}"
-
-            if summary_key in st.session_state:
-
-                st.markdown(
-                    """
-                    <div class="nl-card">
-                        <b>🤖 Ayna Research Summary</b>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                st.write(
-                    st.session_state[summary_key]
-                )
-
-            st.divider()
-
-    st.subheader("📚 My Research Notes")
-
-    notes = st.session_state.research_notes
+    notes = st.session_state.get(
+        "research_notes",
+        [],
+    )
 
     if not notes:
 
-        st.info(
-            "Your saved research notes will appear here."
+        st.caption(
+            "No research notes saved in this session yet."
         )
 
     else:
 
-        for note in notes:
+        for note in reversed(
+            notes[-20:]
+        ):
 
             with st.expander(
                 note.get(
@@ -3953,38 +5011,50 @@ def page_research():
 
                 st.write(
                     note.get(
-                        "abstract",
+                        "note",
                         "",
                     )
                 )
 
+                if note.get(
+                    "paper_url"
+                ):
 
-# ============================================================
-# END OF PART 3
-# ============================================================
-# ============================================================
-# PART 4 — PRIVATE AYNA + NEUROSOCIAL + CONSULTATION
-#           + PROGRESS + SECURITY + SETTINGS + ACCOUNT
-#           + FINAL ROUTER
-# ============================================================
+                    st.markdown(
+                        f"[Open source paper]({note['paper_url']})"
+                    )
 
 
-# ------------------------------------------------------------
+# ============================================================
+# PART 3 END
+# ============================================================
+# ============================================================
+# NEUROLENS — PART 4
+# PRIVATE AYNA + NEUROSOCIAL + CONSULTATION
+# PROGRESS + SECURITY + SETTINGS + ACCOUNT + FINAL ROUTER
+# ============================================================
+
+
+# ============================================================
 # PRIVATE AYNA
-# ------------------------------------------------------------
+# ============================================================
 
-def hash_private_pin(pin, salt=None):
-    """
-    Secure local PIN hashing using PBKDF2-HMAC-SHA256.
-    The raw PIN is never stored in session state.
-    """
+def hash_private_pin(pin):
 
-    pin = clean_text(pin, 20)
+    pin = clean_text(
+        pin,
+        20,
+    )
 
-    if salt is None:
-        salt = os.urandom(16)
+    if not pin.isdigit():
+        return ""
 
-    hashed = hashlib.pbkdf2_hmac(
+    if len(pin) < 4 or len(pin) > 6:
+        return ""
+
+    salt = os.urandom(16)
+
+    derived = hashlib.pbkdf2_hmac(
         "sha256",
         pin.encode("utf-8"),
         salt,
@@ -3992,26 +5062,35 @@ def hash_private_pin(pin, salt=None):
     )
 
     return (
-        base64.b64encode(salt).decode("utf-8"),
-        base64.b64encode(hashed).decode("utf-8"),
+        base64.b64encode(salt).decode()
+        + ":"
+        + base64.b64encode(derived).decode()
     )
 
 
-def verify_private_pin(pin, stored_salt, stored_hash):
+def verify_private_pin(
+    pin,
+    stored_hash,
+):
 
     try:
 
+        salt_b64, hash_b64 = stored_hash.split(
+            ":",
+            1,
+        )
+
         salt = base64.b64decode(
-            stored_salt.encode("utf-8")
+            salt_b64
         )
 
         expected = base64.b64decode(
-            stored_hash.encode("utf-8")
+            hash_b64
         )
 
         actual = hashlib.pbkdf2_hmac(
             "sha256",
-            clean_text(pin, 20).encode("utf-8"),
+            pin.encode("utf-8"),
             salt,
             120000,
         )
@@ -4031,126 +5110,99 @@ def page_private():
     st.title("🔐 Private Ayna")
 
     st.caption(
-        "A private local-session space for personal notes and conversations."
+        "A private session area for personal notes and conversations."
     )
-
-    if "private_pin_hash" not in st.session_state:
-        st.session_state.private_pin_hash = None
-
-    if "private_pin_salt" not in st.session_state:
-        st.session_state.private_pin_salt = None
-
-    if "private_unlocked" not in st.session_state:
-        st.session_state.private_unlocked = False
-
-    if "private_messages" not in st.session_state:
-        st.session_state.private_messages = []
-
-    # --------------------------------------------------------
-    # PIN SETUP
-    # --------------------------------------------------------
-
-    if not st.session_state.private_pin_hash:
-
-        st.info(
-            "Create a 4–6 digit PIN for this private session."
-        )
-
-        new_pin = st.text_input(
-            "Create PIN",
-            type="password",
-            max_chars=6,
-            key="private_new_pin",
-        )
-
-        confirm_pin = st.text_input(
-            "Confirm PIN",
-            type="password",
-            max_chars=6,
-            key="private_confirm_pin",
-        )
-
-        if st.button(
-            "🔒 Create Private PIN",
-            type="primary",
-            use_container_width=True,
-            key="create_private_pin",
-        ):
-
-            if (
-                not new_pin.isdigit()
-                or not 4 <= len(new_pin) <= 6
-            ):
-
-                st.error(
-                    "PIN must contain 4–6 digits."
-                )
-
-            elif new_pin != confirm_pin:
-
-                st.error(
-                    "PINs do not match."
-                )
-
-            else:
-
-                salt, hashed = hash_private_pin(
-                    new_pin
-                )
-
-                st.session_state.private_pin_salt = salt
-                st.session_state.private_pin_hash = hashed
-                st.session_state.private_unlocked = True
-
-                st.success(
-                    "🔐 Private Ayna is now unlocked."
-                )
-
-                st.rerun()
-
-        return
-
-    # --------------------------------------------------------
-    # LOCKED STATE
-    # --------------------------------------------------------
 
     if not st.session_state.private_unlocked:
 
-        st.subheader("🔒 Private space locked")
+        st.markdown(
+            """
+            <div class="nl-card">
+
+                <h3>🔒 Private Space</h3>
+
+                <p>
+                    Create a 4–6 digit PIN for this browser session.
+                    The PIN is processed using salted PBKDF2-HMAC-SHA256.
+                </p>
+
+                <p class="small-muted">
+                    Do not use a PIN that you use for banking,
+                    Easypaisa, email or another important account.
+                </p>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         pin = st.text_input(
             "Enter PIN",
             type="password",
             max_chars=6,
-            key="private_unlock_pin",
+            key="private_pin_input",
         )
 
         if st.button(
-            "Unlock",
+            "🔓 Unlock Private Ayna",
             type="primary",
             use_container_width=True,
             key="unlock_private",
         ):
 
-            if verify_private_pin(
-                pin,
-                st.session_state.private_pin_salt,
-                st.session_state.private_pin_hash,
+            if (
+                pin.isdigit()
+                and 4 <= len(pin) <= 6
             ):
 
-                st.session_state.private_unlocked = True
+                if not st.session_state.private_pin_hash:
 
-                st.success(
-                    "Unlocked."
-                )
+                    st.session_state.private_pin_hash = (
+                        hash_private_pin(
+                            pin
+                        )
+                    )
 
-                st.rerun()
+                    st.session_state.private_unlocked = True
+
+                    st.success(
+                        "Private Ayna unlocked for this session."
+                    )
+
+                    st.rerun()
+
+                else:
+
+                    if verify_private_pin(
+                        pin,
+                        st.session_state.private_pin_hash,
+                    ):
+
+                        st.session_state.private_unlocked = True
+
+                        st.success(
+                            "Private Ayna unlocked."
+                        )
+
+                        st.rerun()
+
+                    else:
+
+                        st.error(
+                            "Incorrect PIN."
+                        )
 
             else:
 
                 st.error(
-                    "Incorrect PIN."
+                    "PIN must contain 4–6 digits."
                 )
+
+        st.info(
+            "This session PIN is stored in Streamlit session state. "
+            "For long-term account security, use your main account "
+            "authentication as the primary protection."
+        )
 
         return
 
@@ -4158,165 +5210,271 @@ def page_private():
     # UNLOCKED
     # --------------------------------------------------------
 
-    st.success(
-        "🔓 Private Ayna unlocked for this session."
-    )
+    top1, top2 = st.columns(2)
 
-    if st.button(
-        "🔒 Lock Private Ayna",
-        use_container_width=True,
-        key="lock_private",
-    ):
+    with top1:
 
-        st.session_state.private_unlocked = False
-        st.rerun()
+        st.success(
+            "🔓 Private Ayna is unlocked."
+        )
+
+    with top2:
+
+        if st.button(
+            "🔒 Lock",
+            use_container_width=True,
+            key="lock_private",
+        ):
+
+            st.session_state.private_unlocked = False
+            st.rerun()
 
     st.divider()
 
-    st.subheader("💬 Private Conversation")
-
-    for message in st.session_state.private_messages:
-
-        role = message.get(
-            "role",
-            "assistant",
-        )
-
-        content = message.get(
-            "content",
-            "",
-        )
-
-        with st.chat_message(role):
-            st.write(content)
-
-    private_question = st.chat_input(
-        "Write privately to Ayna...",
-        key="private_chat_input",
+    message = st.text_area(
+        "Private message",
+        height=130,
+        max_chars=4000,
+        placeholder=(
+            "Write a private thought, research idea or question..."
+        ),
+        key="private_message_input",
     )
 
-    if private_question:
+    if st.button(
+        "💾 Save Private Message",
+        type="primary",
+        use_container_width=True,
+        key="save_private_message",
+    ):
 
-        private_question = clean_text(
-            private_question,
-            3000,
-        )
+        if not message.strip():
 
-        st.session_state.private_messages.append(
-            {
-                "role": "user",
-                "content": private_question,
-            }
-        )
-
-        if ai_available():
-
-            prompt = f"""
-You are Private Ayna inside NEUROLENS.
-
-Respond in a calm, supportive and privacy-conscious way.
-
-Do not:
-- diagnose
-- claim certainty about emotions
-- claim to read minds
-- provide dangerous instructions
-- invent facts
-
-User message:
-{private_question}
-"""
-
-            answer = ai_generate(prompt)
+            st.warning(
+                "Write something first."
+            )
 
         else:
 
-            answer = (
-                "Private Ayna is available, but Gemini AI "
-                "is not connected right now."
+            item = {
+                "role": "user",
+                "content": clean_text(
+                    message,
+                    4000,
+                ),
+                "timestamp": time.time(),
+            }
+
+            st.session_state.private_messages.append(
+                item
             )
 
-        st.session_state.private_messages.append(
-            {
-                "role": "assistant",
-                "content": answer,
-            }
+            user_id = current_user_id()
+
+            if user_id:
+
+                db_insert(
+                    "private_ayna_messages",
+                    {
+                        "user_id": user_id,
+                        "message": item["content"],
+                        "role": "user",
+                    },
+                )
+
+            st.success(
+                "Private message saved for this session."
+            )
+
+    if st.session_state.private_messages:
+
+        st.divider()
+
+        st.subheader(
+            "📓 Private Session Notes"
         )
 
-        user_id = current_user_id()
+        for item in reversed(
+            st.session_state.private_messages[-20:]
+        ):
 
-        if user_id:
-
-            db_insert(
-                "private_ayna_messages",
-                {
-                    "user_id": user_id,
-                    "role": "user",
-                    "content": private_question,
-                },
+            st.markdown(
+                f"""
+                <div class="nl-card">
+                    <p>
+                        {item.get("content", "")}
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-        st.rerun()
 
-
-# ------------------------------------------------------------
+# ============================================================
 # NEUROSOCIAL
-# ------------------------------------------------------------
+# ============================================================
 
 def page_social():
 
     st.title("🌐 NeuroSocial")
 
     st.caption(
-        "A neuroscience-inspired social space for sharing ideas, "
-        "research interests and cognitive challenges."
+        "A simple space for neuroscience learning, sharing and collaboration."
     )
 
-    tabs = st.tabs(
+    if not current_user_id():
+
+        st.info(
+            "Sign in to use account-based social features."
+        )
+
+        return
+
+    tab_feed, tab_profile, tab_invite = st.tabs(
         [
-            "👤 Profile",
-            "📝 Post",
-            "🏆 Challenges",
-            "📚 Research",
+            "📰 Feed",
+            "👤 My Profile",
+            "🤝 Invitations",
         ]
     )
+
+    # --------------------------------------------------------
+    # FEED
+    # --------------------------------------------------------
+
+    with tab_feed:
+
+        st.subheader(
+            "🧠 Research & Brain Ideas"
+        )
+
+        post_text = st.text_area(
+            "Share an idea",
+            max_chars=1500,
+            placeholder=(
+                "Share a neuroscience observation, research idea "
+                "or learning insight..."
+            ),
+            key="social_post_text",
+        )
+
+        if st.button(
+            "📤 Publish",
+            type="primary",
+            use_container_width=True,
+            key="publish_social_post",
+        ):
+
+            if not post_text.strip():
+
+                st.warning(
+                    "Write something first."
+                )
+
+            else:
+
+                user_id = current_user_id()
+
+                db_insert(
+                    "stories",
+                    {
+                        "user_id": user_id,
+                        "content": clean_text(
+                            post_text,
+                            1500,
+                        ),
+                    },
+                )
+
+                st.success(
+                    "Your post was submitted."
+                )
+
+        st.divider()
+
+        try:
+
+            feed = db_select(
+                "stories",
+                limit=20,
+            )
+
+        except Exception:
+
+            feed = []
+
+        if not feed:
+
+            st.caption(
+                "No public posts are available yet."
+            )
+
+        else:
+
+            for post in feed:
+
+                content = post.get(
+                    "content",
+                    "",
+                )
+
+                if not content:
+                    continue
+
+                st.markdown(
+                    f"""
+                    <div class="nl-card">
+
+                        <div style="
+                            font-size:24px;
+                            margin-bottom:8px;
+                        ">
+                            🧠
+                        </div>
+
+                        <p>
+                            {content}
+                        </p>
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     # --------------------------------------------------------
     # PROFILE
     # --------------------------------------------------------
 
-    with tabs[0]:
+    with tab_profile:
 
-        st.subheader("👤 NeuroLens Profile")
+        st.subheader(
+            "👤 Profile"
+        )
 
-        display_name = st.text_input(
+        name = st.text_input(
             "Display name",
-            value=st.session_state.get(
-                "display_name",
-                "Ayna Jaffri",
-            ),
-            key="social_display_name",
+            value=st.session_state.profile_name,
+            max_chars=80,
+            key="social_profile_name",
         )
 
         bio = st.text_area(
             "Bio",
-            value=st.session_state.get(
-                "profile_bio",
-                "Independent cognitive neuroscience researcher",
-            ),
-            key="social_bio",
+            value=st.session_state.profile_bio,
+            max_chars=500,
+            key="social_profile_bio",
         )
 
         if st.button(
-            "Save Profile",
+            "💾 Save Profile",
             type="primary",
             use_container_width=True,
             key="save_social_profile",
         ):
 
-            st.session_state.display_name = clean_text(
-                display_name,
-                100,
+            st.session_state.profile_name = clean_text(
+                name,
+                80,
             )
 
             st.session_state.profile_bio = clean_text(
@@ -4332,7 +5490,7 @@ def page_social():
                     "profiles",
                     {
                         "id": user_id,
-                        "display_name": st.session_state.display_name,
+                        "display_name": st.session_state.profile_name,
                         "bio": st.session_state.profile_bio,
                     },
                 )
@@ -4342,197 +5500,153 @@ def page_social():
             )
 
     # --------------------------------------------------------
-    # POST
+    # INVITATIONS
     # --------------------------------------------------------
 
-    with tabs[1]:
+    with tab_invite:
 
-        st.subheader("📝 Share a NeuroThought")
+        st.subheader(
+            "🤝 Collaboration Invitation"
+        )
 
-        post = st.text_area(
-            "Write something about cognition, behaviour or neuroscience",
+        email = st.text_input(
+            "Person's email",
+            key="social_invite_email",
+        )
+
+        message = st.text_area(
+            "Invitation message",
             max_chars=1000,
-            key="social_post",
+            key="social_invite_message",
         )
 
         if st.button(
-            "Publish",
+            "📨 Send Invitation",
             type="primary",
             use_container_width=True,
-            key="publish_social_post",
+            key="send_social_invitation",
         ):
 
-            post = clean_text(
-                post,
-                1000,
-            )
-
-            if not post:
+            if not email.strip():
 
                 st.warning(
-                    "Write something first."
+                    "Enter an email address."
                 )
 
             else:
 
-                st.session_state.social_posts.insert(
-                    0,
+                user_id = current_user_id()
+
+                db_insert(
+                    "invitations",
                     {
-                        "author": st.session_state.get(
-                            "display_name",
-                            "Ayna Jaffri",
+                        "sender_id": user_id,
+                        "email": clean_text(
+                            email,
+                            200,
                         ),
-                        "text": post,
-                        "time": time.time(),
+                        "message": clean_text(
+                            message,
+                            1000,
+                        ),
                     },
                 )
 
                 st.success(
-                    "Your NeuroThought was added."
-                )
-
-    # --------------------------------------------------------
-    # CHALLENGES
-    # --------------------------------------------------------
-
-    with tabs[2]:
-
-        st.subheader("🏆 NeuroChallenges")
-
-        st.write(
-            "Challenge your friends or compare your own "
-            "cognitive-task performance."
-        )
-
-        st.info(
-            "Social challenge infrastructure is connected to the "
-            "NEUROLENS database when Supabase is configured."
-        )
-
-    # --------------------------------------------------------
-    # RESEARCH
-    # --------------------------------------------------------
-
-    with tabs[3]:
-
-        st.subheader("📚 Research Sharing")
-
-        st.write(
-            "Share research topics, literature interests and "
-            "scientific questions with the NeuroLens community."
-        )
-
-        research_topic = st.text_input(
-            "Research topic",
-            key="social_research_topic",
-        )
-
-        if st.button(
-            "Save Research Interest",
-            use_container_width=True,
-            key="save_research_interest",
-        ):
-
-            if research_topic.strip():
-
-                st.session_state.research_notes.append(
-                    {
-                        "title": research_topic,
-                        "abstract": (
-                            "Saved as a NeuroSocial research interest."
-                        ),
-                    }
-                )
-
-                st.success(
-                    "Research interest saved."
+                    "Invitation request submitted."
                 )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # BEHAVIOUR DECODING / CONSULTATION
-# ------------------------------------------------------------
+# ============================================================
 
 CONSULTATION_PRICES = {
     "20 min": {
-        "PKR": "PKR 1,000",
-        "International": "$8",
+        "PKR": "1,000",
+        "USD": "8",
     },
     "30 min": {
-        "PKR": "PKR 1,500",
-        "International": "$10",
+        "PKR": "1,500",
+        "USD": "10",
     },
     "45 min": {
-        "PKR": "PKR 2,000",
-        "International": "$12",
+        "PKR": "2,000",
+        "USD": "12",
     },
     "Advice / Consultation": {
-        "PKR": "PKR 1,500",
-        "International": "$10",
+        "PKR": "1,500",
+        "USD": "10",
     },
 }
 
 
-def page_behaviour():
+def page_consultation():
 
     st.title("🧩 Behaviour Decoding")
 
     st.caption(
-        "Educational behaviour and cognition discussion sessions."
+        "Book a structured educational consultation about behaviour, cognition and research."
     )
 
     st.warning(
-        "NEUROLENS sessions are educational and research-oriented. "
-        "They are not a substitute for medical, psychiatric or "
-        "clinical diagnosis."
+        "This is not a medical diagnosis or emergency mental-health service."
     )
 
-    st.subheader("💬 Session options")
-
-    session_type = st.selectbox(
-        "Choose session",
-        list(CONSULTATION_PRICES.keys()),
-        key="consultation_type",
+    st.subheader(
+        "💳 Consultation Options"
     )
 
-    price = CONSULTATION_PRICES[
-        session_type
-    ]
+    for duration, price in CONSULTATION_PRICES.items():
 
-    col1, col2 = st.columns(2)
+        st.markdown(
+            f"""
+            <div class="nl-card">
 
-    with col1:
+                <h3>
+                    {duration}
+                </h3>
 
-        st.metric(
-            "Pakistan",
-            price["PKR"],
-        )
+                <p>
+                    🇵🇰 PKR {price["PKR"]}
+                    &nbsp; | &nbsp;
+                    🌍 ${price["USD"]}
+                </p>
 
-    with col2:
-
-        st.metric(
-            "International",
-            price["International"],
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
     st.divider()
 
+    selected = st.selectbox(
+        "Choose consultation",
+        list(
+            CONSULTATION_PRICES.keys()
+        ),
+        key="consultation_duration",
+    )
+
     name = st.text_input(
-        "Name",
+        "Your name",
         max_chars=100,
-        key="consult_name",
+        key="consultation_name",
     )
 
     contact = st.text_input(
-        "Email / Contact",
-        max_chars=150,
-        key="consult_contact",
+        "Email / preferred contact",
+        max_chars=200,
+        key="consultation_contact",
     )
 
     topic = st.text_area(
         "Topic / question",
-        max_chars=1500,
-        key="consult_topic",
+        max_chars=2000,
+        placeholder=(
+            "Briefly describe what you want to discuss..."
+        ),
+        key="consultation_topic",
     )
 
     payment_method = st.selectbox(
@@ -4540,59 +5654,44 @@ def page_behaviour():
         [
             "Easypaisa",
             "International Payment",
-            "Other / discuss",
+            "Other / To be discussed",
         ],
-        key="consult_payment_method",
+        key="consultation_payment_method",
     )
 
     payment_reference = st.text_input(
         "Payment reference / transaction ID",
-        max_chars=150,
-        key="consult_payment_reference",
+        max_chars=200,
+        key="consultation_payment_reference",
     )
 
     if payment_method == "Easypaisa":
 
-        easypaisa_number = (
-            os.getenv(
-                "EASYPAISA_NUMBER",
-                "",
-            )
-            or ""
-        )
-
-        if not easypaisa_number:
+        if EASYPAISA_NUMBER:
 
             st.info(
-                "Easypaisa merchant details have not been configured yet."
+                f"Easypaisa payment number: {EASYPAISA_NUMBER}"
             )
 
         else:
 
             st.info(
-                f"Easypaisa payment number: {easypaisa_number}"
+                "Easypaisa payment details will appear here "
+                "after official merchant/API configuration."
             )
 
     elif payment_method == "International Payment":
 
-        payment_url = (
-            os.getenv(
-                "INTERNATIONAL_PAYMENT_URL",
-                "",
-            )
-            or ""
-        )
-
-        if payment_url:
+        if INTERNATIONAL_PAYMENT_URL:
 
             st.markdown(
-                f"[Open International Payment Page]({payment_url})"
+                f"[🌍 Open International Payment Page]({INTERNATIONAL_PAYMENT_URL})"
             )
 
         else:
 
             st.info(
-                "International payment URL has not been configured yet."
+                "International payment link is not configured yet."
             )
 
     st.divider()
@@ -4601,7 +5700,7 @@ def page_behaviour():
         "📩 Submit Consultation Request",
         type="primary",
         use_container_width=True,
-        key="submit_consultation",
+        key="submit_consultation_request",
     ):
 
         if not name.strip():
@@ -4613,216 +5712,173 @@ def page_behaviour():
         elif not contact.strip():
 
             st.error(
-                "Please enter a contact method."
+                "Please enter your contact information."
             )
 
         elif not topic.strip():
 
             st.error(
-                "Please enter your topic."
+                "Please enter the consultation topic."
             )
 
         else:
 
-            request_data = {
+            user_id = current_user_id()
+
+            payload = {
+                "user_id": user_id,
                 "name": clean_text(
                     name,
                     100,
                 ),
                 "contact": clean_text(
                     contact,
-                    150,
+                    200,
                 ),
                 "topic": clean_text(
                     topic,
-                    1500,
+                    2000,
                 ),
-                "session_type": session_type,
+                "duration": selected,
                 "payment_method": payment_method,
                 "payment_reference": clean_text(
                     payment_reference,
-                    150,
+                    200,
                 ),
                 "payment_status": "Pending verification",
-                "submitted_at": time.time(),
             }
 
-            st.session_state.consultation_requests.append(
-                request_data
+            db_insert(
+                "consultation_requests",
+                payload,
             )
 
-            user_id = current_user_id()
-
-            if user_id:
-
-                db_insert(
-                    "consultation_requests",
-                    {
-                        "user_id": user_id,
-                        "request_data": request_data,
-                        "status": "pending",
-                    },
-                )
-
             st.success(
-                "Request submitted. Payment status is currently "
-                "Pending verification."
+                "Consultation request submitted. "
+                "Payment status is pending verification."
             )
 
             st.info(
-                "Automatic Easypaisa verification requires an official "
-                "merchant/API integration. A payment reference alone "
-                "is not treated as verified."
+                "Automatic Easypaisa verification requires an "
+                "official merchant/API integration. Do not treat "
+                "a manually entered transaction ID as proof of payment."
             )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # PROGRESS
-# ------------------------------------------------------------
+# ============================================================
 
 def page_progress():
 
     st.title("📈 My Progress")
 
     st.caption(
-        "Your NEUROLENS learning and interaction history."
+        "Your NEUROLENS learning and interaction overview."
     )
 
-    lab_count = len(
+    lab_results = (
         st.session_state.get(
             "lab_results",
             [],
         )
     )
 
-    exercise_count = len(
+    exercise_results = (
         st.session_state.get(
             "exercise_scores",
             [],
         )
     )
 
-    puzzle_count = 0
-
-    if st.session_state.get(
-        "puzzle_completed",
-        False,
-    ):
-        puzzle_count = 1
-
-    ai_count = st.session_state.get(
-        "ai_requests",
-        0,
+    puzzle_moves = (
+        st.session_state.get(
+            "puzzle_moves",
+            0,
+        )
     )
 
-    research_count = len(
+    ai_count = (
+        st.session_state.get(
+            "ai_requests",
+            0,
+        )
+    )
+
+    research_notes = (
         st.session_state.get(
             "research_notes",
             [],
         )
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
 
         st.metric(
-            "🧪 Lab Sessions",
-            lab_count,
-        )
-
-        st.metric(
-            "🧠 Exercises",
-            exercise_count,
-        )
-
-        st.metric(
-            "🧩 Puzzle Completions",
-            puzzle_count,
+            "Lab Experiments",
+            len(lab_results),
         )
 
     with col2:
 
         st.metric(
-            "🤖 AI Requests",
+            "Brain Exercises",
+            len(exercise_results),
+        )
+
+    with col3:
+
+        st.metric(
+            "AI Requests",
             ai_count,
         )
 
+    with col4:
+
         st.metric(
-            "🔬 Research Notes",
-            research_count,
+            "Research Notes",
+            len(research_notes),
         )
 
     st.divider()
 
-    st.subheader("🏆 Achievements")
+    # --------------------------------------------------------
+    # SCORES
+    # --------------------------------------------------------
 
-    achievements = []
+    if exercise_results:
 
-    if exercise_count >= 1:
-        achievements.append(
-            "🧠 First Cognitive Challenge"
+        st.subheader(
+            "🎯 Exercise Scores"
         )
 
-    if lab_count >= 1:
-        achievements.append(
-            "🧪 First Lab Session"
-        )
+        if pd is not None:
 
-    if research_count >= 1:
-        achievements.append(
-            "🔬 Research Explorer"
-        )
-
-    if ai_count >= 5:
-        achievements.append(
-            "🤖 AI Explorer"
-        )
-
-    if puzzle_count >= 1:
-        achievements.append(
-            "🧩 Puzzle Solver"
-        )
-
-    if not achievements:
-
-        st.info(
-            "Complete your first activity to unlock achievements."
-        )
-
-    else:
-
-        for achievement in achievements:
-
-            st.success(
-                achievement
+            df = pd.DataFrame(
+                exercise_results
             )
 
-    st.divider()
+            if (
+                "exercise" in df.columns
+                and "score" in df.columns
+            ):
 
-    st.subheader("📊 Exercise Performance")
-
-    scores = st.session_state.get(
-        "exercise_scores",
-        [],
-    )
-
-    if scores:
-
-        try:
-
-            if pd is not None and px is not None:
-
-                frame = pd.DataFrame(scores)
-
-                if not frame.empty:
+                if px is not None:
 
                     fig = px.bar(
-                        frame,
+                        df,
                         x="exercise",
                         y="score",
-                        title="Exercise scores",
-                        range_y=[0, 100],
+                        title="Recent Exercise Performance",
+                    )
+
+                    fig.update_layout(
+                        yaxis_range=[
+                            0,
+                            100,
+                        ]
                     )
 
                     st.plotly_chart(
@@ -4830,110 +5886,182 @@ def page_progress():
                         use_container_width=True,
                     )
 
-        except Exception:
+    # --------------------------------------------------------
+    # LAB RESULTS
+    # --------------------------------------------------------
 
-            st.info(
-                "Performance chart could not be rendered."
+    if lab_results:
+
+        st.subheader(
+            "🧪 Lab History"
+        )
+
+        for result in reversed(
+            lab_results[-10:]
+        ):
+
+            st.markdown(
+                f"""
+                <div class="nl-card">
+
+                    <b>
+                        {result.get("experiment", "Experiment")}
+                    </b>
+
+                    <br>
+
+                    Score:
+                    {result.get("score", 0):.0f}/100
+
+                    <br>
+
+                    <span class="small-muted">
+                        {result.get("observations", "")}
+                    </span>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # --------------------------------------------------------
+    # ACHIEVEMENTS
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "🏆 Achievements"
+    )
+
+    achievements = []
+
+    if len(lab_results) >= 1:
+
+        achievements.append(
+            "🧪 First Lab Experiment"
+        )
+
+    if len(exercise_results) >= 1:
+
+        achievements.append(
+            "🎯 First Brain Challenge"
+        )
+
+    if len(research_notes) >= 1:
+
+        achievements.append(
+            "🔬 First Research Note"
+        )
+
+    if ai_count >= 5:
+
+        achievements.append(
+            "🤖 AI Explorer"
+        )
+
+    if st.session_state.get(
+        "puzzle_completed",
+        False,
+    ):
+
+        achievements.append(
+            "🧩 Puzzle Solver"
+        )
+
+    if achievements:
+
+        for achievement in achievements:
+
+            st.success(
+                achievement
             )
 
     else:
 
         st.info(
-            "Your exercise performance will appear here."
-        )
-
-    st.divider()
-
-    st.subheader("📝 Recent Research Notes")
-
-    for note in st.session_state.get(
-        "research_notes",
-        [],
-    )[-5:]:
-
-        st.markdown(
-            f"**{note.get('title','Research note')}**"
+            "Complete activities to unlock achievements."
         )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # SECURITY & PRIVACY CENTER
-# ------------------------------------------------------------
+# ============================================================
 
 def page_security():
 
     st.title("🛡️ Security & Privacy Center")
 
     st.caption(
-        "Understand how NEUROLENS handles AI, account data and privacy."
+        "How NEUROLENS handles security, AI and user data."
     )
 
-    st.subheader("🔑 API Key Protection")
+    sections = {
+        "🔑 API Key Protection": [
+            "Gemini API credentials should be stored only in Streamlit Secrets.",
+            "Never paste your API key into public GitHub code.",
+            "Do not place service-role Supabase keys in frontend code.",
+        ],
+        "🧼 Input Protection": [
+            "User text is length-limited before being sent to AI or storage.",
+            "AI prompts explicitly restrict unsupported claims.",
+            "User-generated content should be treated as untrusted input.",
+        ],
+        "🤖 AI Safety": [
+            "AI output can be incorrect.",
+            "AI mood/face/voice features are probabilistic estimates.",
+            "NEUROLENS does not claim to read minds.",
+            "AI features do not diagnose medical or psychiatric conditions.",
+        ],
+        "🔐 Private Ayna": [
+            "Private session PINs use salted PBKDF2-HMAC-SHA256.",
+            "Never reuse a banking or payment PIN.",
+            "Session privacy depends on the security of the device and account.",
+        ],
+        "💳 Payment Security": [
+            "Payment references are treated as unverified until confirmed.",
+            "Automatic Easypaisa verification requires official merchant/API integration.",
+            "Never ask users to send passwords, OTPs or banking PINs.",
+        ],
+        "🧠 Research Data": [
+            "Educational tasks should not be presented as clinical measurements.",
+            "Simulated EEG/neural visualizations are conceptual unless real validated hardware/data is explicitly connected.",
+        ],
+    }
+
+    for title, bullets in sections.items():
+
+        with st.expander(
+            title,
+            expanded=False,
+        ):
+
+            for bullet in bullets:
+
+                st.write(
+                    "• " + bullet
+                )
+
+    st.divider()
+
+    st.subheader(
+        "⚠️ Important Limitations"
+    )
 
     st.write(
-        "Gemini API keys should be stored only in "
-        "Streamlit Secrets. They should never be hard-coded "
-        "into the public application."
-    )
-
-    st.subheader("🔐 PIN Security")
-
-    st.write(
-        "Private Ayna uses salted PBKDF2-HMAC-SHA256 hashing "
-        "for the session PIN. The raw PIN is not stored."
-    )
-
-    st.subheader("🤖 AI Safety")
-
-    st.write(
-        "AI responses are generated probabilistically. "
-        "NEUROLENS does not treat AI output as guaranteed truth."
-    )
-
-    st.subheader("🎭 Mood / Face Interpretation")
-
-    st.write(
-        "Voice and facial-expression analysis is limited to "
-        "AI-assisted interpretation of observable cues. "
-        "It is not mind-reading, personality analysis or diagnosis."
-    )
-
-    st.subheader("🧠 Cognitive Experiments")
-
-    st.write(
-        "NEUROLENS cognitive tasks are educational simulations. "
-        "They should not be described as EEG, fMRI or clinical "
-        "neuropsychological measurements."
-    )
-
-    st.subheader("💳 Payment Security")
-
-    st.write(
-        "A payment reference is not automatically considered "
-        "verified. Official payment-provider/API integration "
-        "is required for automated verification."
-    )
-
-    st.subheader("🗄️ Database")
-
-    st.write(
-        "When Supabase is configured, user-specific records can "
-        "be stored in the configured database tables."
-    )
-
-    st.subheader("⚠️ Important limitation")
-
-    st.write(
-        "No software system can guarantee absolute security. "
-        "Users should avoid entering passwords, financial secrets, "
-        "medical records or highly sensitive personal information "
-        "into ordinary AI conversations."
+        """
+        NEUROLENS is an educational and research-oriented
+        interactive platform. AI-generated interpretations,
+        behavioural tasks and self-reported information should
+        not be treated as definitive measurements of cognition,
+        personality, emotion, mental health or brain activity.
+        """
     )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # SETTINGS
-# ------------------------------------------------------------
+# ============================================================
 
 def page_settings():
 
@@ -4943,58 +6071,53 @@ def page_settings():
         "Configure your NEUROLENS experience."
     )
 
-    st.subheader("🌐 Language")
+    st.subheader(
+        "🌐 Language"
+    )
 
-    language = st.selectbox(
+    st.selectbox(
         "Interface language",
         [
             "English",
-            "Roman English",
         ],
         key="settings_language",
     )
 
-    st.session_state.interface_language = language
+    st.subheader(
+        "🤖 AI Model"
+    )
 
-    st.subheader("🤖 AI Model")
-
-    current_model = GEMINI_MODEL
-
-    st.code(
-        current_model
+    st.selectbox(
+        "Gemini model",
+        [
+            GEMINI_MODEL,
+        ],
+        key="settings_ai_model",
     )
 
     st.caption(
-        "The model is controlled through Streamlit Secrets."
+        "Current configured model: "
+        + GEMINI_MODEL
     )
 
-    st.subheader("📊 AI Usage")
+    st.subheader(
+        "📊 AI Usage"
+    )
 
     st.metric(
         "AI requests this session",
-        st.session_state.get(
-            "ai_requests",
-            0,
-        ),
+        st.session_state.ai_requests,
     )
 
-    st.subheader("💳 Payment Configuration")
-
-    easypaisa_configured = bool(
-        os.getenv(
-            "EASYPAISA_NUMBER",
-            "",
-        )
+    st.caption(
+        f"Session AI limit: {AI_SESSION_LIMIT}"
     )
 
-    international_configured = bool(
-        os.getenv(
-            "INTERNATIONAL_PAYMENT_URL",
-            "",
-        )
+    st.subheader(
+        "💳 Payment Configuration"
     )
 
-    if easypaisa_configured:
+    if EASYPAISA_NUMBER:
 
         st.success(
             "Easypaisa configuration detected."
@@ -5002,142 +6125,167 @@ def page_settings():
 
     else:
 
-        st.warning(
-            "Easypaisa is not configured."
+        st.info(
+            "Easypaisa merchant configuration is not active."
         )
 
-    if international_configured:
+    if INTERNATIONAL_PAYMENT_URL:
 
         st.success(
-            "International payment URL detected."
+            "International payment link detected."
         )
 
     else:
 
-        st.warning(
-            "International payment URL is not configured."
+        st.info(
+            "International payment link is not configured."
         )
 
     st.divider()
 
-    st.subheader("♻️ Reset Session Progress")
-
-    st.write(
-        "This clears local session progress, challenge states "
-        "and temporary AI results."
+    st.subheader(
+        "🧹 Reset Session Progress"
     )
 
     if st.button(
-        "Reset Session Progress",
+        "Reset Local Progress",
         use_container_width=True,
-        key="reset_session_progress",
+        key="reset_local_progress",
     ):
 
-        keep_keys = {
-            "authenticated",
-            "user",
-            "page",
-            "display_name",
-            "interface_language",
-        }
+        keys_to_reset = [
+            "lab_results",
+            "lab_history",
+            "exercise_scores",
+            "research_notes",
+            "ayna_messages",
+            "private_messages",
+            "voice_result",
+            "face_result",
+            "lab_result",
+            "brain_system_answer",
+        ]
 
-        for key in list(
-            st.session_state.keys()
-        ):
+        for key in keys_to_reset:
 
-            if key not in keep_keys:
+            if key in st.session_state:
 
-                try:
-                    del st.session_state[key]
-                except Exception:
-                    pass
+                if isinstance(
+                    st.session_state[key],
+                    list,
+                ):
+
+                    st.session_state[key] = []
+
+                elif isinstance(
+                    st.session_state[key],
+                    str,
+                ):
+
+                    st.session_state[key] = ""
+
+                else:
+
+                    st.session_state[key] = None
+
+        st.session_state.ai_requests = 0
 
         st.success(
-            "Session progress reset."
+            "Local session progress reset."
         )
 
         st.rerun()
 
 
-# ------------------------------------------------------------
+# ============================================================
 # ACCOUNT
-# ------------------------------------------------------------
+# ============================================================
 
 def page_account():
 
     st.title("👤 Account")
 
-    user = st.session_state.get(
-        "user"
+    user = (
+        st.session_state.get(
+            "user",
+            None,
+        )
     )
 
     if not user:
 
         st.info(
-            "You are currently using NEUROLENS as a guest."
+            "You are currently using NEUROLENS without a signed-in account."
         )
 
         if st.button(
-            "Go to Account Login",
+            "🔐 Go to Account Login",
             type="primary",
             use_container_width=True,
-            key="go_account_login",
+            key="account_go_login",
         ):
 
             st.session_state.page = "Account"
+
             st.rerun()
 
         return
 
-    email = user.get(
-        "email",
-        "",
+    email = ""
+
+    try:
+
+        email = user.email or ""
+
+    except Exception:
+
+        email = ""
+
+    st.markdown(
+        f"""
+        <div class="nl-card">
+
+            <h3>
+                👋 Welcome
+            </h3>
+
+            <p>
+                {email}
+            </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.subheader(
-        "Account information"
+        "👤 Profile"
     )
-
-    st.write(
-        f"**Email:** {email}"
-    )
-
-    st.write(
-        f"**User ID:** `{user.get('id','')}`"
-    )
-
-    st.divider()
-
-    st.subheader("🧠 Profile")
 
     name = st.text_input(
         "Display name",
-        value=st.session_state.get(
-            "display_name",
-            "Ayna Jaffri",
-        ),
-        key="account_display_name",
+        value=st.session_state.profile_name,
+        max_chars=80,
+        key="account_name",
     )
 
     bio = st.text_area(
-        "Professional bio",
-        value=st.session_state.get(
-            "profile_bio",
-            "Independent cognitive neuroscience researcher",
-        ),
+        "Bio",
+        value=st.session_state.profile_bio,
+        max_chars=500,
         key="account_bio",
     )
 
     if st.button(
-        "Save Account Profile",
+        "💾 Save Account Profile",
         type="primary",
         use_container_width=True,
         key="save_account_profile",
     ):
 
-        st.session_state.display_name = clean_text(
+        st.session_state.profile_name = clean_text(
             name,
-            100,
+            80,
         )
 
         st.session_state.profile_bio = clean_text(
@@ -5145,19 +6293,21 @@ def page_account():
             500,
         )
 
-        if current_user_id():
+        user_id = current_user_id()
+
+        if user_id:
 
             db_insert(
                 "profiles",
                 {
-                    "id": current_user_id(),
-                    "display_name": st.session_state.display_name,
+                    "id": user_id,
+                    "display_name": st.session_state.profile_name,
                     "bio": st.session_state.profile_bio,
                 },
             )
 
         st.success(
-            "Profile saved."
+            "Profile updated."
         )
 
     st.divider()
@@ -5168,32 +6318,14 @@ def page_account():
         key="account_logout",
     ):
 
-        logout()
+        logout_user()
 
 
-# ------------------------------------------------------------
-# GUEST / ACCOUNT ROUTER
-# ------------------------------------------------------------
+# ============================================================
+# FINAL NAVIGATION
+# ============================================================
 
-def page_account_or_auth():
-
-    if st.session_state.get(
-        "authenticated",
-        False,
-    ):
-
-        page_account()
-
-    else:
-
-        page_auth()
-
-
-# ------------------------------------------------------------
-# FINAL PAGE ROUTER
-# ------------------------------------------------------------
-
-def render_page():
+def render_main_navigation():
 
     page = st.session_state.get(
         "page",
@@ -5204,6 +6336,10 @@ def render_page():
 
         page_neuroworld()
 
+    elif page == "Welcome":
+
+        page_welcome()
+
     elif page == "Cognitive Lab":
 
         page_lab()
@@ -5212,13 +6348,13 @@ def render_page():
 
         page_brain_journey()
 
-    elif page == "Brain Challenges":
-
-        page_challenges()
-
     elif page == "Brain Puzzle":
 
         page_puzzle()
+
+    elif page == "Brain Challenges":
+
+        page_challenges()
 
     elif page == "Ask Ayna":
 
@@ -5242,7 +6378,7 @@ def render_page():
 
     elif page == "Behaviour Decoding":
 
-        page_behaviour()
+        page_consultation()
 
     elif page == "My Progress":
 
@@ -5258,7 +6394,7 @@ def render_page():
 
     elif page == "Account":
 
-        page_account_or_auth()
+        page_account()
 
     else:
 
@@ -5267,9 +6403,141 @@ def render_page():
         page_neuroworld()
 
 
-# ------------------------------------------------------------
-# MAIN APP
-# ------------------------------------------------------------
+# ============================================================
+# FINAL SIDEBAR
+# ============================================================
+
+def render_sidebar():
+
+    with st.sidebar:
+
+        st.markdown(
+            """
+            <div style="
+                text-align:center;
+                padding:10px 0 18px 0;
+            ">
+
+                <div style="
+                    font-size:42px;
+                ">
+                    🧠
+                </div>
+
+                <h2 style="
+                    margin:0;
+                ">
+                    NEUROLENS
+                </h2>
+
+                <div class="small-muted">
+                    Explore cognition, behavior & the brain
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        navigation = [
+            (
+                "🌍",
+                "NeuroWorld",
+            ),
+            (
+                "🧪",
+                "Cognitive Lab",
+            ),
+            (
+                "🧠",
+                "Brain Journey",
+            ),
+            (
+                "🧩",
+                "Brain Puzzle",
+            ),
+            (
+                "🎯",
+                "Brain Challenges",
+            ),
+            (
+                "🤖",
+                "Ask Ayna",
+            ),
+            (
+                "🎭",
+                "AI Mood & Behaviour",
+            ),
+            (
+                "🔬",
+                "Research World",
+            ),
+            (
+                "🔐",
+                "Private Ayna",
+            ),
+            (
+                "🌐",
+                "NeuroSocial",
+            ),
+            (
+                "🧩",
+                "Behaviour Decoding",
+            ),
+            (
+                "📈",
+                "My Progress",
+            ),
+            (
+                "🛡️",
+                "Security & Privacy",
+            ),
+            (
+                "⚙️",
+                "Settings",
+            ),
+            (
+                "👤",
+                "Account",
+            ),
+        ]
+
+        for icon, label in navigation:
+
+            if st.button(
+                f"{icon} {label}",
+                use_container_width=True,
+                key=f"nav_{label}",
+            ):
+
+                st.session_state.page = label
+
+                st.rerun()
+
+        st.divider()
+
+        if current_user_id():
+
+            st.success(
+                "🟢 Account connected"
+            )
+
+        else:
+
+            st.info(
+                "🔵 Guest mode"
+            )
+
+        st.caption(
+            "NEUROLENS is an educational cognitive-neuroscience platform."
+        )
+
+
+# ============================================================
+# FINAL APP ENTRY
+# ============================================================
 
 def main():
 
@@ -5278,271 +6546,21 @@ def main():
 
         st.session_state.page = "NeuroWorld"
 
-    if "authenticated" not in st.session_state:
+    render_sidebar()
 
-        st.session_state.authenticated = False
-
-    # --------------------------------------------------------
-    # SIDEBAR
-    # --------------------------------------------------------
-
-    with st.sidebar:
-
-        st.markdown(
-            """
-            <div style="
-                text-align:center;
-                padding:8px 0 15px 0;
-            ">
-                <div style="
-                    font-size:40px;
-                ">
-                    🧠
-                </div>
-                <div style="
-                    font-size:22px;
-                    font-weight:900;
-                ">
-                    NEUROLENS
-                </div>
-                <div style="
-                    font-size:12px;
-                    opacity:.7;
-                ">
-                    Explore cognition, behavior & the brain
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.divider()
-
-        if st.button(
-            "🌌 NeuroWorld",
-            use_container_width=True,
-            key="nav_world",
-        ):
-
-            st.session_state.page = "NeuroWorld"
-            st.rerun()
-
-        st.markdown(
-            "**🧪 Neuroscience**"
-        )
-
-        if st.button(
-            "🧪 Cognitive Lab",
-            use_container_width=True,
-            key="nav_lab",
-        ):
-
-            st.session_state.page = "Cognitive Lab"
-            st.rerun()
-
-        if st.button(
-            "🧠 Brain Journey",
-            use_container_width=True,
-            key="nav_journey",
-        ):
-
-            st.session_state.page = "Brain Journey"
-            st.rerun()
-
-        if st.button(
-            "🧩 Brain Puzzle",
-            use_container_width=True,
-            key="nav_puzzle",
-        ):
-
-            st.session_state.page = "Brain Puzzle"
-            st.rerun()
-
-        if st.button(
-            "🎯 Brain Challenges",
-            use_container_width=True,
-            key="nav_challenges",
-        ):
-
-            st.session_state.page = "Brain Challenges"
-            st.rerun()
-
-        st.markdown(
-            "**🤖 AI**"
-        )
-
-        if st.button(
-            "🤖 Ask Ayna",
-            use_container_width=True,
-            key="nav_ask",
-        ):
-
-            st.session_state.page = "Ask Ayna"
-            st.rerun()
-
-        if st.button(
-            "🎭 AI Mood & Behaviour",
-            use_container_width=True,
-            key="nav_mood",
-        ):
-
-            st.session_state.page = "AI Mood & Behaviour"
-            st.rerun()
-
-        st.markdown(
-            "**🌐 Neuro World**"
-        )
-
-        if st.button(
-            "🌐 NeuroSocial",
-            use_container_width=True,
-            key="nav_social",
-        ):
-
-            st.session_state.page = "NeuroSocial"
-            st.rerun()
-
-        if st.button(
-            "🧩 Behaviour Decoding",
-            use_container_width=True,
-            key="nav_behaviour",
-        ):
-
-            st.session_state.page = "Behaviour Decoding"
-            st.rerun()
-
-        if st.button(
-            "🔐 Private Ayna",
-            use_container_width=True,
-            key="nav_private",
-        ):
-
-            st.session_state.page = "Private Ayna"
-            st.rerun()
-
-        st.markdown(
-            "**🔬 Research**"
-        )
-
-        if st.button(
-            "🔬 Research World",
-            use_container_width=True,
-            key="nav_research",
-        ):
-
-            st.session_state.page = "Research World"
-            st.rerun()
-
-        if st.button(
-            "📈 My Progress",
-            use_container_width=True,
-            key="nav_progress",
-        ):
-
-            st.session_state.page = "My Progress"
-            st.rerun()
-
-        st.markdown(
-            "**⚙️ System**"
-        )
-
-        if st.button(
-            "🛡️ Security & Privacy",
-            use_container_width=True,
-            key="nav_security",
-        ):
-
-            st.session_state.page = "Security & Privacy"
-            st.rerun()
-
-        if st.button(
-            "⚙️ Settings",
-            use_container_width=True,
-            key="nav_settings",
-        ):
-
-            st.session_state.page = "Settings"
-            st.rerun()
-
-        if st.button(
-            "👤 Account",
-            use_container_width=True,
-            key="nav_account",
-        ):
-
-            st.session_state.page = "Account"
-            st.rerun()
-
-        st.divider()
-
-        if st.session_state.get(
-            "authenticated",
-            False,
-        ):
-
-            user = st.session_state.get(
-                "user",
-                {},
-            )
-
-            st.caption(
-                f"Signed in as {user.get('email','User')}"
-            )
-
-            if st.button(
-                "🚪 Log Out",
-                use_container_width=True,
-                key="sidebar_logout",
-            ):
-
-                logout()
-
-        else:
-
-            st.caption(
-                "Guest mode"
-            )
-
-    # --------------------------------------------------------
-    # PAGE
-    # --------------------------------------------------------
-
-    render_page()
-
-    # --------------------------------------------------------
-    # FOOTER
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <div style="
-            text-align:center;
-            margin-top:35px;
-            padding:20px 10px;
-            color:#7f8ea3;
-            font-size:12px;
-        ">
-            🧠 NEUROLENS · Explore cognition, behavior & the brain
-            <br>
-            Educational neuroscience + AI environment
-            <br>
-            AI-assisted results are probabilistic and not clinical diagnosis.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_main_navigation()
 
 
 # ============================================================
-# START NEUROLENS
+# RUN APP
 # ============================================================
 
 if __name__ == "__main__":
+
     main()
 
 
 # ============================================================
-# END OF PART 4
+# NEUROLENS — END OF APP
 # ============================================================
-
 
