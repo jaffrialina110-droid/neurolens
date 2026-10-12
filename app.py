@@ -1012,11 +1012,1325 @@ def page_neuroworld():
                 key=f"world_shortcut_{index}",
                 use_container_width=True,
             ):
-                st.session_state.page = destination
+                st.session_state.page = destination  
                 st.rerun()
 
 
 # ------------------------------------------------------------
 # END OF PART 2
 # ------------------------------------------------------------
+
+# =========================
+# PART 3 — INTERACTIVE NEUROSCIENCE LAB
+# =========================
+
+EXPERIMENTS = {
+    "Attention & Response": {
+        "description": "Find the target letter as quickly and accurately as possible.",
+        "purpose": "This task explores visual attention and response selection."
+    },
+    "Memory Sequence": {
+        "description": "Remember the sequence and reproduce it.",
+        "purpose": "This task explores short-term sequence recall."
+    },
+    "Decision & Reward": {
+        "description": "Choose between a smaller immediate reward and a larger delayed reward.",
+        "purpose": "This task explores choices involving delay and reward."
+    },
+    "Stroop Control": {
+        "description": "Identify the displayed word's ink colour, not the word itself.",
+        "purpose": "This task explores interference and response control."
+    },
+    "Reaction Time": {
+        "description": "Respond when the target appears.",
+        "purpose": "This task records your response time in this simple task."
+    }
+}
+
+
+def page_interactive_lab():
+    show_hero(
+        "Interactive Neuroscience Lab",
+        "Explore attention, memory, decision-making and response behaviour."
+    )
+
+    characters = ["Ayna", "Nova", "Mira", "Ray", "Zara"]
+    equipment = [
+        "Neural Scanner — educational simulation",
+        "Reaction Console",
+        "Memory Chamber",
+        "Attention Monitor",
+        "Decision & Reward Console"
+    ]
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.session_state.lab_character = st.selectbox(
+            "Choose your lab guide",
+            characters,
+            index=(
+                characters.index(st.session_state.lab_character)
+                if st.session_state.lab_character in characters else 0
+            ),
+            key="lab_character_select"
+        )
+
+    with col2:
+        st.session_state.lab_equipment = st.selectbox(
+            "Choose equipment",
+            equipment,
+            key="lab_equipment_select"
+        )
+
+    st.markdown(
+        f"### 🧑‍🔬 Guide: {safe_text(st.session_state.lab_character)}"
+    )
+    st.caption(
+        "Educational simulation only. No brain activity is measured by these tasks."
+    )
+
+    experiment_names = list(EXPERIMENTS.keys())
+
+    selected = st.selectbox(
+        "Select an experiment",
+        experiment_names,
+        index=(
+            experiment_names.index(st.session_state.lab_experiment)
+            if st.session_state.lab_experiment in experiment_names else 0
+        ),
+        key="lab_experiment_select"
+    )
+
+    st.session_state.lab_experiment = selected
+    details = EXPERIMENTS[selected]
+
+    html_card(
+        selected,
+        details["description"],
+        "LAB EXPERIMENT"
+    )
+
+    st.write("**What this task explores:**", details["purpose"])
+
+    if selected == "Attention & Response":
+        run_attention_experiment()
+
+    elif selected == "Memory Sequence":
+        run_memory_experiment()
+
+    elif selected == "Decision & Reward":
+        run_decision_experiment()
+
+    elif selected == "Stroop Control":
+        run_stroop_experiment()
+
+    elif selected == "Reaction Time":
+        run_reaction_experiment()
+
+    st.divider()
+    st.subheader("Recent experiment history")
+
+    history = st.session_state.experiment_history
+
+    if history:
+        for item in reversed(history[-5:]):
+            st.write(
+                f"• {item.get('experiment', 'Experiment')} — "
+                f"{item.get('result', 'Completed')}"
+            )
+    else:
+        st.info("Complete an experiment to start your history.")
+
+
+def store_experiment(name, result, accuracy=None, reaction_ms=None):
+    entry = {
+        "experiment": name,
+        "result": str(result),
+        "accuracy": accuracy,
+        "reaction_ms": reaction_ms,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    st.session_state.experiment_history.append(entry)
+    record_progress("experiments")
+
+    if accuracy is not None:
+        st.session_state.progress["accuracy"] = accuracy
+
+    if reaction_ms is not None:
+        current = st.session_state.progress.get("best_reaction_ms")
+        if current is None or reaction_ms < current:
+            st.session_state.progress["best_reaction_ms"] = reaction_ms
+
+    st.session_state.behaviour_records.append(entry.copy())
+
+    save_supabase("experiment_results", {
+        "experiment_name": name,
+        "result_text": str(result),
+        "accuracy": accuracy,
+        "reaction_ms": reaction_ms
+    })
+
+
+def run_attention_experiment():
+    st.markdown("#### 🔎 Find the target")
+
+    if "attention_target" not in st.session_state:
+        st.session_state.attention_target = random.choice(["X", "K", "M", "T"])
+        st.session_state.attention_options = random.sample(
+            ["X", "K", "M", "T", "A", "R", "P", "S"],
+            4
+        )
+        if st.session_state.attention_target not in st.session_state.attention_options:
+            st.session_state.attention_options[
+                random.randrange(4)
+            ] = st.session_state.attention_target
+
+    target = st.session_state.attention_target
+    options = st.session_state.attention_options
+
+    st.markdown(f"### Target: **{target}**")
+
+    answer = st.radio(
+        "Which option matches the target?",
+        options,
+        horizontal=True,
+        key="attention_answer"
+    )
+
+    if st.button("Check attention answer", key="check_attention"):
+        if st.session_state.get("attention_done"):
+            st.info("This round is already complete. Start a new round.")
+        else:
+            correct = answer == target
+            result = "Correct" if correct else "Incorrect"
+
+            store_experiment(
+                "Attention & Response",
+                result,
+                accuracy=100 if correct else 0
+            )
+
+            st.session_state.attention_done = True
+
+            if correct:
+                st.success("Correct selection!")
+            else:
+                st.warning(f"The target was {target}.")
+
+            st.caption(
+                "One short task cannot establish your general attention ability."
+            )
+
+    if st.button("New attention round", key="new_attention"):
+        st.session_state.attention_target = random.choice(["X", "K", "M", "T"])
+        st.session_state.attention_options = random.sample(
+            ["X", "K", "M", "T", "A", "R", "P", "S"],
+            4
+        )
+        if st.session_state.attention_target not in st.session_state.attention_options:
+            st.session_state.attention_options[0] = st.session_state.attention_target
+
+        st.session_state.attention_done = False
+        st.rerun()
+
+
+def run_memory_experiment():
+    st.markdown("#### 🧠 Memory sequence")
+
+    if "memory_sequence" not in st.session_state:
+        st.session_state.memory_sequence = "".join(
+            str(random.randint(1, 9)) for _ in range(5)
+        )
+
+    if not st.session_state.get("memory_started"):
+        st.info(
+            "Study this sequence, then enter it below. "
+            "For a fair challenge, look away before submitting."
+        )
+        st.code(st.session_state.memory_sequence)
+
+        if st.button("Hide sequence and begin", key="hide_memory"):
+            st.session_state.memory_started = True
+            st.rerun()
+
+    else:
+        answer = st.text_input(
+            "Enter the sequence",
+            max_chars=10,
+            key="memory_answer"
+        )
+
+        if st.button("Check memory answer", key="check_memory"):
+            if st.session_state.get("memory_done"):
+                st.info("This round is already complete.")
+            else:
+                correct = (
+                    answer.strip() == st.session_state.memory_sequence
+                )
+
+                store_experiment(
+                    "Memory Sequence",
+                    "Correct recall" if correct else "Incorrect recall",
+                    accuracy=100 if correct else 0
+                )
+
+                st.session_state.memory_done = True
+
+                if correct:
+                    st.success("Sequence recalled correctly!")
+                else:
+                    st.warning(
+                        "The sequence did not match. "
+                        "This single result is not a memory diagnosis."
+                    )
+
+    if st.button("Generate new memory sequence", key="new_memory"):
+        st.session_state.memory_sequence = "".join(
+            str(random.randint(1, 9)) for _ in range(5)
+        )
+        st.session_state.memory_started = False
+        st.session_state.memory_done = False
+        st.rerun()
+
+
+def run_decision_experiment():
+    st.markdown("#### 💰 Decision & reward")
+
+    st.write("Choose one option:")
+
+    choice = st.radio(
+        "Which reward would you choose?",
+        [
+            "Receive Rs 1,000 today",
+            "Receive Rs 1,500 after 30 days"
+        ],
+        key="decision_choice"
+    )
+
+    reason = st.text_area(
+        "Optional: Why did you choose it?",
+        key="decision_reason",
+        max_chars=500
+    )
+
+    if st.button("Save decision", key="save_decision"):
+        if st.session_state.get("decision_done"):
+            st.info("This decision has already been saved.")
+        else:
+            st.session_state.decision_done = True
+
+            store_experiment(
+                "Decision & Reward",
+                choice
+            )
+
+            st.session_state.behaviour_records.append({
+                "experiment": "Decision explanation",
+                "result": reason.strip() or "No explanation provided",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+            st.success("Decision recorded.")
+
+            st.write(
+                "Reflection: immediate needs, trust, uncertainty, "
+                "and personal priorities can all influence choices. "
+                "One answer does not define your personality."
+            )
+
+    if st.button("Reset decision", key="reset_decision"):
+        st.session_state.decision_done = False
+        st.rerun()
+
+
+def run_stroop_experiment():
+    st.markdown("#### 🎨 Stroop control task")
+
+    colours = {
+        "RED": "#ff4d4d",
+        "BLUE": "#4d9dff",
+        "GREEN": "#39c878",
+        "YELLOW": "#f4d35e"
+    }
+
+    if "stroop_word" not in st.session_state:
+        word = random.choice(list(colours.keys()))
+        ink = random.choice([c for c in colours if c != word])
+        st.session_state.stroop_word = word
+        st.session_state.stroop_ink = ink
+
+    word = st.session_state.stroop_word
+    ink = st.session_state.stroop_ink
+
+    st.markdown(
+        f'<div style="font-size:42px;font-weight:800;'
+        f'color:{colours[ink]};text-align:center;padding:18px">'
+        f'{safe_text(word)}</div>',
+        unsafe_allow_html=True
+    )
+
+    answer = st.radio(
+        "What is the ink colour?",
+        list(colours.keys()),
+        horizontal=True,
+        key="stroop_answer"
+    )
+
+    if st.button("Check ink colour", key="check_stroop"):
+        if st.session_state.get("stroop_done"):
+            st.info("This round is already complete.")
+        else:
+            correct = answer == ink
+
+            store_experiment(
+                "Stroop Control",
+                "Correct" if correct else "Incorrect",
+                accuracy=100 if correct else 0
+            )
+
+            st.session_state.stroop_done = True
+
+            if correct:
+                st.success("Correct — you identified the ink colour.")
+            else:
+                st.warning(f"The ink colour was {ink}.")
+
+            st.caption(
+                "This is a simplified educational task, "
+                "not a clinical executive-function assessment."
+            )
+
+    if st.button("New Stroop round", key="new_stroop"):
+        word = random.choice(list(colours.keys()))
+        ink = random.choice([c for c in colours if c != word])
+        st.session_state.stroop_word = word
+        st.session_state.stroop_ink = ink
+        st.session_state.stroop_done = False
+        st.rerun()
+
+
+def run_reaction_experiment():
+    st.markdown("#### ⚡ Reaction time")
+
+    st.write(
+        "Press the button when you are ready. "
+        "Then start a round and respond when the target appears."
+    )
+
+    if "reaction_ready" not in st.session_state:
+        st.session_state.reaction_ready = False
+
+    if "reaction_start_time" not in st.session_state:
+        st.session_state.reaction_start_time = None
+
+    if not st.session_state.reaction_ready:
+        if st.button("Start reaction round", key="start_reaction"):
+            st.session_state.reaction_start_time = time.perf_counter()
+            st.session_state.reaction_ready = True
+            st.rerun()
+
+    else:
+        st.success("TARGET! Press the response button now.")
+
+        if st.button("RESPOND", key="respond_reaction"):
+            start = st.session_state.reaction_start_time
+
+            if start is not None:
+                elapsed_ms = round((time.perf_counter() - start) * 1000)
+
+                store_experiment(
+                    "Reaction Time",
+                    f"{elapsed_ms} ms",
+                    reaction_ms=elapsed_ms
+                )
+
+                st.success(f"Recorded response: {elapsed_ms} ms")
+
+                st.caption(
+                    "This measures the time between the app's start "
+                    "event and your click. It is not a laboratory-grade "
+                    "reaction-time measurement."
+                )
+
+            st.session_state.reaction_ready = False
+            st.session_state.reaction_start_time = None
+            st.rerun()
+
+
+# =========================
+# BEHAVIOUR DECODING
+# =========================
+
+def page_behaviour_decoding():
+    show_hero(
+        "Behaviour Decoding",
+        "Explore recorded task results and reflect on everyday patterns."
+    )
+
+    st.info(
+        "Recorded task outcomes and AI-generated interpretations are "
+        "different things. This module does not diagnose conditions "
+        "or determine hidden motives."
+    )
+
+    records = st.session_state.behaviour_records
+
+    st.subheader("1. Your recorded task results")
+
+    if not records:
+        st.write(
+            "No task results recorded yet. Complete an experiment "
+            "in the Interactive Neuroscience Lab first."
+        )
+    else:
+        for index, record in enumerate(reversed(records[-20:])):
+            with st.expander(
+                f"{record.get('experiment', 'Task')} — "
+                f"{record.get('timestamp', '')}"
+            ):
+                st.write("Result:", record.get("result", "Not recorded"))
+
+                if record.get("accuracy") is not None:
+                    st.write("Task accuracy:", f"{record['accuracy']}%")
+
+                if record.get("reaction_ms") is not None:
+                    st.write(
+                        "Recorded click response:",
+                        f"{record['reaction_ms']} ms"
+                    )
+
+    st.divider()
+    st.subheader("2. Reflect on an everyday pattern")
+
+    situation = st.text_area(
+        "Situation: What happened?",
+        max_chars=1200,
+        key="behaviour_situation"
+    )
+
+    response = st.text_area(
+        "Your response: What did you think, feel or do?",
+        max_chars=1200,
+        key="behaviour_response"
+    )
+
+    outcome = st.text_area(
+        "Outcome: What happened afterwards?",
+        max_chars=1200,
+        key="behaviour_outcome"
+    )
+
+    if st.button("Save behaviour reflection", key="save_behaviour"):
+        if not situation.strip() or not response.strip():
+            st.warning("Please enter the situation and your response.")
+        else:
+            item = {
+                "experiment": "Everyday behaviour reflection",
+                "situation": situation.strip(),
+                "response": response.strip(),
+                "outcome": outcome.strip(),
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            st.session_state.behaviour_records.append(item)
+
+            save_supabase("behaviour_reflections", item)
+
+            st.success("Reflection saved in this session.")
+
+    st.divider()
+    st.subheader("3. Explore possible patterns")
+
+    if st.button("Generate a careful reflection", key="decode_behaviour"):
+        if not situation.strip() or not response.strip():
+            st.warning("Enter a situation and response first.")
+        else:
+            prompt = f"""
+Help the user reflect on an everyday situation without diagnosing them.
+
+Situation:
+{situation.strip()}
+
+Response:
+{response.strip()}
+
+Outcome:
+{outcome.strip()}
+
+Please:
+1. Summarize the situation neutrally.
+2. Separate what the user reported from possible interpretations.
+3. Offer up to two possible explanations, clearly labelled as hypotheses.
+4. Ask one gentle question that could help the user reflect.
+5. Suggest one small, safe next step.
+
+Do not infer a disorder, personality type, hidden motive, or trauma.
+Do not claim that one example proves a recurring pattern.
+"""
+
+            result = ask_ai(prompt)
+
+            st.markdown("### Reflection")
+            st.write(result)
+
+    st.caption(
+        "Only information you choose to enter is considered. "
+        "A pattern should be explored across multiple real-life examples, "
+        "not concluded from a single task."
+    )
+
+
+# END OF PART 3
+
+# =========================
+# PART 4 — BRAIN JOURNEY
+# BRAIN EXPLORER
+# HEALING & PERSONAL INSIGHT
+# =========================
+
+BRAIN_JOURNEY_STEPS = [
+    {
+        "title": "1. Brain Regions",
+        "description": (
+            "Different brain regions contribute to different functions. "
+            "Complex behaviours usually involve interacting brain regions."
+        ),
+        "details": (
+            "The prefrontal cortex contributes to planning and control. "
+            "The hippocampus is important for forming many kinds of memories. "
+            "The striatum contributes to action selection, learning and reward."
+        )
+    },
+    {
+        "title": "2. Neural Circuits",
+        "description": (
+            "Brain regions communicate through networks of connected neurons."
+        ),
+        "details": (
+            "A circuit can include multiple brain regions and pathways. "
+            "Its effects depend on the connections, activity patterns and context."
+        )
+    },
+    {
+        "title": "3. Neurons",
+        "description": (
+            "Neurons are specialized cells that receive, process and transmit signals."
+        ),
+        "details": (
+            "Dendrites receive many incoming signals, the cell body integrates "
+            "cellular activity, and the axon carries electrical signals toward "
+            "other cells."
+        )
+    },
+    {
+        "title": "4. Synapses",
+        "description": (
+            "Synapses are communication junctions between neurons or other cells."
+        ),
+        "details": (
+            "At chemical synapses, neurotransmitters can be released and bind "
+            "to receptors on a target cell. Their effects depend on the receptor "
+            "and biological context."
+        )
+    },
+    {
+        "title": "5. Behaviour and Experience",
+        "description": (
+            "Neural activity participates in perception, memory, decisions, "
+            "emotion and action."
+        ),
+        "details": (
+            "Behaviour is also shaped by learning, sleep, stress, environment "
+            "and social context. A single behaviour cannot reveal one specific "
+            "brain mechanism with certainty."
+        )
+    }
+]
+
+
+def page_brain_journey():
+    show_hero(
+        "Brain Journey",
+        "Explore how brain regions, circuits, neurons and synapses "
+        "contribute to cognition and behaviour."
+    )
+
+    st.markdown("### Follow the biological pathway")
+
+    step_titles = [item["title"] for item in BRAIN_JOURNEY_STEPS]
+
+    selected_title = st.selectbox(
+        "Choose a stage",
+        step_titles,
+        key="brain_journey_step"
+    )
+
+    selected_step = next(
+        item for item in BRAIN_JOURNEY_STEPS
+        if item["title"] == selected_title
+    )
+
+    html_card(
+        selected_step["title"],
+        selected_step["description"],
+        "BRAIN JOURNEY"
+    )
+
+    st.write(selected_step["details"])
+
+    st.markdown("### How the stages connect")
+    st.markdown(
+        """
+        **Brain regions**
+        ↓
+        **Connected neural circuits**
+        ↓
+        **Neurons and electrical activity**
+        ↓
+        **Synaptic communication**
+        ↓
+        **Cognition, experience and behaviour**
+        """
+    )
+
+    st.caption(
+        "This is a simplified learning sequence, not one universal "
+        "one-way pathway. Neural systems are interconnected and often "
+        "operate through recurrent feedback."
+    )
+
+    st.divider()
+    st.subheader("Explore a brain concept")
+
+    concept_names = [item["name"] for item in BRAIN_CONCEPTS]
+
+    selected_concept_name = st.selectbox(
+        "Choose a concept",
+        concept_names,
+        key="journey_concept"
+    )
+
+    concept = next(
+        item for item in BRAIN_CONCEPTS
+        if item["name"] == selected_concept_name
+    )
+
+    st.markdown(f"### {safe_text(concept['name'])}")
+    st.write(concept.get("description", ""))
+
+    concept_image = get_asset_image(concept.get("image", ""))
+
+    if concept_image is not None:
+        st.image(concept_image, use_container_width=True)
+    else:
+        st.info(
+            "No matching concept image was found in the current assets. "
+            "The written explanation is still available."
+        )
+
+    if st.button(
+        "Ask Ayna to explain this concept",
+        key="explain_concept"
+    ):
+        prompt = f"""
+Explain this neuroscience concept for a curious learner.
+
+Concept: {concept.get('name', '')}
+Description: {concept.get('description', '')}
+
+Include:
+- A clear definition
+- How it relates to cognition or behaviour
+- One everyday example
+- One important scientific limitation
+
+Do not invent research findings or claim that one brain region
+fully determines a complex behaviour.
+"""
+        st.markdown("### Ayna's explanation")
+        st.write(ask_ai(prompt))
+
+
+# =========================
+# BRAIN EXPLORER
+# =========================
+
+BRAIN_REGIONS = {
+    "Prefrontal Cortex": {
+        "function": (
+            "Contributes to planning, working memory, flexible thinking "
+            "and goal-directed control."
+        ),
+        "limitation": (
+            "These functions involve distributed networks and are not "
+            "exclusive to one region."
+        )
+    },
+    "Hippocampus": {
+        "function": (
+            "Important for forming and organizing many kinds of memories "
+            "and for aspects of spatial navigation."
+        ),
+        "limitation": (
+            "Memory depends on several interacting brain systems."
+        )
+    },
+    "Striatum": {
+        "function": (
+            "Participates in action selection, reinforcement learning "
+            "and reward-related processes."
+        ),
+        "limitation": (
+            "Different striatal circuits support different functions."
+        )
+    },
+    "Anterior Cingulate Cortex": {
+        "function": (
+            "Participates in monitoring, control, motivation and "
+            "processing information relevant to behaviour."
+        ),
+        "limitation": (
+            "Its functions depend on subregion, network and task."
+        )
+    },
+    "Amygdala": {
+        "function": (
+            "Contributes to learning about biologically relevant events "
+            "and to aspects of emotional processing."
+        ),
+        "limitation": (
+            "It is not simply a fear centre; its role is broader."
+        )
+    },
+    "Thalamus": {
+        "function": (
+            "Supports communication between many brain systems and "
+            "contributes to sensory processing and attention."
+        ),
+        "limitation": (
+            "Different thalamic nuclei have distinct connections and roles."
+        )
+    }
+}
+
+
+def page_brain_explorer():
+    show_hero(
+        "Brain Explorer",
+        "Explore selected brain regions and their known contributions."
+    )
+
+    region_name = st.selectbox(
+        "Choose a region",
+        list(BRAIN_REGIONS.keys()),
+        key="brain_explorer_region"
+    )
+
+    region = BRAIN_REGIONS[region_name]
+
+    html_card(
+        region_name,
+        region["function"],
+        "BRAIN REGION"
+    )
+
+    st.markdown("### Scientific context")
+    st.write(region["limitation"])
+
+    st.divider()
+    st.subheader("3D brain view")
+
+    if go is not None and plotly is not None:
+        import numpy as np
+
+        u = np.linspace(0, 2 * np.pi, 45)
+        v = np.linspace(0, np.pi, 30)
+
+        x = 1.35 * np.outer(np.cos(u), np.sin(v))
+        y = 1.00 * np.outer(np.sin(u), np.sin(v))
+        z = 1.15 * np.outer(np.ones_like(u), np.cos(v))
+
+        fig = go.Figure(
+            data=[
+                go.Surface(
+                    x=x,
+                    y=y,
+                    z=z,
+                    colorscale="Viridis",
+                    showscale=False,
+                    opacity=0.85
+                )
+            ]
+        )
+
+        fig.update_layout(
+            title=(
+                "Illustrative 3D shape — "
+                "not an anatomical reconstruction"
+            ),
+            scene=dict(
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                zaxis=dict(visible=False),
+                aspectmode="data"
+            ),
+            margin=dict(l=0, r=0, t=50, b=0),
+            height=420
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="illustrative_brain_3d"
+        )
+
+        st.caption(
+            "Rotate the shape with touch or mouse. This is a visual "
+            "placeholder, not a scientifically accurate brain scan."
+        )
+    else:
+        if BRAIN_IMAGE:
+            st.image(
+                BRAIN_IMAGE,
+                caption="Available brain image asset",
+                use_container_width=True
+            )
+        else:
+            st.info(
+                "A 3D viewer requires Plotly. Add plotly to "
+                "requirements.txt to enable the illustrative 3D shape."
+            )
+
+    st.divider()
+    st.subheader("Compare brain regions")
+
+    first_region = st.selectbox(
+        "First region",
+        list(BRAIN_REGIONS.keys()),
+        index=0,
+        key="compare_region_a"
+    )
+
+    second_region = st.selectbox(
+        "Second region",
+        list(BRAIN_REGIONS.keys()),
+        index=1,
+        key="compare_region_b"
+    )
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown(f"**{first_region}**")
+        st.write(BRAIN_REGIONS[first_region]["function"])
+
+    with col_b:
+        st.markdown(f"**{second_region}**")
+        st.write(BRAIN_REGIONS[second_region]["function"])
+
+    if st.button(
+        "Explain the comparison",
+        key="brain_region_compare"
+    ):
+        prompt = f"""
+Compare these two brain regions for educational purposes:
+
+1. {first_region}: {BRAIN_REGIONS[first_region]['function']}
+2. {second_region}: {BRAIN_REGIONS[second_region]['function']}
+
+Explain their main differences, possible interactions and limitations.
+Do not claim that either region works in isolation.
+Do not invent specific anatomical connections if uncertain.
+"""
+        st.write(ask_ai(prompt))
+
+
+# =========================
+# HEALING & PERSONAL INSIGHT
+# =========================
+
+def page_healing_insight():
+    show_hero(
+        "Healing & Personal Insight",
+        "A space for reflection, personal goals and small next steps."
+    )
+
+    st.info(
+        "This is a self-reflection tool, not psychotherapy or a diagnostic "
+        "service. Share only what you feel comfortable recording."
+    )
+
+    tab_journal, tab_timeline, tab_goals, tab_map = st.tabs(
+        [
+            "Personal Journal",
+            "Life Timeline",
+            "Goals & Progress",
+            "Memory Map"
+        ]
+    )
+
+    # PERSONAL JOURNAL
+    with tab_journal:
+        st.subheader("Personal Story Journal")
+
+        journal_title = st.text_input(
+            "Entry title",
+            key="healing_journal_title",
+            max_chars=120
+        )
+
+        journal_text = st.text_area(
+            "Write what you would like to reflect on",
+            key="healing_journal_text",
+            height=180,
+            max_chars=5000
+        )
+
+        journal_feeling = st.selectbox(
+            "How would you describe your current feeling?",
+            [
+                "Not sure",
+                "Calm",
+                "Hopeful",
+                "Sad",
+                "Worried",
+                "Frustrated",
+                "Overwhelmed",
+                "Mixed feelings"
+            ],
+            key="healing_journal_feeling"
+        )
+
+        if st.button(
+            "Save journal entry",
+            key="save_healing_journal"
+        ):
+            if not journal_text.strip():
+                st.warning("Write something before saving.")
+            else:
+                entry = {
+                    "title": (
+                        journal_title.strip()
+                        or "Personal reflection"
+                    ),
+                    "text": journal_text.strip(),
+                    "feeling": journal_feeling,
+                    "timestamp": time.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                }
+
+                st.session_state.healing_entries.append(entry)
+
+                save_supabase(
+                    "healing_journal",
+                    {
+                        "title": entry["title"],
+                        "entry_text": entry["text"],
+                        "feeling": entry["feeling"]
+                    }
+                )
+
+                st.success("Entry added to this session.")
+
+        st.divider()
+        st.subheader("Saved entries in this session")
+
+        if st.session_state.healing_entries:
+            for entry in reversed(st.session_state.healing_entries):
+                with st.expander(
+                    f"{entry.get('title', 'Reflection')} — "
+                    f"{entry.get('timestamp', '')}"
+                ):
+                    st.write(
+                        "Feeling:",
+                        entry.get("feeling", "Not recorded")
+                    )
+                    st.write(entry.get("text", ""))
+        else:
+            st.caption(
+                "Your saved journal entries will appear here."
+            )
+
+        st.caption(
+            "Session storage alone is not permanent. Verify database "
+            "access and privacy protections before storing sensitive "
+            "personal information."
+        )
+
+    # LIFE TIMELINE
+    with tab_timeline:
+        st.subheader("Past → Present → Next Step")
+
+        past = st.text_area(
+            "Past: What experience would you like to reflect on?",
+            key="timeline_past",
+            max_chars=1500
+        )
+
+        present = st.text_area(
+            "Present: What challenge matters now?",
+            key="timeline_present",
+            max_chars=1500
+        )
+
+        future = st.text_area(
+            "Next: What would you like to work toward?",
+            key="timeline_future",
+            max_chars=1500
+        )
+
+        if st.button(
+            "Build my reflection timeline",
+            key="build_timeline"
+        ):
+            timeline = {
+                "past": past.strip(),
+                "present": present.strip(),
+                "future": future.strip(),
+                "timestamp": time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            }
+
+            st.session_state.memory_map_items.append(timeline)
+
+            st.markdown("### Your timeline")
+
+            col_past, col_now, col_next = st.columns(3)
+
+            with col_past:
+                html_card(
+                    "PAST",
+                    timeline["past"] or "Not entered",
+                    "REFLECTION"
+                )
+
+            with col_now:
+                html_card(
+                    "PRESENT",
+                    timeline["present"] or "Not entered",
+                    "REFLECTION"
+                )
+
+            with col_next:
+                html_card(
+                    "NEXT STEP",
+                    timeline["future"] or "Not entered",
+                    "REFLECTION"
+                )
+
+            st.caption(
+                "This timeline organizes what you entered. It does not "
+                "prove that past events caused your current experience."
+            )
+
+    # GOALS & PROGRESS
+    with tab_goals:
+        st.subheader("Personal Goals")
+
+        goal_text = st.text_input(
+            "A small goal you want to work toward",
+            key="healing_goal_text",
+            max_chars=250
+        )
+
+        goal_deadline = st.date_input(
+            "Target date",
+            key="healing_goal_date"
+        )
+
+        if st.button("Add goal", key="add_healing_goal"):
+            if not goal_text.strip():
+                st.warning("Enter a goal first.")
+            else:
+                goal = {
+                    "goal": goal_text.strip(),
+                    "target_date": str(goal_deadline),
+                    "completed": False,
+                    "timestamp": time.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                }
+
+                st.session_state.healing_goals.append(goal)
+
+                save_supabase(
+                    "healing_goals",
+                    {
+                        "goal_text": goal["goal"],
+                        "target_date": goal["target_date"],
+                        "completed": False
+                    }
+                )
+
+                st.success("Goal added.")
+
+        st.divider()
+        st.subheader("Goal tracker")
+
+        if not st.session_state.healing_goals:
+            st.caption(
+                "Add a small goal to start tracking progress."
+            )
+        else:
+            for index, goal in enumerate(
+                st.session_state.healing_goals
+            ):
+                st.write(
+                    f"**{goal['goal']}** — "
+                    f"target: {goal['target_date']}"
+                )
+
+                completed = st.checkbox(
+                    "Mark as completed",
+                    value=goal.get("completed", False),
+                    key=f"goal_completed_{index}"
+                )
+
+                st.session_state.healing_goals[index][
+                    "completed"
+                ] = completed
+
+        total_goals = len(st.session_state.healing_goals)
+
+        completed_goals = sum(
+            1 for goal in st.session_state.healing_goals
+            if goal.get("completed", False)
+        )
+
+        if total_goals:
+            st.progress(completed_goals / total_goals)
+            st.write(
+                f"Completed {completed_goals} of {total_goals} goals."
+            )
+
+        st.caption(
+            "This progress reflects the goals you entered. It is not "
+            "a clinical measure of recovery or mental health."
+        )
+
+    # MEMORY MAP
+    with tab_map:
+        st.subheader("Visual Memory Map")
+
+        st.write(
+            "Map experiences, current challenges and hopes. "
+            "Add only details you want to keep."
+        )
+
+        map_label = st.text_input(
+            "Map item label",
+            key="memory_map_label",
+            max_chars=100
+        )
+
+        map_category = st.selectbox(
+            "Category",
+            [
+                "Important experience",
+                "Current challenge",
+                "Support system",
+                "Personal strength",
+                "Future hope"
+            ],
+            key="memory_map_category"
+        )
+
+        map_note = st.text_area(
+            "Short note",
+            key="memory_map_note",
+            max_chars=1000
+        )
+
+        if st.button(
+            "Add to memory map",
+            key="add_memory_map"
+        ):
+            if not map_label.strip():
+                st.warning("Add a label first.")
+            else:
+                item = {
+                    "label": map_label.strip(),
+                    "category": map_category,
+                    "note": map_note.strip(),
+                    "timestamp": time.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                }
+
+                st.session_state.memory_map_items.append(item)
+                st.success("Added to your session memory map.")
+
+        st.divider()
+        st.subheader("Your map")
+
+        map_items = st.session_state.memory_map_items
+
+        if not map_items:
+            st.caption(
+                "Your map is empty. Add an item above."
+            )
+        else:
+            for item in map_items:
+                html_card(
+                    item.get(
+                        "label",
+                        item.get("present", "Untitled")
+                    ),
+                    (
+                        item.get("category", "Reflection")
+                        + "\n\n"
+                        + item.get(
+                            "note",
+                            item.get("present", "")
+                        )
+                    ),
+                    "MEMORY MAP"
+                )
+
+    # GUIDED REFLECTION
+    st.divider()
+    st.subheader("Guided Reflection: Why do I feel stuck?")
+
+    stuck_context = st.text_area(
+        "Describe the situation in your own words",
+        key="why_stuck_context",
+        max_chars=2000
+    )
+
+    if st.button(
+        "Explore possible next steps",
+        key="why_stuck_button"
+    ):
+        if not stuck_context.strip():
+            st.warning("Describe the situation first.")
+        else:
+            reflection_prompt = f"""
+Offer a gentle, non-clinical reflection on this situation:
+
+{stuck_context.strip()}
+
+Please:
+- Acknowledge the situation without exaggerating it.
+- Separate what the user said from what remains unknown.
+- Offer up to three possible factors as hypotheses, not facts.
+- Suggest two small, practical and safe next steps.
+- Include one optional journaling question.
+- Respect that the user may not be ready to act immediately.
+
+Do not diagnose the user.
+Do not claim to discover repressed memories or hidden trauma.
+Do not promise healing or guaranteed outcomes.
+Do not blame the user.
+"""
+            st.markdown("### Your reflection")
+            st.write(ask_ai(reflection_prompt))
+
+
+# END OF PART 4
+
+
 
