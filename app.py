@@ -2335,333 +2335,442 @@ Do not blame the user.
 # =========================
 # PART 5 — BRAIN PUZZLE
 # COGNITIVE CHALLENGES
-# PROGRESS TRACKER
+# PROGRESS & ACHIEVEMENTS
 # =========================
 
 import math
+import time
+import random
 
+
+# -------------------------
+# BRAIN PUZZLE HELPERS
+# -------------------------
+
+def create_puzzle(size):
+    """Create a shuffled numbered-tile puzzle."""
+    total = size * size
+    tiles = list(range(1, total)) + [0]
+
+    # Shuffle until the puzzle is solvable.
+    while True:
+        random.shuffle(tiles)
+        if puzzle_is_solvable(tiles, size):
+            break
+
+    return tiles
+
+
+def puzzle_is_solvable(tiles, size):
+    """Check solvability of a sliding puzzle."""
+    values = [value for value in tiles if value != 0]
+    inversions = 0
+
+    for i in range(len(values)):
+        for j in range(i + 1, len(values)):
+            if values[i] > values[j]:
+                inversions += 1
+
+    if size % 2 == 1:
+        return inversions % 2 == 0
+
+    blank_row_from_bottom = size - (tiles.index(0) // size)
+
+    if blank_row_from_bottom % 2 == 0:
+        return inversions % 2 == 1
+
+    return inversions % 2 == 0
+
+
+def puzzle_is_solved(tiles):
+    """Check whether all tiles are in their target positions."""
+    expected = list(range(1, len(tiles))) + [0]
+    return tiles == expected
+
+
+def puzzle_move(tiles, size, source, destination):
+    """Move a tile only when it is adjacent to the blank."""
+    if source < 0 or source >= len(tiles):
+        return tiles, False
+
+    if destination < 0 or destination >= len(tiles):
+        return tiles, False
+
+    if tiles[source] == 0:
+        return tiles, False
+
+    source_row, source_col = divmod(source, size)
+    dest_row, dest_col = divmod(destination, size)
+
+    adjacent = (
+        abs(source_row - dest_row)
+        + abs(source_col - dest_col)
+        == 1
+    )
+
+    if not adjacent or tiles[destination] != 0:
+        return tiles, False
+
+    updated = tiles.copy()
+    updated[source], updated[destination] = (
+        updated[destination],
+        updated[source]
+    )
+
+    return updated, True
+
+
+def initialise_puzzle(size):
+    st.session_state.puzzle_grid = size
+    st.session_state.puzzle_tiles = create_puzzle(size)
+    st.session_state.puzzle_moves = 0
+    st.session_state.puzzle_completed = False
+    st.session_state.puzzle_started_at = time.time()
+    st.session_state.puzzle_selected_tile = None
+
+
+# -------------------------
+# BRAIN PUZZLE PAGE
+# -------------------------
 
 def page_brain_puzzle():
     show_hero(
         "Brain Puzzle",
-        "Train your visual problem-solving skills with a tile puzzle."
+        "Solve the sliding-tile challenge using planning and spatial reasoning."
     )
 
     st.info(
-        "Puzzle performance reflects this activity only. "
-        "It is not a clinical assessment of intelligence or brain function."
+        "This version uses tile selection and adjacent moves. "
+        "It does not provide drag-and-drop movement."
     )
 
-    grid_size = st.selectbox(
-        "Puzzle difficulty",
+    size = st.selectbox(
+        "Puzzle size",
         [3, 4, 5],
-        index=0,
-        format_func=lambda value: f"{value} × {value}",
-        key="brain_puzzle_size"
+        index=(
+            [3, 4, 5].index(st.session_state.puzzle_grid)
+            if st.session_state.puzzle_grid in [3, 4, 5]
+            else 0
+        ),
+        format_func=lambda n: f"{n} × {n}",
+        key="puzzle_size_select"
     )
-
-    if "puzzle_game" not in st.session_state:
-        st.session_state.puzzle_game = {}
-
-    game = st.session_state.puzzle_game
-
-    def new_game(size):
-        total = size * size
-        tiles = list(range(total))
-        shuffled = tiles.copy()
-
-        # Generate a solvable permutation.
-        # This method uses random legal moves from a solved board.
-        for _ in range(size * size * 12):
-            blank = shuffled.index(0)
-            row, col = divmod(blank, size)
-
-            neighbours = []
-
-            if row > 0:
-                neighbours.append(blank - size)
-            if row < size - 1:
-                neighbours.append(blank + size)
-            if col > 0:
-                neighbours.append(blank - 1)
-            if col < size - 1:
-                neighbours.append(blank + 1)
-
-            swap_index = random.choice(neighbours)
-            shuffled[blank], shuffled[swap_index] = (
-                shuffled[swap_index],
-                shuffled[blank]
-            )
-
-        game.update({
-            "size": size,
-            "tiles": shuffled,
-            "moves": 0,
-            "started": time.time(),
-            "completed": False,
-            "round_id": secrets.token_hex(4)
-        })
 
     if (
-        not game
-        or game.get("size") != grid_size
-        or "tiles" not in game
+        not st.session_state.puzzle_tiles
+        or len(st.session_state.puzzle_tiles) != size * size
     ):
-        new_game(grid_size)
+        initialise_puzzle(size)
 
-    image = get_asset_image("brain.png")
-
-    if image is not None:
-        st.image(
-            image,
-            caption="Reference image for the brain puzzle",
-            use_container_width=True
-        )
-    else:
-        st.caption(
-            "Optional asset: add brain.png to your project to show "
-            "a brain reference image."
-        )
-
-    st.write(
-        "Tap a numbered tile next to the empty space to move it. "
-        "Arrange the numbers in order, with the empty space at the end."
-    )
-
-    size = game["size"]
-    tiles = game["tiles"]
-
-    if not game["completed"]:
-        for row in range(size):
-            cols = st.columns(size)
-
-            for col in range(size):
-                index = row * size + col
-                value = tiles[index]
-
-                with cols[col]:
-                    if value == 0:
-                        st.button(
-                            " ",
-                            key=f"puzzle_blank_{game['round_id']}_{index}",
-                            disabled=True,
-                            use_container_width=True
-                        )
-                    else:
-                        st.button(
-                            str(value),
-                            key=f"puzzle_tile_{game['round_id']}_{index}",
-                            use_container_width=True,
-                            on_click=move_puzzle_tile,
-                            args=(index,)
-                        )
-
-    else:
-        st.success("Puzzle completed!")
-
-    elapsed = max(0, int(time.time() - game.get("started", time.time())))
-
-    col_a, col_b, col_c = st.columns(3)
-
-    with col_a:
-        st.metric("Moves", game.get("moves", 0))
-
-    with col_b:
-        st.metric("Elapsed time", f"{elapsed}s")
-
-    with col_c:
-        st.metric(
-            "Status",
-            "Complete" if game.get("completed") else "In progress"
-        )
-
-    if st.button("Restart puzzle", key="restart_brain_puzzle"):
-        new_game(grid_size)
+    if st.button("Start / Restart puzzle", key="restart_puzzle"):
+        initialise_puzzle(size)
         st.rerun()
 
+    tiles = st.session_state.puzzle_tiles
 
-def move_puzzle_tile(index):
-    game = st.session_state.get("puzzle_game", {})
-
-    if not game or game.get("completed"):
-        return
-
-    tiles = game["tiles"]
-    size = game["size"]
-
-    if index < 0 or index >= len(tiles):
-        return
-
-    blank = tiles.index(0)
-
-    row_a, col_a = divmod(index, size)
-    row_b, col_b = divmod(blank, size)
-
-    is_adjacent = (
-        abs(row_a - row_b) + abs(col_a - col_b) == 1
-    )
-
-    if not is_adjacent:
-        st.session_state.puzzle_feedback = (
-            "Choose a tile next to the empty space."
-        )
-        return
-
-    tiles[index], tiles[blank] = tiles[blank], tiles[index]
-    game["moves"] = game.get("moves", 0) + 1
-
-    solved = list(range(1, size * size)) + [0]
-
-    if tiles == solved:
-        game["completed"] = True
-
-        result = {
-            "size": size,
-            "moves": game["moves"],
-            "seconds": max(
-                0,
-                int(time.time() - game["started"])
-            ),
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
-
-        st.session_state.puzzle_history.append(result)
-        record_progress("puzzles")
-
-        save_supabase(
-            "puzzle_results",
-            {
-                "grid_size": size,
-                "moves": result["moves"],
-                "elapsed_seconds": result["seconds"]
-            }
+    elapsed = 0
+    if st.session_state.puzzle_started_at:
+        elapsed = int(
+            time.time() - st.session_state.puzzle_started_at
         )
 
-        add_achievement("Puzzle completed")
+    col1, col2, col3 = st.columns(3)
 
-    st.session_state.puzzle_feedback = ""
-    st.rerun()
+    with col1:
+        st.metric("Moves", st.session_state.puzzle_moves)
+
+    with col2:
+        st.metric("Time", f"{elapsed} sec")
+
+    with col3:
+        st.metric("Tiles", f"{size * size - 1}")
+
+    st.markdown("### Arrange the tiles in order")
+
+    selected_tile = st.session_state.puzzle_selected_tile
+
+    for row_index in range(size):
+        columns = st.columns(size)
+
+        for col_index in range(size):
+            index = row_index * size + col_index
+            value = tiles[index]
+
+            with columns[col_index]:
+                if value == 0:
+                    st.button(
+                        "⬜",
+                        key=f"puzzle_blank_{index}",
+                        disabled=True,
+                        use_container_width=True
+                    )
+                else:
+                    label = str(value)
+
+                    if selected_tile == index:
+                        label = f"✓ {value}"
+
+                    if st.button(
+                        label,
+                        key=f"puzzle_tile_{index}",
+                        use_container_width=True,
+                        disabled=st.session_state.puzzle_completed
+                    ):
+                        st.session_state.puzzle_selected_tile = index
+                        st.rerun()
+
+    if selected_tile is not None:
+        if selected_tile < len(tiles) and tiles[selected_tile] != 0:
+            st.write(
+                f"Selected tile: **{tiles[selected_tile]}**"
+            )
+
+            blank_index = tiles.index(0)
+            blank_row, blank_col = divmod(blank_index, size)
+
+            possible_targets = []
+
+            for index in range(len(tiles)):
+                row, col = divmod(index, size)
+
+                if (
+                    abs(row - blank_row)
+                    + abs(col - blank_col)
+                    == 1
+                ):
+                    possible_targets.append(index)
+
+            if selected_tile in possible_targets:
+                if st.button(
+                    "Move selected tile into the empty space",
+                    key="confirm_puzzle_move"
+                ):
+                    updated, moved = puzzle_move(
+                        tiles,
+                        size,
+                        selected_tile,
+                        blank_index
+                    )
+
+                    if moved:
+                        st.session_state.puzzle_tiles = updated
+                        st.session_state.puzzle_moves += 1
+                        st.session_state.puzzle_selected_tile = None
+
+                        if puzzle_is_solved(updated):
+                            st.session_state.puzzle_completed = True
+
+                            moves = st.session_state.puzzle_moves
+
+                            score = max(
+                                100,
+                                1000 - moves * 5 - elapsed
+                            )
+
+                            st.session_state.puzzle_history.append({
+                                "size": size,
+                                "moves": moves,
+                                "seconds": elapsed,
+                                "score": score
+                            })
+
+                            record_progress("puzzles")
+                            add_achievement("Puzzle Solver")
+
+                        st.rerun()
+                    else:
+                        st.warning("That move is not allowed.")
+            else:
+                st.caption(
+                    "The selected tile is not next to the empty space. "
+                    "Choose a tile beside the empty space."
+                )
+
+            if st.button(
+                "Cancel selection",
+                key="cancel_puzzle_selection"
+            ):
+                st.session_state.puzzle_selected_tile = None
+                st.rerun()
+
+    if st.session_state.puzzle_completed:
+        st.success("Puzzle completed!")
+
+        st.write(
+            f"Moves: {st.session_state.puzzle_moves}"
+        )
+
+        st.write(f"Time: {elapsed} seconds")
+
+        st.caption(
+            "Puzzle performance is a game result, not a clinical "
+            "measure of intelligence or brain health."
+        )
 
 
 # =========================
 # COGNITIVE CHALLENGES
 # =========================
 
-COGNITIVE_CHALLENGES = {
-    "Number Pattern": {
-        "question": "What number comes next: 2, 4, 8, 16, ...?",
-        "options": ["18", "24", "32", "36"],
+COGNITIVE_CHALLENGES = [
+    {
+        "name": "Number Pattern",
+        "question": "What number comes next: 2, 4, 8, 16, __?",
+        "options": ["18", "24", "32", "30"],
         "answer": "32",
-        "explanation": "Each number is multiplied by 2."
+        "explanation": (
+            "Each number is twice the previous number."
+        )
     },
-    "Logical Sequence": {
-        "question": "What comes next: 5, 10, 15, 20, ...?",
-        "options": ["22", "25", "30", "35"],
-        "answer": "25",
-        "explanation": "Each step adds 5."
-    },
-    "Attention Check": {
-        "question": "Which item is different?",
-        "options": ["APPLE", "APPLE", "APPEL", "APPLE"],
-        "answer": "APPEL",
-        "explanation": "APPEL has a different letter order."
-    },
-    "Working Memory": {
+    {
+        "name": "Working Memory",
         "question": "Remember this code: 729418. What was the code?",
-        "options": ["729418", "724918", "729481", "792418"],
+        "options": ["729418", "724918", "792418", "729481"],
         "answer": "729418",
-        "explanation": "The correct answer matches the displayed sequence."
+        "explanation": (
+            "The task checks whether you can reproduce the displayed sequence."
+        )
+    },
+    {
+        "name": "Logical Reasoning",
+        "question": (
+            "All roses in a garden are flowers. "
+            "A plant is a rose. What follows?"
+        ),
+        "options": [
+            "It is a flower",
+            "It is a tree",
+            "It is not a flower",
+            "There is not enough information"
+        ],
+        "answer": "It is a flower",
+        "explanation": (
+            "The conclusion follows from the two statements provided."
+        )
+    },
+    {
+        "name": "Attention to Detail",
+        "question": "Which option is different from the others?",
+        "options": ["ABCD", "ABCD", "ABDC", "ABCD"],
+        "answer": "ABDC",
+        "explanation": (
+            "The third option changes the order of the last two letters."
+        )
     }
-}
+]
 
 
 def page_cognitive_challenges():
     show_hero(
         "Cognitive Challenges",
-        "Try short educational challenges involving patterns, attention "
-        "and recall."
+        "Try short exercises involving reasoning, attention and memory."
     )
 
     st.caption(
-        "These are casual activities, not standardized cognitive tests."
+        "These are informal educational challenges, not validated "
+        "neuropsychological tests."
     )
 
-    challenge_name = st.selectbox(
+    names = [
+        challenge["name"]
+        for challenge in COGNITIVE_CHALLENGES
+    ]
+
+    selected_name = st.selectbox(
         "Choose a challenge",
-        list(COGNITIVE_CHALLENGES.keys()),
-        key="cognitive_challenge_name"
+        names,
+        key="challenge_select"
     )
 
-    challenge = COGNITIVE_CHALLENGES[challenge_name]
+    challenge = next(
+        item for item in COGNITIVE_CHALLENGES
+        if item["name"] == selected_name
+    )
 
-    st.markdown(f"### {challenge['question']}")
+    html_card(
+        challenge["name"],
+        challenge["question"],
+        "COGNITIVE CHALLENGE"
+    )
 
     answer = st.radio(
         "Choose your answer",
         challenge["options"],
-        key=f"challenge_answer_{challenge_name}"
+        key=f"challenge_answer_{selected_name}"
     )
 
     if st.button(
         "Submit answer",
-        key=f"submit_challenge_{challenge_name}"
+        key=f"submit_challenge_{selected_name}"
     ):
-        already_done = st.session_state.get(
-            f"challenge_done_{challenge_name}",
-            False
-        )
+        submitted_key = f"challenge_submitted_{selected_name}"
 
-        if already_done:
-            st.info("This challenge has already been completed this round.")
+        if st.session_state.get(submitted_key, False):
+            st.info(
+                "You have already submitted this challenge in this session."
+            )
         else:
             correct = answer == challenge["answer"]
 
             result = {
-                "challenge": challenge_name,
-                "correct": correct,
+                "name": challenge["name"],
                 "answer": answer,
+                "correct": correct,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }
 
             st.session_state.challenge_history.append(result)
-            st.session_state[
-                f"challenge_done_{challenge_name}"
-            ] = True
+            st.session_state[submitted_key] = True
 
             record_progress("challenges")
 
             if correct:
+                add_achievement("Challenge Completed")
                 st.success("Correct answer!")
             else:
-                st.warning(
-                    f"The correct answer is {challenge['answer']}."
-                )
+                st.warning("Not quite. Review the explanation below.")
 
-            st.write(challenge["explanation"])
+            st.write("**Explanation:**", challenge["explanation"])
 
     if st.button(
         "Reset this challenge",
-        key=f"reset_challenge_{challenge_name}"
+        key=f"reset_challenge_{selected_name}"
     ):
         st.session_state[
-            f"challenge_done_{challenge_name}"
+            f"challenge_submitted_{selected_name}"
         ] = False
+
         st.rerun()
+
+    st.divider()
+    st.subheader("Challenge history")
+
+    history = st.session_state.challenge_history
+
+    if history:
+        for item in reversed(history[-10:]):
+            status = "Correct" if item["correct"] else "Incorrect"
+            st.write(
+                f"• {item['name']}: {status} "
+                f"({item['timestamp']})"
+            )
+    else:
+        st.caption("Complete a challenge to see your history.")
 
 
 # =========================
 # PROGRESS & ACHIEVEMENTS
 # =========================
 
-def page_progress_tracker():
+def page_progress():
     show_hero(
         "Progress & Achievements",
-        "Review your recorded activity in NeuroLens."
+        "Review the learning activities you have completed in this session."
     )
 
     progress = st.session_state.progress
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         st.metric(
@@ -2669,94 +2778,33 @@ def page_progress_tracker():
             progress.get("experiments", 0)
         )
 
-    with col2:
         st.metric(
             "Puzzles completed",
             progress.get("puzzles", 0)
         )
 
-    with col3:
         st.metric(
             "Challenges",
             progress.get("challenges", 0)
         )
 
-    st.divider()
-    st.subheader("Recent experiment activity")
-
-    history = st.session_state.experiment_history
-
-    if history:
-        if go is not None and plotly is not None:
-            import pandas as pd
-
-            chart_data = []
-
-            for index, item in enumerate(history[-15:], start=1):
-                reaction = item.get("reaction_ms")
-
-                if reaction is not None:
-                    chart_data.append({
-                        "Round": index,
-                        "Response time (ms)": reaction
-                    })
-
-            if chart_data:
-                dataframe = pd.DataFrame(chart_data)
-
-                fig = go.Figure()
-                fig.add_trace(
-                    go.Scatter(
-                        x=dataframe["Round"],
-                        y=dataframe["Response time (ms)"],
-                        mode="lines+markers",
-                        name="Recorded response"
-                    )
-                )
-
-                fig.update_layout(
-                    title="Recorded reaction-task times",
-                    xaxis_title="Recorded round",
-                    yaxis_title="Time in milliseconds",
-                    height=350
-                )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
-
-                st.caption(
-                    "This chart includes only recorded button-response "
-                    "times from the task. It is not a neurological measure."
-                )
-
-        for item in reversed(history[-10:]):
-            st.write(
-                f"• {item.get('experiment', 'Experiment')}: "
-                f"{item.get('result', '')}"
-            )
-
-    else:
-        st.info(
-            "No experiment results yet. Complete a lab experiment to "
-            "start building your activity history."
+    with col2:
+        st.metric(
+            "Research activities",
+            progress.get("research", 0)
         )
 
-    st.divider()
-    st.subheader("Puzzle history")
+        st.metric(
+            "AI requests",
+            st.session_state.get("ai_requests", 0)
+        )
 
-    puzzle_history = st.session_state.puzzle_history
+        best = progress.get("best_reaction_ms")
 
-    if puzzle_history:
-        for item in reversed(puzzle_history[-10:]):
-            st.write(
-                f"• {item.get('size')}×{item.get('size')} puzzle — "
-                f"{item.get('moves')} moves, "
-                f"{item.get('seconds')} seconds"
-            )
-    else:
-        st.caption("No completed puzzles recorded yet.")
+        st.metric(
+            "Best recorded reaction",
+            f"{best} ms" if best is not None else "Not recorded"
+        )
 
     st.divider()
     st.subheader("Achievements")
@@ -2767,18 +2815,45 @@ def page_progress_tracker():
         for achievement in achievements:
             st.write(f"🏅 {achievement}")
     else:
-        st.write(
-            "Your first achievement will appear after completing "
-            "a supported activity."
+        st.info(
+            "No achievements yet. Complete an experiment, puzzle "
+            "or challenge to earn one."
         )
 
+    st.divider()
+    st.subheader("Recent activity")
+
+    activity_items = []
+
+    activity_items.extend(
+        st.session_state.experiment_history[-5:]
+    )
+
+    activity_items.extend(
+        st.session_state.challenge_history[-5:]
+    )
+
+    activity_items.extend(
+        st.session_state.puzzle_history[-5:]
+    )
+
+    activity_items.sort(
+        key=lambda item: item.get("timestamp", ""),
+        reverse=True
+    )
+
+    if activity_items:
+        for item in activity_items[:10]:
+            st.write(item)
+    else:
+        st.caption("Your recent activities will appear here.")
+
     st.caption(
-        "Progress reflects activity recorded by this app. It does not "
-        "measure intelligence, brain health or clinical improvement."
+        "These totals represent activities recorded by the app. "
+        "They are not measurements of intelligence, mental health "
+        "or brain activity."
     )
 
 
 # END OF PART 5
-
-
 
