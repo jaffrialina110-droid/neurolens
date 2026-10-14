@@ -70,6 +70,51 @@ div.stButton > button:hover {
     border-color: #93b6ff;
 }
 </style>
+/* MOBILE RESPONSIVE FIX */
+@media (max-width: 768px) {
+    .block-container {
+        padding: 1rem 0.8rem 2rem 0.8rem !important;
+        max-width: 100% !important;
+    }
+
+    .hero {
+        padding: 18px !important;
+        border-radius: 16px !important;
+        overflow-wrap: anywhere;
+    }
+
+    .hero h1 {
+        font-size: 28px !important;
+        line-height: 1.25 !important;
+    }
+
+    .hero p {
+        font-size: 15px !important;
+        line-height: 1.6 !important;
+    }
+
+    .panel {
+        padding: 16px !important;
+        min-height: auto !important;
+        overflow-wrap: anywhere;
+    }
+
+    .panel h3 {
+        font-size: 17px !important;
+    }
+
+    .panel p {
+        font-size: 14px !important;
+        line-height: 1.6 !important;
+    }
+
+    div.stButton > button {
+        min-height: 44px !important;
+        white-space: normal !important;
+    }
+}
+
+</style>
 """, unsafe_allow_html=True)
 
 # ---------- NAVIGATION ----------
