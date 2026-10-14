@@ -69,7 +69,7 @@ div.stButton > button:hover {
     background: #344b79;
     border-color: #93b6ff;
 }
-</style>
+
 /* MOBILE RESPONSIVE FIX */
 @media (max-width: 768px) {
     .block-container {
