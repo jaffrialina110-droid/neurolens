@@ -21,7 +21,28 @@ try:
 except ImportError:
     genai = None
     types = None
+try:
+    from supabase import create_client
+except ImportError:
+    create_client = None
 
+
+def get_supabase_client():
+    if create_client is None:
+        return None, "Supabase package install nahi hai."
+
+    try:
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
+
+        if not url or not key:
+            return None, "Supabase URL ya key missing hai."
+
+        client = create_client(url, key)
+        return client, "Supabase client initialized."
+
+    except Exception as e:
+        return None, f"Connection error: {e}"
 APP_NAME = "NEUROLENS"
 OWNER = "Ayna Jaffri"
 DB_PATH = "neurolens.db"
