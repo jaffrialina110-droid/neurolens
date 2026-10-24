@@ -40,7 +40,17 @@ def get_supabase_client():
 
         client = create_client(url, key)
         return client, "Supabase client initialized."
+def test_supabase_connection():
+    client, message = get_supabase_client()
 
+    if client is None:
+        return False, message
+
+    try:
+        result = client.table("profiles").select("*").limit(1).execute()
+        return True, "Supabase database access successful!"
+    except Exception as e:
+        return False, f"Database test failed: {e}"
     except Exception as e:
         return None, f"Connection error: {e}"
 APP_NAME = "NEUROLENS"
