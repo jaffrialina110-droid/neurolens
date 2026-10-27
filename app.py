@@ -27,6 +27,8 @@ except ImportError:
     create_client = None
 
 
+# ---------- SUPABASE CONNECTION ----------
+
 def get_supabase_client():
     if create_client is None:
         return None, "Supabase package install nahi hai."
@@ -40,6 +42,11 @@ def get_supabase_client():
 
         client = create_client(url, key)
         return client, "Supabase client initialized."
+
+    except Exception as exc:
+        return None, f"Supabase connection error: {exc}"
+
+
 def test_supabase_connection():
     client, message = get_supabase_client()
 
@@ -47,12 +54,19 @@ def test_supabase_connection():
         return False, message
 
     try:
-        result = client.table("profiles").select("*").limit(1).execute()
+        client.table("profiles").select("*").limit(1).execute()
         return True, "Supabase database access successful!"
-    except Exception as e:
-        return False, f"Database test failed: {e}"
-    except Exception as e:
-        return None, f"Connection error: {e}"
+
+    except Exception as exc:
+        return False, f"Database test failed: {exc}"
+
+
+# ---------- APP CONFIGURATION ----------
+
+APP_NAME = "NEUROLENS"
+OWNER = "Ayna Jaffri"
+DB_PATH = "neurolens.db"
+MODEL = "gemini-2.5-flash"
 APP_NAME = "NEUROLENS"
 OWNER = "Ayna Jaffri"
 DB_PATH = "neurolens.db"
