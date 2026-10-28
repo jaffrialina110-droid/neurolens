@@ -1000,30 +1000,53 @@ def dashboard(uid):
         st.subheader("Appointment request summary")
         st.write(f"{len(appointments_list)} request(s) submitted.")
 
+
 # ---------- APP SETTINGS ----------
 
 def settings_page(uid):
     section_title("⚙️ Settings & Privacy")
-    st.write("**Signed in as:**", st.session_state.user["username"])
+
+    user = st.session_state.get("user", {})
+    st.write("**Signed in as:**", user.get("username", "Unknown"))
     st.write("**App creator:**", OWNER)
-    st.write("**Database:**", DB_PATH)
-    st.info(
-        "This prototype uses SQLite and password hashing. It does not encrypt "
-        "journal content at rest, and a shared deployment needs additional "
-        "security, privacy controls, backups and moderation before public use."
+    st.write("**Local database:**", DB_PATH)
+
+    st.subheader("Supabase Connection")
+
+    if st.button("Test Supabase Connection", type="primary"):
+        with st.spinner("Checking Supabase access..."):
+            success, message = test_supabase_connection()
+
+        if success:
+            st.success(message)
+        else:
+            st.error(message)
+
+    st.caption(
+        "This tests read access to the existing profiles table. "
+        "It does not migrate SQLite data or connect every app feature."
     )
+
+    st.divider()
     st.subheader("Account data")
+
     if st.button("Export my journal as JSON"):
-        entries = [dict(x) for x in get_user_rows("journal", uid)]
+        entries = [
+            dict(x) for x in get_user_rows("journal", uid)
+        ]
         st.download_button(
             "Download journal JSON",
             json.dumps(entries, ensure_ascii=False, indent=2),
             "neurolens_journal.json",
-            "application/json"
+            "application/json",
         )
+
+    st.divider()
+
     if st.button("Log out"):
         st.session_state.pop("user", None)
         st.rerun()
+
 
 # ---------- MAIN ROUTER ----------
 
