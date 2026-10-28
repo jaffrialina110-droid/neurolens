@@ -27,39 +27,58 @@ except ImportError:
     create_client = None
 
 
-# ---------- SUPABASE CONNECTION ----------
+# ---------- NEUROLENS SUPABASE CONNECTION ----------
+import streamlit as st
 
+try:
+    from supabase import create_client
+except ImportError:
+    create_client = None
+
+
+@st.cache_resource
 def get_supabase_client():
+    """Create and reuse a server-side Supabase client."""
     if create_client is None:
-        return None, "Supabase package install nahi hai."
+        return None
 
     try:
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
 
         if not url or not key:
-            return None, "Supabase URL ya key missing hai."
+            return None
 
-        client = create_client(url, key)
-        return client, "Supabase client initialized."
+        return create_client(url, key)
 
-    except Exception as exc:
-        return None, f"Supabase connection error: {exc}"
+    except Exception:
+        return None
 
 
 def test_supabase_connection():
-    client, message = get_supabase_client()
+    """Test database access without displaying credentials."""
+    client = get_supabase_client()
 
     if client is None:
-        return False, message
+        return False, (
+            "Supabase client unavailable. "
+            "Check package installation and Streamlit Secrets."
+        )
 
     try:
-        client.table("profiles").select("*").limit(1).execute()
-        return True, "Supabase database access successful!"
+        # Read-only check against an existing table.
+        client.table("profiles").select("id").limit(1).execute()
+        return True, "Supabase database access successful."
 
     except Exception as exc:
-        return False, f"Database test failed: {exc}"
+        return False, (
+            "Database access failed. Check the profiles table, "
+            "column names, API key and RLS policies. "
+            f"Details: {exc}"
+        )
 
+
+    
 
 # ---------- APP CONFIGURATION ----------
 
