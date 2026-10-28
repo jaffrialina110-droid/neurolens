@@ -42,57 +42,44 @@ except Exception as exc:
 def get_supabase_client():
     """Create and reuse the Supabase client."""
     if create_client is None:
-        return None
+        raise RuntimeError(
+            f"Supabase import failed: {SUPABASE_IMPORT_ERROR}"
+        )
 
     try:
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not read Supabase Secrets: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
-        if not url or not key:
-            return None
+    if not str(url).strip() or not str(key).strip():
+        raise RuntimeError(
+            "SUPABASE_URL or SUPABASE_KEY is empty."
+        )
 
-        return create_client(url, key)
-
-    except Exception:
-        return None
+    try:
+        return create_client(
+            str(url).strip(),
+            str(key).strip()
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Supabase client initialization failed: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def test_supabase_connection():
-    """Test Supabase configuration and database access."""
-
-    if create_client is None:
-        return False, (
-            "Supabase import failed: "
-            f"{SUPABASE_IMPORT_ERROR}"
-        )
-
     try:
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
-
-        if not url or not key:
-            return False, (
-                "SUPABASE_URL or SUPABASE_KEY is missing "
-                "from Streamlit Secrets."
-            )
-
         client = get_supabase_client()
-
-        if client is None:
-            return False, (
-                "Supabase client creation failed. "
-                "Check the Secrets format and values."
-            )
-
         client.table("profiles").select("id").limit(1).execute()
-
         return True, "Supabase database access successful."
-
     except Exception as exc:
-        return False, (
-            "Supabase connection error: "
-            f"{type(exc).__name__}: {exc}"
-        )
+        return False, str(exc)
+
 
 
     
