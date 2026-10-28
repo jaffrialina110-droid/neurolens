@@ -28,23 +28,25 @@ except ImportError:
 
 
 # ---------- NEUROLENS SUPABASE CONNECTION ----------
-import streamlit as st
+
+SUPABASE_IMPORT_ERROR = None
 
 try:
     from supabase import create_client
-except ImportError:
+except Exception as exc:
     create_client = None
+    SUPABASE_IMPORT_ERROR = repr(exc)
 
 
 @st.cache_resource
 def get_supabase_client():
-    """Create and reuse a server-side Supabase client."""
+    """Create and reuse the Supabase client."""
     if create_client is None:
         return None
 
     try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
 
         if not url or not key:
             return None
@@ -56,25 +58,40 @@ def get_supabase_client():
 
 
 def test_supabase_connection():
-    """Test database access without displaying credentials."""
-    client = get_supabase_client()
+    """Test Supabase configuration and database access."""
 
-    if client is None:
+    if create_client is None:
         return False, (
-            "Supabase client unavailable. "
-            "Check package installation and Streamlit Secrets."
+            "Supabase import failed: "
+            f"{SUPABASE_IMPORT_ERROR}"
         )
 
     try:
-        # Read-only check against an existing table.
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
+
+        if not url or not key:
+            return False, (
+                "SUPABASE_URL or SUPABASE_KEY is missing "
+                "from Streamlit Secrets."
+            )
+
+        client = get_supabase_client()
+
+        if client is None:
+            return False, (
+                "Supabase client creation failed. "
+                "Check the Secrets format and values."
+            )
+
         client.table("profiles").select("id").limit(1).execute()
+
         return True, "Supabase database access successful."
 
     except Exception as exc:
         return False, (
-            "Database access failed. Check the profiles table, "
-            "column names, API key and RLS policies. "
-            f"Details: {exc}"
+            "Supabase connection error: "
+            f"{type(exc).__name__}: {exc}"
         )
 
 
