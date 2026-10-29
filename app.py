@@ -384,6 +384,43 @@ def save_activity(user_id, name, score=None, details=""):
         (user_id, name, score, details[:2000], now())
     )
 
+    try:
+        user = get_user()
+        if not user:
+            return
+
+        profile_id, message = supabase_profile_id(
+            user.get("username", "")
+        )
+
+        if not profile_id:
+            st.session_state["last_supabase_sync"] = (
+                False, message
+            )
+            return
+
+        client = get_supabase_client()
+        client.table("lab_results").insert({
+            "user_id": profile_id,
+            "experiment_type": str(name)[:200],
+            "equipment": "NeuroLens",
+            "character_type": "User",
+            "score": score,
+            "accuracy": None,
+            "reaction_time": None,
+            "result_data": {"details": str(details)[:2000]},
+            "is_simulated": True
+        }).execute()
+
+        st.session_state["last_supabase_sync"] = (
+            True, "Activity synced to Supabase."
+        )
+
+    except Exception as exc:
+        st.session_state["last_supabase_sync"] = (
+            False, f"Supabase sync failed: {exc}"
+        )
+
 def section_title(title, description=""):
     st.title(title)
     if description:
