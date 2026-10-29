@@ -60,7 +60,7 @@ def get_supabase_client():
         raise RuntimeError(
             "SUPABASE_URL or SUPABASE_KEY is empty."
         )
-
+        
     try:
         return create_client(
             str(url).strip(),
