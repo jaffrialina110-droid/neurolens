@@ -4,6 +4,7 @@ import io
 import re
 import json
 import time
+import uuid
 import random
 import sqlite3
 import hashlib
