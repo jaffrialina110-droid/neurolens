@@ -81,7 +81,42 @@ def test_supabase_connection():
     except Exception as exc:
         return False, str(exc)
 
+# ---------- SUPABASE PROFILE SYNC ----------
 
+def supabase_profile_id(username):
+    """Find or create a profile in Supabase."""
+    try:
+        client = get_supabase_client()
+        username = str(username).strip().lower()
+
+        if not username:
+            return None, "Username is missing."
+
+        result = (
+            client.table("profiles")
+            .select("id")
+            .eq("username", username)
+            .limit(1)
+            .execute()
+        )
+
+        if result.data:
+            return str(result.data[0]["id"]), "Profile found."
+
+        profile_id = str(uuid.uuid4())
+
+        client.table("profiles").insert({
+            "id": profile_id,
+            "username": username,
+            "display_name": username,
+            "bio": "",
+            "avatar_url": ""
+        }).execute()
+
+        return profile_id, "Profile created successfully."
+
+    except Exception as exc:
+        return None, f"Supabase profile sync failed: {exc}"
 
     
 
