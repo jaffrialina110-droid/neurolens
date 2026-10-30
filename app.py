@@ -378,6 +378,7 @@ def ask_gemini(prompt, system_instruction=None):
 # ---------- SHARED HELPERS ----------
 
 def save_activity(user_id, name, score=None, details=""):
+    # Save in local database first
     execute(
         "INSERT INTO activities(user_id,activity,score,details,created_at) "
         "VALUES(?,?,?,?,?)",
@@ -386,7 +387,9 @@ def save_activity(user_id, name, score=None, details=""):
 
     try:
         user = get_user()
+
         if not user:
+            st.warning("Please log in first.")
             return
 
         profile_id, message = supabase_profile_id(
@@ -394,12 +397,11 @@ def save_activity(user_id, name, score=None, details=""):
         )
 
         if not profile_id:
-            st.session_state["last_supabase_sync"] = (
-                False, message
-            )
+            st.error(message)
             return
 
         client = get_supabase_client()
+
         client.table("lab_results").insert({
             "user_id": profile_id,
             "experiment_type": str(name)[:200],
@@ -412,14 +414,10 @@ def save_activity(user_id, name, score=None, details=""):
             "is_simulated": True
         }).execute()
 
-        st.session_state["last_supabase_sync"] = (
-            True, "Activity synced to Supabase."
-        )
+        st.success("Activity synced to Supabase!")
 
     except Exception as exc:
-        st.session_state["last_supabase_sync"] = (
-            False, f"Supabase sync failed: {exc}"
-        )
+        st.error(f"Supabase sync failed: {exc}")
 
 def section_title(title, description=""):
     st.title(title)
