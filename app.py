@@ -76,7 +76,6 @@ def get_supabase_client():
 def test_supabase_connection():
     try:
         client = get_supabase_client()
-st.write("Supabase client initialized with publishable key.")
         client.table("profiles").select("id").limit(1).execute()
         return True, "Supabase database access successful."
     except Exception as exc:
