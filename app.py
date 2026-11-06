@@ -82,38 +82,27 @@ def test_supabase_connection():
         return False, str(exc)
 
 # ---------- SUPABASE PROFILE SYNC ----------
-
 def supabase_profile_id(username):
-    """Find or create a profile in Supabase."""
+    """Find or create a profile using Supabase RPC."""
     try:
-        client = get_supabase_client()
         username = str(username).strip().lower()
 
         if not username:
             return None, "Username is missing."
 
-        result = (
-            client.table("profiles")
-            .select("id")
-            .eq("username", username)
-            .limit(1)
-            .execute()
-        )
+        client = get_supabase_client()
 
-        if result.data:
-            return str(result.data[0]["id"]), "Profile found."
+        result = client.rpc(
+            "neurolens_get_or_create_profile",
+            {"p_username": username}
+        ).execute()
 
-        profile_id = str(uuid.uuid4())
+        profile_id = result.data
 
-        client.table("profiles").insert({
-            "id": profile_id,
-            "username": username,
-            "display_name": username,
-            "bio": "",
-            "avatar_url": ""
-        }).execute()
+        if not profile_id:
+            return None, "Supabase did not return a profile ID."
 
-        return profile_id, "Profile created successfully."
+        return str(profile_id), "Profile found or created successfully."
 
     except Exception as exc:
         return None, f"Supabase profile sync failed: {exc}"
