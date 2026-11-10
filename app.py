@@ -390,7 +390,11 @@ def save_activity(user_id, name, score=None, details=""):
             return
 
         client = get_supabase_client()
-
+st.write("Supabase URL:", st.secrets["SUPABASE_URL"])
+st.write(
+    "Supabase key type:",
+    "Publishable" if str(st.secrets["SUPABASE_KEY"]).startswith("sb_publishable_") else "Other"
+)
         client.table("lab_results").insert({
             "user_id": profile_id,
             "experiment_type": str(name)[:200],
