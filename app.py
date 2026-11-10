@@ -1,16 +1,12 @@
-
 import os
 import io
 import re
 import json
-import time
-import uuid
 import random
 import sqlite3
 import hashlib
 import hmac
 from datetime import datetime
-from pathlib import Path
 
 import streamlit as st
 import pandas as pd
@@ -19,102 +15,15 @@ from PIL import Image, ImageEnhance, ImageFilter
 try:
     from google import genai
     from google.genai import types
-except ImportError:
+except Exception:
     genai = None
     types = None
-try:
-    from supabase import create_client
-except ImportError:
-    create_client = None
-
-
-# ---------- NEUROLENS SUPABASE CONNECTION ----------
-
-SUPABASE_IMPORT_ERROR = None
 
 try:
     from supabase import create_client
-except Exception as exc:
+except Exception:
     create_client = None
-    SUPABASE_IMPORT_ERROR = repr(exc)
 
-
-@st.cache_resource
-def get_supabase_client():
-    """Create and reuse the Supabase client."""
-    if create_client is None:
-        raise RuntimeError(
-            f"Supabase import failed: {SUPABASE_IMPORT_ERROR}"
-        )
-
-    try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-    except Exception as exc:
-        raise RuntimeError(
-            f"Could not read Supabase Secrets: "
-            f"{type(exc).__name__}: {exc}"
-        ) from exc
-
-    if not str(url).strip() or not str(key).strip():
-        raise RuntimeError(
-            "SUPABASE_URL or SUPABASE_KEY is empty."
-        )
-        
-    try:
-        return create_client(
-            str(url).strip(),
-            str(key).strip()
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Supabase client initialization failed: "
-            f"{type(exc).__name__}: {exc}"
-        ) from exc
-
-
-def test_supabase_connection():
-    try:
-        client = get_supabase_client()
-        client.table("profiles").select("id").limit(1).execute()
-        return True, "Supabase database access successful."
-    except Exception as exc:
-        return False, str(exc)
-
-# ---------- SUPABASE PROFILE SYNC ----------
-def supabase_profile_id(username):
-    """Find or create a profile using Supabase RPC."""
-    try:
-        username = str(username).strip().lower()
-
-        if not username:
-            return None, "Username is missing."
-
-        client = get_supabase_client()
-
-        result = client.rpc(
-            "neurolens_get_or_create_profile",
-            {"p_username": username}
-        ).execute()
-
-        profile_id = result.data
-
-        if not profile_id:
-            return None, "Supabase did not return a profile ID."
-
-        return str(profile_id), "Profile found or created successfully."
-
-    except Exception as exc:
-        return None, f"Supabase profile sync failed: {exc}"
-
-    
-
-# ---------- APP CONFIGURATION ----------
-
-APP_NAME = "NEUROLENS"
-OWNER = "Ayna Jaffri"
-DB_PATH = "neurolens.db"
-MODEL = "gemini-2.5-flash"
 APP_NAME = "NEUROLENS"
 OWNER = "Ayna Jaffri"
 DB_PATH = "neurolens.db"
@@ -127,13 +36,19 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---------- DATABASE ----------
+
+# ---------------- DATABASE ----------------
 
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=20)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
 def init_db():
     schema = """
@@ -227,28 +142,45 @@ def init_db():
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     """
-    with db() as con:
-        con.executescript(schema)
+    with db() as conn:
+        conn.executescript(schema)
+
 
 init_db()
 
-def now():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def query(sql, params=(), one=False):
-    with db() as con:
-        cur = con.execute(sql, params)
-        rows = cur.fetchall()
-    if one:
-        return rows[0] if rows else None
-    return rows
+    with db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return (rows[0] if rows else None) if one else rows
+
 
 def execute(sql, params=()):
-    with db() as con:
-        cur = con.execute(sql, params)
+    with db() as conn:
+        cur = conn.execute(sql, params)
         return cur.lastrowid
 
-# ---------- SECURITY / LOGIN ----------
+
+def get_user_rows(table, uid):
+    allowed = {
+        "activities", "journal", "research",
+        "voice_logs", "appointments", "concepts"
+    }
+    if table not in allowed:
+        raise ValueError("Invalid table.")
+    return query(
+        f"SELECT * FROM {table} WHERE user_id=? ORDER BY id DESC",
+        (uid,)
+    )
+
+
+def section_title(title, description=""):
+    st.title(title)
+    if description:
+        st.caption(description)
+
+
+# ---------------- PASSWORD / AUTH ----------------
 
 def hash_password(password, salt=None):
     salt = salt or os.urandom(16)
@@ -257,23 +189,26 @@ def hash_password(password, salt=None):
     )
     return salt.hex() + ":" + digest.hex()
 
+
 def verify_password(password, stored):
     try:
         salt_hex, _ = stored.split(":")
-        return hmac.compare_digest(hash_password(
-            password, bytes.fromhex(salt_hex)
-        ), stored)
-    except (ValueError, TypeError):
+        return hmac.compare_digest(
+            hash_password(password, bytes.fromhex(salt_hex)),
+            stored
+        )
+    except (ValueError, TypeError, AttributeError):
         return False
+
 
 def get_user():
     return st.session_state.get("user")
 
+
 def auth_screen():
     st.title("🧠 NeuroLens")
     st.caption("Explore cognition, behavior & the brain")
-    st.write("Ayna Jaffri · Independent cognitive neuroscience researcher")
-
+    st.write(f"{OWNER} · Independent cognitive neuroscience researcher")
     login_tab, signup_tab = st.tabs(["Log in", "Create account"])
 
     with login_tab:
@@ -321,7 +256,8 @@ def auth_screen():
                 except sqlite3.IntegrityError:
                     st.error("That username is already taken.")
 
-# ---------- GEMINI AI ----------
+
+# ---------------- GEMINI ----------------
 
 def get_api_key():
     try:
@@ -332,6 +268,7 @@ def get_api_key():
         pass
     return os.getenv("GEMINI_API_KEY", "")
 
+
 def ai_client():
     key = get_api_key()
     if not key or genai is None:
@@ -341,89 +278,79 @@ def ai_client():
     except Exception:
         return None
 
+
 def ask_gemini(prompt, system_instruction=None):
     client = ai_client()
     if client is None:
-        return (
-            "Gemini is not configured. Add GEMINI_API_KEY in "
-            "Streamlit Secrets, then restart the app."
-        )
+        return "Gemini is not configured. Add GEMINI_API_KEY in Streamlit Secrets."
+    instruction = system_instruction or (
+        "You are Ayna, a careful neuroscience learning assistant. "
+        "Explain uncertainty, do not diagnose, and distinguish evidence from hypotheses."
+    )
     try:
-        full_prompt = (
-            (system_instruction or
-             "You are Ayna, a careful neuroscience learning assistant. "
-             "Explain uncertainty, do not diagnose, and distinguish "
-             "scientific evidence from hypotheses.") +
-            "\n\nUser request:\n" + prompt
-        )
         response = client.models.generate_content(
             model=MODEL,
-            contents=full_prompt,
+            contents=instruction + "\n\nUser request:\n" + prompt
         )
         return response.text or "No text response was returned."
     except Exception as exc:
-        return "Gemini request failed: " + str(exc)
+        return f"Gemini request failed: {exc}"
 
-# ---------- SHARED HELPERS ----------
+
+# ---------------- SUPABASE ----------------
+# This app currently uses its own SQLite login, not Supabase Auth.
+# Therefore it deliberately does NOT write private user records to Supabase
+# using a public anon key or permissive WITH CHECK (true) policy.
+
+@st.cache_resource
+def get_supabase_client():
+    if create_client is None:
+        raise RuntimeError("Supabase package is not installed.")
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except Exception as exc:
+        raise RuntimeError(
+            "Add SUPABASE_URL and SUPABASE_KEY in Streamlit Secrets."
+        ) from exc
+    if not str(url).strip() or not str(key).strip():
+        raise RuntimeError("Supabase URL or key is empty.")
+    return create_client(str(url).strip(), str(key).strip())
+
+
+def test_supabase_connection():
+    try:
+        client = get_supabase_client()
+        client.table("profiles").select("id").limit(1).execute()
+        return True, "Supabase read connection successful."
+    except Exception as exc:
+        return False, str(exc)
 
 
 def save_activity(user_id, name, score=None, details=""):
-    # Save in local database first
-    execute(
-        "INSERT INTO activities(user_id,activity,score,details,created_at) "
-        "VALUES(?,?,?,?,?)",
-        (user_id, name, score, details[:2000], now())
-    )
-
     try:
-        user = get_user()
-
-        if not user:
-            st.warning("Please log in first.")
-            return
-
-        profile_id, message = supabase_profile_id(
-            user.get("username", "")
+        execute(
+            "INSERT INTO activities(user_id,activity,score,details,created_at) "
+            "VALUES(?,?,?,?,?)",
+            (user_id, str(name)[:200], score, str(details)[:2000], now())
         )
-
-        if not profile_id:
-            st.error(message)
-            return
-
-        client = get_supabase_client()
-
-        # Temporary connection diagnostics
-        st.write("Supabase URL:", st.secrets["SUPABASE_URL"])
-        st.write(
-            "Supabase key type:",
-            "Publishable" if str(
-                st.secrets["SUPABASE_KEY"]
-            ).startswith("sb_publishable_") else "Other"
+        st.success("Activity saved to your NeuroLens account.")
+        st.caption(
+            "Saved in the app database. Secure cloud sync requires Supabase Auth "
+            "and user-specific RLS; it is not enabled with the current SQLite login."
         )
-
-        client.table("lab_results").insert({
-            "user_id": profile_id,
-            "experiment_type": str(name)[:200],
-            "equipment": "NeuroLens",
-            "character_type": "User",
-            "score": score,
-            "accuracy": None,
-            "reaction_time": None,
-            "result_data": {"details": str(details)[:2000]},
-            "is_simulated": True
-        }).execute()
-
-        st.success("Activity synced to Supabase!")
-
+        return True
     except Exception as exc:
-        st.error(f"Supabase sync failed: {exc}")
+        st.error(f"Activity could not be saved: {exc}")
+        return False
 
-# ---------- BRAIN EXPLORER ----------
+
+# ---------------- BRAIN EXPLORER ----------------
 
 def brain_explorer():
     section_title(
         "🧠 Brain Explorer",
-        "Learn about brain regions and the systems involved in cognition."
+        "Learn about brain regions and systems involved in cognition."
     )
     regions = {
         "Prefrontal cortex": (
@@ -448,32 +375,32 @@ def brain_explorer():
         ),
         "Reward systems": (
             "Dopamine and connected circuits contribute to learning and motivation.",
-            "Dopamine is not simply a 'pleasure chemical'."
+            "Dopamine is not simply a pleasure chemical."
         ),
         "Consciousness": (
             "Research examines wakefulness, awareness and their neural correlates.",
             "The neural basis of subjective experience remains an active research question."
-        ),
+        )
     }
     selected = st.selectbox("Choose a topic", list(regions))
     st.subheader(selected)
     st.write(regions[selected][0])
     st.info("Research note: " + regions[selected][1])
-    st.markdown("### Explore a research question")
-    q = st.text_input(
+    question = st.text_input(
         "What would you like to learn?",
         placeholder="e.g. How does working memory involve the PFC?"
     )
     if st.button("Ask Ayna about this brain topic"):
-        if q.strip():
-            answer = ask_gemini(
-                f"Explain the topic '{selected}'. Answer this question: {q}",
-                "You are Ayna, a neuroscience educator. Use accurate, "
-                "accessible explanations and distinguish evidence from hypotheses."
-            )
-            st.write(answer)
+        if question.strip():
+            st.write(ask_gemini(
+                f"Explain '{selected}'. Answer: {question}",
+                "You are Ayna, a neuroscience educator. Be accurate and distinguish evidence from hypotheses."
+            ))
+        else:
+            st.warning("Please enter a question.")
 
-# ---------- CSTC CIRCUIT LEARNING ----------
+
+# ---------------- CSTC LEARNING ----------------
 
 def cstc_learning():
     section_title(
@@ -481,32 +408,31 @@ def cstc_learning():
         "Cortico-striato-thalamo-cortical loops: a simplified learning model."
     )
     st.markdown("""
-    **Simplified direct pathway**
+    **Direct pathway**
 
-    Cortex → Striatum (D1-enriched pathway) → GPi/SNr inhibition
+    Cortex → Striatum (D1-enriched) → GPi/SNr inhibition
     → reduced inhibition of thalamus → thalamocortical activity
 
-    **Simplified indirect pathway**
+    **Indirect pathway**
 
-    Cortex → Striatum (D2-enriched pathway) → GPe inhibition
+    Cortex → Striatum (D2-enriched) → GPe inhibition
     → STN activity → GPi/SNr output → thalamic inhibition
 
     **Hyperdirect pathway**
 
     Cortex → STN → GPi/SNr output
 
-    Dopamine from SNc modulates striatal circuits. These diagrams simplify
-    a complex, parallel and interconnected system; they are not a complete
-    anatomical model.
+    Dopamine from SNc modulates striatal circuits. This is a simplified
+    model of a complex, parallel and interconnected system.
     """)
     pathway = st.radio(
-        "Choose a pathway to study",
+        "Choose a pathway",
         ["Direct", "Indirect", "Hyperdirect"],
         horizontal=True
     )
     descriptions = {
         "Direct": "Often described as facilitating selected actions through a net reduction in thalamic inhibition.",
-        "Indirect": "Often described as helping regulate or suppress competing actions through additional basal-ganglia relays.",
+        "Indirect": "Often described as helping regulate competing actions through additional basal-ganglia relays.",
         "Hyperdirect": "Provides a relatively fast cortical route to the STN and basal-ganglia output nuclei."
     }
     st.info(descriptions[pathway])
@@ -514,24 +440,33 @@ def cstc_learning():
     if st.button("Explain this pathway"):
         if question.strip():
             st.write(ask_gemini(
-                f"Explain the {pathway} pathway of CSTC circuits. "
-                f"Question: {question}",
-                "Explain circuit neuroscience carefully. Mention limitations "
-                "of simplified direct/indirect pathway models."
+                f"Explain the {pathway} CSTC pathway. Question: {question}",
+                "Explain circuit neuroscience carefully and mention model limitations."
             ))
+        else:
+            st.warning("Please enter a question.")
 
-# ---------- LAB GAMES ----------
+
+# ---------------- NEUROSCIENCE LAB ----------------
 
 def neuroscience_lab(uid):
     section_title(
         "🧪 Interactive Neuroscience Lab",
-        "Practice cognitive tasks. These activities are educational, not diagnostic."
+        "Educational cognitive tasks, not diagnostic tests."
     )
     game = st.selectbox(
         "Select an activity",
         ["Memory Sequence", "Attention: Find X", "Stroop Control",
          "Decision & Reward", "Pattern Reasoning"]
     )
+
+    if game != st.session_state.get("last_lab_game"):
+        for key in (
+            "memory_target", "memory_visible", "attention_letters",
+            "attention_target", "stroop_item"
+        ):
+            st.session_state.pop(key, None)
+        st.session_state.last_lab_game = game
 
     if game == "Memory Sequence":
         if "memory_target" not in st.session_state:
@@ -543,35 +478,40 @@ def neuroscience_lab(uid):
             st.session_state.memory_visible = True
         if st.session_state.memory_visible:
             st.code(st.session_state.memory_target)
-            st.caption("Study it, then hide it before answering.")
         if st.button("Hide code"):
             st.session_state.memory_visible = False
         answer = st.text_input("Enter the code from memory")
         if st.button("Check memory answer"):
             target = st.session_state.memory_target
-            score = sum(a == b for a, b in zip(answer, target))
-            pct = round(100 * score / len(target)) if target else 0
+            score = sum(a == b for a, b in zip(answer.strip(), target))
+            pct = round(100 * score / len(target))
             st.write(f"Position matches: {score}/{len(target)} ({pct}%)")
             save_activity(uid, game, pct, f"Position matches: {score}/{len(target)}")
-            st.session_state.memory_target = "".join(
-                random.choices("123456789", k=6)
-            )
-            st.session_state.memory_visible = False
+            st.session_state.pop("memory_target", None)
+            st.session_state.pop("memory_visible", None)
             st.rerun()
 
     elif game == "Attention: Find X":
-        letters = random.choices(["O", "Q", "C", "D"], k=35)
-        target_index = random.randrange(len(letters))
-        letters[target_index] = "X"
+        if "attention_letters" not in st.session_state:
+            letters = random.choices(["O", "Q", "C", "D"], k=35)
+            target_index = random.randrange(35)
+            letters[target_index] = "X"
+            st.session_state.attention_letters = letters
+            st.session_state.attention_target = target_index
+        letters = st.session_state.attention_letters
+        target_index = st.session_state.attention_target
         st.write("Find the X:")
         st.markdown(" ".join(f"`{x}`" for x in letters))
         choice = st.number_input(
-            "Position of X (1–36)", min_value=1, max_value=36, value=1
+            "Position of X (1–35)", min_value=1, max_value=35, value=1
         )
         if st.button("Check attention"):
             correct = int(choice) == target_index + 1
-            st.success("Correct!" if correct else f"Not quite. X was at position {target_index + 1}.")
+            st.success("Correct!" if correct else f"X was at position {target_index + 1}.")
             save_activity(uid, game, 100 if correct else 0, f"Correct={correct}")
+            st.session_state.pop("attention_letters", None)
+            st.session_state.pop("attention_target", None)
+            st.rerun()
 
     elif game == "Stroop Control":
         words = [
@@ -587,8 +527,7 @@ def neuroscience_lab(uid):
         )
         st.caption("Choose the INK COLOUR, not the written word.")
         choice = st.radio(
-            "Ink colour",
-            ["red", "blue", "green", "yellow", "purple"],
+            "Ink colour", ["red", "blue", "green", "yellow", "purple"],
             horizontal=True
         )
         if st.button("Check Stroop answer"):
@@ -596,17 +535,17 @@ def neuroscience_lab(uid):
             st.success("Correct!" if correct else f"The ink colour was {ink}.")
             save_activity(uid, game, 100 if correct else 0, f"Selected={choice}; target={ink}")
             st.session_state.stroop_item = random.choice(words)
+            st.rerun()
 
     elif game == "Decision & Reward":
-        st.write("Choose between a smaller immediate reward and a larger delayed reward.")
+        st.write("Choose a smaller immediate reward or a larger delayed reward.")
         choice = st.radio(
             "Which would you choose?",
-            ["Rs 1,000 today", "Rs 1,500 after 30 days"],
+            ["Rs 1,000 today", "Rs 1,500 after 30 days"]
         )
         reason = st.text_area("Why did you choose it? (optional)")
         if st.button("Save decision reflection"):
             save_activity(uid, game, None, f"Choice={choice}; Reflection={reason}")
-            st.success("Reflection saved. One choice does not define your personality.")
 
     elif game == "Pattern Reasoning":
         st.write("Complete the pattern: 2 → 4 → 8 → 16 → ?")
@@ -616,7 +555,8 @@ def neuroscience_lab(uid):
             st.success("Correct!" if correct else "Try doubling the previous number.")
             save_activity(uid, game, 100 if correct else 0, f"Answer={answer}")
 
-# ---------- BRAIN PUZZLE ----------
+
+# ---------------- BRAIN PUZZLE ----------------
 
 def brain_puzzle(uid):
     section_title("🧩 Brain Puzzle", "Sliding-number puzzle for planning and problem-solving.")
@@ -627,10 +567,14 @@ def brain_puzzle(uid):
         for _ in range(120):
             blank = board.index(0)
             moves = []
-            if blank % size > 0: moves.append(blank - 1)
-            if blank % size < size - 1: moves.append(blank + 1)
-            if blank >= size: moves.append(blank - size)
-            if blank < size * (size - 1): moves.append(blank + size)
+            if blank % size > 0:
+                moves.append(blank - 1)
+            if blank % size < size - 1:
+                moves.append(blank + 1)
+            if blank >= size:
+                moves.append(blank - size)
+            if blank < size * (size - 1):
+                moves.append(blank + size)
             other = random.choice(moves)
             board[blank], board[other] = board[other], board[blank]
         st.session_state[key] = board
@@ -651,16 +595,23 @@ def brain_puzzle(uid):
     if board == list(range(1, size * size)) + [0]:
         st.success("Puzzle solved!")
         if st.button("Save puzzle result"):
-            save_activity(uid, f"Brain Puzzle {size}x{size}", 100,
-                          f"Moves={st.session_state[f'{key}_moves']}")
+            save_activity(
+                uid, f"Brain Puzzle {size}x{size}", 100,
+                f"Moves={st.session_state[f'{key}_moves']}"
+            )
     if st.button("Shuffle puzzle"):
-        del st.session_state[key]
+        st.session_state.pop(key, None)
+        st.session_state.pop(f"{key}_moves", None)
         st.rerun()
 
-# ---------- ASK AYNA ----------
+
+# ---------------- ASK AYNA ----------------
 
 def ask_ayna():
-    section_title("🤖 Ask Ayna AI", "Your AI learning companion for cognition, behavior and neuroscience.")
+    section_title(
+        "🤖 Ask Ayna AI",
+        "Your AI learning companion for cognition, behavior and neuroscience."
+    )
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     for item in st.session_state.chat_history:
@@ -669,8 +620,6 @@ def ask_ayna():
     prompt = st.chat_input("Ask Ayna a neuroscience or research question...")
     if prompt:
         st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
         history = "\n".join(
             f"{x['role']}: {x['content']}"
             for x in st.session_state.chat_history[-12:]
@@ -679,17 +628,15 @@ def ask_ayna():
             with st.spinner("Ayna is thinking..."):
                 answer = ask_gemini(
                     history,
-                    "You are Ayna, an AI assistant inside NeuroLens. "
-                    "Help with neuroscience, research design, cognition and "
-                    "learning. Do not diagnose or claim certainty where evidence "
-                    "is limited. Never claim an activity measures brain signals."
+                    "You are Ayna inside NeuroLens. Help with neuroscience, research design, cognition and learning. Do not diagnose or claim certainty where evidence is limited."
                 )
                 st.markdown(answer)
         st.session_state.chat_history.append(
             {"role": "assistant", "content": answer}
         )
 
-# ---------- VOICE STUDIO ----------
+
+# ---------------- VOICE STUDIO ----------------
 
 def voice_studio(uid):
     section_title(
@@ -699,7 +646,7 @@ def voice_studio(uid):
     st.warning(
         "Audio analysis can be wrong. Emotion labels are tentative, not a "
         "mental-health assessment. Do not upload other people's private audio "
-        "without their permission."
+        "without permission."
     )
     audio = None
     mime = "audio/wav"
@@ -707,7 +654,7 @@ def voice_studio(uid):
         try:
             audio = st.audio_input("Record your voice")
         except Exception:
-            pass
+            audio = None
     uploaded = st.file_uploader(
         "Or upload audio", type=["wav", "mp3", "m4a", "ogg", "webm"]
     )
@@ -718,67 +665,60 @@ def voice_studio(uid):
     if audio is not None:
         audio_bytes = audio.getvalue()
         st.audio(audio_bytes, format=mime)
-        if st.button("Transcribe and analyse audio", type="primary"):
+        if st.button("Transcribe and analyse audio"):
             client = ai_client()
             if client is None:
                 st.error("Gemini API is not configured.")
             else:
                 try:
-                    mime = getattr(audio, "type", None) or mime
                     with st.spinner("Processing audio..."):
                         response = client.models.generate_content(
                             model=MODEL,
                             contents=[
                                 types.Part.from_bytes(
-                                    data=audio_bytes, mime_type=mime
+                                    data=audio_bytes,
+                                    mime_type=mime
                                 ),
-                                (
-                                    "If this audio format is supported, provide: "
-                                    "1) best-effort verbatim transcription, "
-                                    "2) a short neutral summary, "
-                                    "3) possible expressive tone only if supported "
-                                    "by the audio, clearly label uncertainty, "
-                                    "4) 3 suitable emojis. Do not diagnose, infer "
-                                    "identity, or claim to know internal feelings. "
-                                    "If audio cannot be processed, say so."
-                                )
+                                "Provide a best-effort transcription and neutral summary. "
+                                "Clearly label uncertainty. Do not diagnose or infer identity."
                             ]
                         )
                     result = response.text or "No result returned."
-                    st.subheader("AI audio result")
-                    st.write(result)
-                    transcript = st.text_area(
-                        "Edit/copy the transcript if needed",
-                        value=result,
-                        key="voice_transcript_edit"
-                    )
-                    own_mood = st.selectbox(
-                        "How do YOU feel? (optional)",
-                        ["Prefer not to say", "Calm", "Happy", "Sad",
-                         "Stressed", "Tired", "Focused", "Unsure"]
-                    )
-                    if st.button("Save voice reflection"):
-                        execute(
-                            "INSERT INTO voice_logs(user_id,transcript,reflection,emoji,created_at) "
-                            "VALUES(?,?,?,?,?)",
-                            (uid, transcript, f"Self-reported mood: {own_mood}",
-                             "AI suggestions included in result", now())
-                        )
-                        st.success("Voice reflection saved.")
+                    st.session_state.voice_result = result
                 except Exception as exc:
-                    st.error(
-                        "Audio processing failed. The selected Gemini model "
-                        "may not support this audio format. Details: " + str(exc)
-                    )
+                    st.error(f"Audio processing failed: {exc}")
+
+    if st.session_state.get("voice_result"):
+        st.subheader("AI audio result")
+        transcript = st.text_area(
+            "Edit/copy the transcript",
+            value=st.session_state.voice_result,
+            key="voice_transcript_edit"
+        )
+        own_mood = st.selectbox(
+            "How do YOU feel? (optional)",
+            ["Prefer not to say", "Calm", "Happy", "Sad", "Stressed",
+             "Tired", "Focused", "Unsure"]
+        )
+        if st.button("Save voice reflection"):
+            execute(
+                "INSERT INTO voice_logs(user_id,transcript,reflection,emoji,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (uid, transcript, f"Self-reported mood: {own_mood}",
+                 "AI suggestions included in result", now())
+            )
+            st.success("Voice reflection saved.")
+            st.session_state.pop("voice_result", None)
+            st.rerun()
 
     st.subheader("Saved voice reflections")
-    logs = get_user_rows("voice_logs", uid)
-    for log in logs[:10]:
+    for log in get_user_rows("voice_logs", uid)[:10]:
         with st.expander(log["created_at"]):
             st.write(log["transcript"])
             st.caption(log["reflection"])
 
-# ---------- PRIVATE JOURNAL ----------
+
+# ---------------- PRIVATE JOURNAL ----------------
 
 def private_journal(uid):
     section_title("🌿 Private Journal", "Personal reflections saved to your account.")
@@ -787,8 +727,7 @@ def private_journal(uid):
         body = st.text_area("Your reflection", height=180)
         mood = st.selectbox(
             "Optional self-reported mood",
-            ["Not specified", "Calm", "Happy", "Sad", "Stressed",
-             "Motivated", "Tired", "Reflective"]
+            ["Not specified", "Calm", "Happy", "Sad", "Stressed", "Motivated", "Tired", "Reflective"]
         )
         submit = st.form_submit_button("Save private entry")
     if submit:
@@ -806,25 +745,27 @@ def private_journal(uid):
             st.caption("Self-reported mood: " + str(entry["mood"]))
             st.write(entry["body"])
             if st.button("Delete entry", key=f"del_journal_{entry['id']}"):
-                execute("DELETE FROM journal WHERE id=? AND user_id=?",
-                        (entry["id"], uid))
+                execute(
+                    "DELETE FROM journal WHERE id=? AND user_id=?",
+                    (entry["id"], uid)
+                )
                 st.rerun()
 
-# ---------- APPOINTMENTS ----------
+
+# ---------------- APPOINTMENTS ----------------
 
 def appointments(uid):
-    section_title("📅 Appointment Requests", "Submit a request; this does not automatically confirm a booking.")
+    section_title(
+        "📅 Appointment Requests",
+        "Submit a request; this does not automatically confirm a booking."
+    )
     with st.form("appointment_form"):
         topic = st.selectbox(
             "Request type",
-            ["Neuroscience consultation", "Research discussion",
-             "Project feedback", "Other"]
+            ["Neuroscience consultation", "Research discussion", "Project feedback", "Other"]
         )
         date = st.date_input("Preferred date")
-        tm = st.selectbox(
-            "Preferred time",
-            ["Morning", "Afternoon", "Evening", "Flexible"]
-        )
+        tm = st.selectbox("Preferred time", ["Morning", "Afternoon", "Evening", "Flexible"])
         message = st.text_area("What would you like to discuss?")
         submit = st.form_submit_button("Submit request")
     if submit:
@@ -833,16 +774,23 @@ def appointments(uid):
             "VALUES(?,?,?,?,?,'Pending',?)",
             (uid, topic, str(date), tm, message.strip(), now())
         )
-        st.success("Request saved as Pending. No appointment is confirmed yet.")
+        st.success("Request saved as Pending. No appointment is confirmed.")
+        st.rerun()
     st.subheader("Your requests")
-    for a in get_user_rows("appointments", uid):
-        st.write(f"**{a['topic']}** — {a['preferred_date']} · {a['preferred_time']}")
-        st.caption(f"Status: {a['status']} · Submitted {a['created_at']}")
+    for item in get_user_rows("appointments", uid):
+        st.write(
+            f"**{item['topic']}** — {item['preferred_date']} · {item['preferred_time']}"
+        )
+        st.caption(f"Status: {item['status']} · Submitted {item['created_at']}")
 
-# ---------- NEUROSOCIAL ----------
+
+# ---------------- NEUROSOCIAL ----------------
 
 def neurosocial(uid, username):
-    section_title("🌐 NeuroSocial", "Share neuroscience learning notes and discuss ideas respectfully.")
+    section_title(
+        "🌐 NeuroSocial",
+        "Share neuroscience learning notes and discuss ideas respectfully."
+    )
     with st.form("post_form", clear_on_submit=True):
         body = st.text_area("Write a post", max_chars=3000)
         submit = st.form_submit_button("Publish post")
@@ -853,6 +801,8 @@ def neurosocial(uid, username):
                 (uid, body.strip(), now())
             )
             st.rerun()
+        else:
+            st.warning("Write something before publishing.")
 
     posts = query("""
         SELECT posts.*, users.username,
@@ -868,7 +818,10 @@ def neurosocial(uid, username):
                 "SELECT reaction,COUNT(*) AS n FROM reactions WHERE post_id=? GROUP BY reaction",
                 (post["id"],)
             )
-            st.caption(" · ".join(f"{r['reaction']} {r['n']}" for r in reactions) or "No reactions yet")
+            st.caption(
+                " · ".join(f"{r['reaction']} {r['n']}" for r in reactions)
+                or "No reactions yet"
+            )
             reaction = st.selectbox(
                 "React", ["🧠", "👍", "❤️", "💡"],
                 key=f"react_{post['id']}"
@@ -881,14 +834,19 @@ def neurosocial(uid, username):
                 )
                 st.rerun()
             with st.expander(f"Comments ({post['comment_count']})"):
-                comments = query("""
+                comments = query(
+                    """
                     SELECT comments.*, users.username
                     FROM comments JOIN users ON comments.user_id=users.id
                     WHERE post_id=? ORDER BY comments.id ASC
-                """, (post["id"],))
-                for c in comments:
-                    st.write(f"**@{c['username']}**: {c['body']}")
-                comment = st.text_input("Add comment", key=f"comment_{post['id']}")
+                    """,
+                    (post["id"],)
+                )
+                for comment_row in comments:
+                    st.write(f"**@{comment_row['username']}**: {comment_row['body']}")
+                comment = st.text_input(
+                    "Add comment", key=f"comment_{post['id']}"
+                )
                 if st.button("Post comment", key=f"send_comment_{post['id']}"):
                     if comment.strip():
                         execute(
@@ -900,10 +858,14 @@ def neurosocial(uid, username):
                 if st.button("Delete your post", key=f"delete_post_{post['id']}"):
                     execute("DELETE FROM comments WHERE post_id=?", (post["id"],))
                     execute("DELETE FROM reactions WHERE post_id=?", (post["id"],))
-                    execute("DELETE FROM posts WHERE id=? AND user_id=?", (post["id"], uid))
+                    execute(
+                        "DELETE FROM posts WHERE id=? AND user_id=?",
+                        (post["id"], uid)
+                    )
                     st.rerun()
 
-# ---------- RESEARCH BOOK ----------
+
+# ---------------- RESEARCH BOOK ----------------
 
 def research_book(uid):
     section_title("📚 Research Book", "Organize literature notes, ideas, and research questions.")
@@ -917,22 +879,26 @@ def research_book(uid):
         if title.strip():
             execute(
                 "INSERT INTO research(user_id,title,topic,notes,tags,created_at) VALUES(?,?,?,?,?,?)",
-                (uid, title.strip(), topic, notes, tags, now())
+                (uid, title.strip(), topic.strip(), notes.strip(), tags.strip(), now())
             )
             st.success("Research entry saved.")
             st.rerun()
-    entries = get_user_rows("research", uid)
-    for item in entries:
+        else:
+            st.error("Add an entry title.")
+    for item in get_user_rows("research", uid):
         with st.expander(item["title"]):
             st.caption(item["topic"] or "")
             st.write(item["notes"] or "")
             st.caption("Tags: " + (item["tags"] or "None"))
             if st.button("Delete research entry", key=f"del_research_{item['id']}"):
-                execute("DELETE FROM research WHERE id=? AND user_id=?",
-                        (item["id"], uid))
+                execute(
+                    "DELETE FROM research WHERE id=? AND user_id=?",
+                    (item["id"], uid)
+                )
                 st.rerun()
 
-# ---------- CONCEPT MAP ----------
+
+# ---------------- CONCEPT MAP ----------------
 
 def concept_map(uid):
     section_title("🕸️ Concept Map", "Create a simple map of connections between research concepts.")
@@ -947,10 +913,13 @@ def concept_map(uid):
                 "INSERT INTO concepts(user_id,concept,connects_to,explanation,created_at) VALUES(?,?,?,?,?)",
                 (uid, concept.strip(), connects.strip(), explanation.strip(), now())
             )
+            st.success("Concept saved.")
             st.rerun()
+        else:
+            st.warning("Enter a concept name.")
     rows = get_user_rows("concepts", uid)
     if rows:
-        df = pd.DataFrame([dict(x) for x in rows])
+        df = pd.DataFrame([dict(row) for row in rows])
         st.dataframe(
             df[["concept", "connects_to", "explanation", "created_at"]],
             use_container_width=True,
@@ -961,20 +930,21 @@ def concept_map(uid):
             graph = graphviz.Digraph()
             for row in rows:
                 graph.node(row["concept"])
-                if row["connects_to"].strip():
+                if (row["connects_to"] or "").strip():
                     graph.edge(row["concept"], row["connects_to"])
             st.graphviz_chart(graph)
         except Exception:
-            st.caption("Install Graphviz to render the visual concept map.")
-        if st.button("Export concept map as CSV"):
-            st.download_button(
-                "Download CSV",
-                df.to_csv(index=False).encode("utf-8"),
-                "neurolens_concepts.csv",
-                "text/csv"
-            )
+            st.caption("Graphviz visual is unavailable; your concepts are still saved.")
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Export concept map as CSV",
+            csv_data,
+            "neurolens_concepts.csv",
+            "text/csv"
+        )
 
-# ---------- PHOTO STUDIO ----------
+
+# ---------------- PHOTO STUDIO ----------------
 
 def photo_studio():
     section_title("📸 Photo Studio", "Apply simple image filters in your browser session.")
@@ -988,22 +958,19 @@ def photo_studio():
             contrast = st.slider("Contrast", 0.3, 2.0, 1.0, 0.1)
             saturation = st.slider("Saturation", 0.0, 2.0, 1.0, 0.1)
             effect = st.selectbox(
-                "Filter",
-                ["Original", "Grayscale", "Blur", "Sharpen", "Contour"]
+                "Filter", ["Original", "Grayscale", "Blur", "Sharpen", "Contour"]
             )
             edited = ImageEnhance.Brightness(original).enhance(brightness)
             edited = ImageEnhance.Contrast(edited).enhance(contrast)
             edited = ImageEnhance.Color(edited).enhance(saturation)
-            filters = {
-                "Grayscale": ImageFilter.Color3DLUT if False else None,
-                "Blur": ImageFilter.BLUR,
-                "Sharpen": ImageFilter.SHARPEN,
-                "Contour": ImageFilter.CONTOUR
-            }
             if effect == "Grayscale":
                 edited = edited.convert("L").convert("RGB")
-            elif effect in filters and filters[effect] is not None:
-                edited = edited.filter(filters[effect])
+            elif effect == "Blur":
+                edited = edited.filter(ImageFilter.BLUR)
+            elif effect == "Sharpen":
+                edited = edited.filter(ImageFilter.SHARPEN)
+            elif effect == "Contour":
+                edited = edited.filter(ImageFilter.CONTOUR)
             left, right = st.columns(2)
             left.image(original, caption="Original", use_container_width=True)
             right.image(edited, caption="Edited", use_container_width=True)
@@ -1016,9 +983,10 @@ def photo_studio():
                 "image/png"
             )
         except Exception as exc:
-            st.error("Could not process this image: " + str(exc))
+            st.error(f"Could not process this image: {exc}")
 
-# ---------- PROGRESS DASHBOARD ----------
+
+# ---------------- DASHBOARD ----------------
 
 def dashboard(uid):
     section_title("📈 Progress Dashboard", "Your saved task history and activity trends.")
@@ -1026,14 +994,16 @@ def dashboard(uid):
     journal = get_user_rows("journal", uid)
     research = get_user_rows("research", uid)
     voices = get_user_rows("voice_logs", uid)
-    appointments_list = get_user_rows("appointments", uid)
+    appointment_rows = get_user_rows("appointments", uid)
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Activities", len(activities))
     c2.metric("Journal entries", len(journal))
     c3.metric("Research notes", len(research))
     c4.metric("Voice logs", len(voices))
+
     if activities:
-        df = pd.DataFrame([dict(a) for a in activities])
+        df = pd.DataFrame([dict(row) for row in activities])
         df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
         scored = df.dropna(subset=["score"])
         if not scored.empty:
@@ -1052,60 +1022,52 @@ def dashboard(uid):
             "text/csv"
         )
     else:
-        st.info("Complete a lab activity to begin building your progress history.")
-    if appointments_list:
-        st.subheader("Appointment request summary")
-        st.write(f"{len(appointments_list)} request(s) submitted.")
+        st.info("Complete a lab activity to build your progress history.")
+    if appointment_rows:
+        st.write(f"Appointment requests: {len(appointment_rows)}")
 
 
-# ---------- APP SETTINGS ----------
+# ---------------- SETTINGS ----------------
 
 def settings_page(uid):
     section_title("⚙️ Settings & Privacy")
-
-    user = st.session_state.get("user", {})
+    user = get_user() or {}
     st.write("**Signed in as:**", user.get("username", "Unknown"))
     st.write("**App creator:**", OWNER)
     st.write("**Local database:**", DB_PATH)
 
-    st.subheader("Supabase Connection")
-
+    st.subheader("Supabase connection")
+    st.caption(
+        "This checks database read access only. Your current login is SQLite, "
+        "not Supabase Auth. Private cloud sync is intentionally disabled until "
+        "user authentication and ownership policies are configured securely."
+    )
     if st.button("Test Supabase Connection", type="primary"):
         with st.spinner("Checking Supabase access..."):
             success, message = test_supabase_connection()
-
         if success:
             st.success(message)
         else:
             st.error(message)
 
-    st.caption(
-        "This tests read access to the existing profiles table. "
-        "It does not migrate SQLite data or connect every app feature."
-    )
-
     st.divider()
     st.subheader("Account data")
-
-    if st.button("Export my journal as JSON"):
-        entries = [
-            dict(x) for x in get_user_rows("journal", uid)
-        ]
+    if st.button("Prepare my journal JSON"):
+        entries = [dict(row) for row in get_user_rows("journal", uid)]
         st.download_button(
             "Download journal JSON",
             json.dumps(entries, ensure_ascii=False, indent=2),
             "neurolens_journal.json",
-            "application/json",
+            "application/json"
         )
 
     st.divider()
-
     if st.button("Log out"):
         st.session_state.pop("user", None)
         st.rerun()
 
 
-# ---------- MAIN ROUTER ----------
+# ---------------- MAIN ROUTER ----------------
 
 def main():
     if not get_user():
@@ -1114,9 +1076,11 @@ def main():
 
     user = get_user()
     uid = user["id"]
+
     st.sidebar.title("🧠 NEUROLENS")
     st.sidebar.caption("Explore cognition, behavior & the brain")
     st.sidebar.write(f"Welcome, @{user['username']}")
+
     pages = [
         "Home", "Brain Explorer", "CSTC Circuit Learning",
         "Neuroscience Lab", "Brain Puzzle", "Ask Ayna AI",
@@ -1124,6 +1088,7 @@ def main():
         "NeuroSocial", "Research Book", "Concept Map",
         "Photo Studio", "Progress Dashboard", "Settings"
     ]
+
     page = st.sidebar.radio("Navigate", pages)
     st.sidebar.divider()
     st.sidebar.caption("Educational tool — not a diagnostic instrument.")
@@ -1135,11 +1100,10 @@ def main():
             "An interactive learning workspace created by Ayna Jaffri "
             "for exploring neuroscience, cognition, behavior and research."
         )
-        st.markdown("### Explore your workspace")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Learning areas", "Brain + CSTC")
-        c2.metric("Cognitive tasks", "5")
-        c3.metric("AI assistant", "Ask Ayna")
+        a, b, c = st.columns(3)
+        a.metric("Learning areas", "Brain + CSTC")
+        b.metric("Cognitive tasks", "5")
+        c.metric("AI assistant", "Ask Ayna")
         st.markdown("""
         - Learn about brain regions and CSTC pathways.
         - Practice memory, attention, Stroop and decision tasks.
@@ -1147,6 +1111,7 @@ def main():
         - Use Gemini-powered AI and supported audio tools.
         """)
         st.caption("Task results describe task performance, not brain activity.")
+
     elif page == "Brain Explorer":
         brain_explorer()
     elif page == "CSTC Circuit Learning":
@@ -1176,4 +1141,6 @@ def main():
     elif page == "Settings":
         settings_page(uid)
 
-main()
+
+if __name__ == "__main__":
+    main()
