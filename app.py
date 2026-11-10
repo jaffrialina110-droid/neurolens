@@ -366,6 +366,7 @@ def ask_gemini(prompt, system_instruction=None):
 
 # ---------- SHARED HELPERS ----------
 
+
 def save_activity(user_id, name, score=None, details=""):
     # Save in local database first
     execute(
@@ -390,11 +391,16 @@ def save_activity(user_id, name, score=None, details=""):
             return
 
         client = get_supabase_client()
-st.write("Supabase URL:", st.secrets["SUPABASE_URL"])
-st.write(
-    "Supabase key type:",
-    "Publishable" if str(st.secrets["SUPABASE_KEY"]).startswith("sb_publishable_") else "Other"
-)
+
+        # Temporary connection diagnostics
+        st.write("Supabase URL:", st.secrets["SUPABASE_URL"])
+        st.write(
+            "Supabase key type:",
+            "Publishable" if str(
+                st.secrets["SUPABASE_KEY"]
+            ).startswith("sb_publishable_") else "Other"
+        )
+
         client.table("lab_results").insert({
             "user_id": profile_id,
             "experiment_type": str(name)[:200],
@@ -411,23 +417,6 @@ st.write(
 
     except Exception as exc:
         st.error(f"Supabase sync failed: {exc}")
-
-def section_title(title, description=""):
-    st.title(title)
-    if description:
-        st.caption(description)
-
-def get_user_rows(table, user_id, order="created_at DESC"):
-    allowed = {
-        "journal", "research", "activities", "voice_logs",
-        "appointments", "posts", "concepts"
-    }
-    if table not in allowed:
-        return []
-    return query(
-        f"SELECT * FROM {table} WHERE user_id=? ORDER BY {order}",
-        (user_id,)
-    )
 
 # ---------- BRAIN EXPLORER ----------
 
