@@ -546,6 +546,7 @@ def get_user():
 
 
 
+
 def auth_screen():
     st.title("🧠 NeuroLens")
     st.caption("Explore cognition, behavior & the brain")
@@ -554,14 +555,21 @@ def auth_screen():
         f"{OWNER} · Independent cognitive neuroscience researcher"
     )
 
-    login_tab, signup_tab = st.tabs(["Log in", "Create account"])
+    owner_tab, staff_tab, member_tab, signup_tab = st.tabs(
+        ["Owner Login", "Staff Login", "Member Login", "Create Account"]
+    )
 
-    with login_tab:
-        with st.form("login_form"):
-            username = st.text_input("Username").strip().lower()
+    def login_form(tab_name, expected_role):
+        with st.form(f"{tab_name}_login_form"):
+            username = st.text_input(
+                "Username",
+                key=f"{tab_name}_username"
+            ).strip().lower()
+
             password = st.text_input(
                 "Password",
-                type="password"
+                type="password",
+                key=f"{tab_name}_password"
             )
 
             submit = st.form_submit_button(
@@ -570,37 +578,63 @@ def auth_screen():
             )
 
         if submit:
-            row = query(
-                "SELECT * FROM users WHERE username=?",
-                (username,),
-                one=True
+            success, result = authenticate_user(
+                username,
+                password,
+                expected_role
             )
 
-            if row and verify_password(password, row["password_hash"]):
-                st.session_state.user = {
-                    "id": row["id"],
-                    "username": row["username"]
+            if success:
+                st.session_state["user"] = {
+                    "id": result["id"],
+                    "username": result["username"],
+                    "email": result["email"],
+                    "role": result["role"],
+                    "force_password_change": result["force_password_change"]
                 }
+
+                st.session_state["last_activity"] = (
+                    datetime.now().timestamp()
+                )
+
                 st.rerun()
             else:
-                st.error("Username or password is incorrect.")
+                st.error(result)
+
+    with owner_tab:
+        st.caption("Authorized Super Admin access.")
+        login_form("owner", "owner")
+
+    with staff_tab:
+        st.caption("Authorized NeuroLens team access.")
+        login_form("staff", "staff")
+
+    with member_tab:
+        st.caption("Sign in to your NeuroLens account.")
+        login_form("member", "member")
 
     with signup_tab:
         with st.form("signup_form"):
             username = st.text_input(
-                "Choose username"
+                "Choose username",
+                key="signup_username"
             ).strip().lower()
 
-            email = st.text_input("Email (optional)").strip()
+            email = st.text_input(
+                "Email (optional)",
+                key="signup_email"
+            ).strip()
 
             password = st.text_input(
                 "Create password",
-                type="password"
+                type="password",
+                key="signup_password"
             )
 
             confirm = st.text_input(
                 "Confirm password",
-                type="password"
+                type="password",
+                key="signup_confirm"
             )
 
             submit = st.form_submit_button(
@@ -610,10 +644,7 @@ def auth_screen():
 
         if submit:
             if not re.fullmatch(r"[a-z0-9_.-]{3,30}", username):
-                st.error(
-                    "Username must contain 3–30 letters, numbers, "
-                    "underscores, dots or hyphens."
-                )
+                st.error("Username must contain 3–30 valid characters.")
 
             elif len(password) < 10:
                 st.error("Use a password with at least 10 characters.")
@@ -626,8 +657,8 @@ def auth_screen():
                     execute(
                         """
                         INSERT INTO users
-                        (username,email,password_hash,created_at)
-                        VALUES(?,?,?,?)
+                        (username, email, password_hash, created_at, role)
+                        VALUES (?, ?, ?, ?, 'member')
                         """,
                         (
                             username,
@@ -637,7 +668,9 @@ def auth_screen():
                         )
                     )
 
-                    st.success("Account created. Please log in.")
+                    st.success(
+                        "Member account created. Please log in."
+                    )
 
                 except sqlite3.IntegrityError:
                     st.error("That username is already taken.")
