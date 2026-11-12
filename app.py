@@ -2371,6 +2371,86 @@ def owner_control_center(user):
     # Owner Control Center ka complete code
     ...
 
+def staff_management(user):
+    require_owner(user)
+
+    st.title("👥 Staff Management")
+    st.caption("Owner-only staff account management")
+
+    st.subheader("Create Staff Account")
+
+    with st.form("create_staff_form"):
+        username = st.text_input("Staff username").strip().lower()
+        email = st.text_input("Staff email (optional)").strip()
+        password = st.text_input(
+            "Temporary password (minimum 10 characters)",
+            type="password"
+        )
+        confirm = st.text_input(
+            "Confirm password",
+            type="password"
+        )
+
+        submit = st.form_submit_button("Create Staff Account")
+
+    if submit:
+        if not re.fullmatch(r"[a-z0-9_.-]{3,30}", username):
+            st.error("Enter a valid username (3–30 characters).")
+
+        elif len(password) < 10:
+            st.error("Password must contain at least 10 characters.")
+
+        elif password != confirm:
+            st.error("Passwords do not match.")
+
+        else:
+            try:
+                execute(
+                    """
+                    INSERT INTO users
+                    (username, email, password_hash, created_at,
+                     role, is_active, force_password_change)
+                    VALUES (?, ?, ?, ?, 'staff', 1, 1)
+                    """,
+                    (username, email, hash_password(password), now())
+                )
+
+                audit_event(
+                    user["id"],
+                    user["username"],
+                    "staff_created",
+                    "user",
+                    username
+                )
+
+                st.success(
+                    "Staff account created. Staff must change "
+                    "the temporary password after login."
+                )
+
+            except sqlite3.IntegrityError:
+                st.error("This username already exists.")
+
+    st.divider()
+    st.subheader("Existing Staff")
+
+    staff = query(
+        """
+        SELECT id, username, email, is_active, created_at
+        FROM users
+        WHERE role='staff'
+        ORDER BY id DESC
+        """
+    )
+
+    if staff:
+        st.dataframe(
+            [dict(row) for row in staff],
+            use_container_width=True
+        )
+    else:
+        st.info("No staff accounts created yet.")
+
 
 def main():
     # Aapka existing main code 
