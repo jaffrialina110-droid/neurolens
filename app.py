@@ -2384,18 +2384,31 @@ def main():
         return
 
     user = get_user()
+
+    if not user:
+        auth_screen()
+        return
+
     uid = user["id"]
+
+    # Force password change when required
     if user.get("force_password_change"):
         st.warning("Please change your password before continuing.")
         change_password_page(user)
         return
+
+    # Sidebar
     st.sidebar.title("🧠 NEUROLENS")
 
     st.sidebar.caption(
         "Explore cognition, behavior & the brain"
     )
 
-    
+    st.sidebar.write(
+        f"Welcome, @{user['username']}"
+    )
+
+    # Role-based navigation
     role = user.get("role", "member")
 
     pages = [
@@ -2428,19 +2441,13 @@ def main():
         pages
     )
 
-    
-
-    page = st.sidebar.radio(
-        "Navigate",
-        pages
-    )
-
     st.sidebar.divider()
 
     st.sidebar.caption(
         "Educational tool — not a diagnostic instrument."
     )
 
+    # Home
     if page == "Home":
         st.title("🧠 NeuroLens")
 
@@ -2513,6 +2520,17 @@ def main():
     elif page == "Settings":
         settings_page(uid)
 
+    # Owner-only pages
+    elif page == "Owner Control Center":
+        owner_control_center(user)
+
+    elif page == "Staff Management":
+        staff_management(user)
+
+    elif page == "Audit Logs":
+        audit_logs_page(user)
+
 
 if __name__ == "__main__":
     main()
+
