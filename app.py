@@ -2311,7 +2311,10 @@ def main():
 
     user = get_user()
     uid = user["id"]
-
+    if user.get("force_password_change"):
+        st.warning("Please change your password before continuing.")
+        change_password_page(user)
+        return
     st.sidebar.title("🧠 NEUROLENS")
 
     st.sidebar.caption(
