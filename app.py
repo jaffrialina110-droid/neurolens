@@ -302,6 +302,58 @@ def verify_password(password, stored):
     except (ValueError, TypeError, AttributeError):
         return False
 
+def get_secret_value(key):
+    try:
+        value = st.secrets.get(key)
+        if value:
+            return str(value).strip()
+    except Exception:
+        pass
+
+    return os.environ.get(key, "").strip()
+
+
+def bootstrap_owner():
+    # Never create a second owner automatically
+    existing_owner = query(
+        "SELECT id FROM users WHERE role='owner' LIMIT 1",
+        one=True
+    )
+
+    if existing_owner:
+        return
+
+    username = get_secret_value("OWNER_USERNAME").lower()
+    email = get_secret_value("OWNER_EMAIL")
+    password = get_secret_value("OWNER_PASSWORD")
+
+    # Wait until the owner credentials are configured
+    if not username or not password:
+        return
+
+    if not re.fullmatch(r"[a-z0-9_.-]{3,30}", username):
+        return
+
+    if len(password) < 14:
+        return
+
+    try:
+        execute(
+            """
+            INSERT INTO users
+            (username, email, password_hash, created_at, role, is_active)
+            VALUES (?, ?, ?, ?, 'owner', 1)
+            """,
+            (username, email, hash_password(password), now())
+        )
+    except sqlite3.IntegrityError:
+        # Do not overwrite or promote an existing account
+        return
+
+
+bootstrap_owner()
+
+
 def audit_event(
     actor_user_id,
     actor_username,
