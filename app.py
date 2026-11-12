@@ -2395,16 +2395,7 @@ def main():
         "Explore cognition, behavior & the brain"
     )
 
-    st.sidebar.write(
-        f"Welcome, @{user['username']}"
-    )
-
-    pages = [
-        "
-    role = user.get("role", "member")
-
-    pages = [
-        "
+    
     role = user.get("role", "member")
 
     pages = [
@@ -2432,16 +2423,12 @@ def main():
             "Audit Logs"
         ])
 
-    ]
+    page = st.sidebar.radio(
+        "Navigate",
+        pages
+    )
 
-    if role == "owner":
-        pages.extend([
-            "Owner Control Center",
-            "Staff Management",
-            "Audit Logs"
-        ])
-
-    ]
+    
 
     page = st.sidebar.radio(
         "Navigate",
