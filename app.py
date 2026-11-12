@@ -2938,3 +2938,1902 @@ def brain_puzzle_page(user):
 # =========================================================
 # END OF PART 4
 # =========================================================
+# =========================================================
+# PART 5 — RESEARCH BOOK
+# =========================================================
+
+def research_book_page(user):
+
+    uid = user["id"]
+
+    section_title(
+        "📚 Research Book",
+        "Organize your cognitive neuroscience research and ideas."
+    )
+
+    st.subheader("Create Research Note")
+
+    with st.form("research_note_form"):
+
+        title = st.text_input(
+            "Research title"
+        )
+
+        topic = st.selectbox(
+            "Research topic",
+            [
+                "Consciousness and Awareness",
+                "Cognitive Neuroscience",
+                "CSTC Circuits",
+                "Memory and Learning",
+                "Attention and Reward",
+                "Emotion and Decision-Making",
+                "Neuroplasticity",
+                "Addiction and Cognition",
+                "AI and Neuroscience",
+                "Other"
+            ]
+        )
+
+        notes = st.text_area(
+            "Research notes",
+            height=180
+        )
+
+        tags = st.text_input(
+            "Tags (comma separated)"
+        )
+
+        submitted = st.form_submit_button(
+            "Save Research Note"
+        )
+
+    if submitted:
+
+        if not title.strip() or not notes.strip():
+
+            st.error(
+                "Please enter a title and research notes."
+            )
+
+        else:
+
+            execute(
+                """
+                INSERT INTO research
+                (
+                    user_id,
+                    title,
+                    topic,
+                    notes,
+                    tags,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    uid,
+                    title.strip(),
+                    topic,
+                    notes.strip(),
+                    tags.strip(),
+                    now()
+                )
+            )
+
+            st.success("Research note saved.")
+
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Your Research Library")
+
+    entries = get_user_rows(
+        "research",
+        uid
+    )
+
+    if not entries:
+
+        st.info(
+            "Your research library is empty."
+        )
+
+    for entry in entries:
+
+        with st.expander(
+            f"📄 {entry['title']} — {entry['topic']}"
+        ):
+
+            st.caption(
+                f"Created: {entry['created_at']}"
+            )
+
+            if entry["tags"]:
+
+                st.write(
+                    f"Tags: {entry['tags']}"
+                )
+
+            st.write(entry["notes"])
+
+            if st.button(
+                "Delete Research Note",
+                key=f"delete_research_{entry['id']}"
+            ):
+
+                execute(
+                    """
+                    DELETE FROM research
+                    WHERE id=? AND user_id=?
+                    """,
+                    (
+                        entry["id"],
+                        uid
+                    )
+                )
+
+                st.success("Research note deleted.")
+
+                st.rerun()
+
+
+# =========================================================
+# PART 5 — CONCEPT MAP
+# =========================================================
+
+def concept_map_page(user):
+
+    uid = user["id"]
+
+    section_title(
+        "🕸️ Concept Map",
+        "Connect scientific concepts and build your own knowledge network."
+    )
+
+    st.subheader("Add a Concept")
+
+    with st.form("concept_form"):
+
+        concept = st.text_input(
+            "Concept name"
+        )
+
+        connects_to = st.text_input(
+            "Connected concept (optional)"
+        )
+
+        explanation = st.text_area(
+            "Explain the relationship"
+        )
+
+        submitted = st.form_submit_button(
+            "Add Concept"
+        )
+
+    if submitted:
+
+        if not concept.strip():
+
+            st.error(
+                "Please enter a concept name."
+            )
+
+        else:
+
+            execute(
+                """
+                INSERT INTO concepts
+                (
+                    user_id,
+                    concept,
+                    connects_to,
+                    explanation,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    uid,
+                    concept.strip(),
+                    connects_to.strip(),
+                    explanation.strip(),
+                    now()
+                )
+            )
+
+            st.success("Concept added.")
+
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Your Knowledge Network")
+
+    concepts = get_user_rows(
+        "concepts",
+        uid
+    )
+
+    if not concepts:
+
+        st.info(
+            "Start by adding your first scientific concept."
+        )
+
+        return
+
+    for item in concepts:
+
+        with st.expander(
+            f"🧠 {item['concept']}"
+        ):
+
+            if item["connects_to"]:
+
+                st.write(
+                    f"**Connected to:** {item['connects_to']}"
+                )
+
+            if item["explanation"]:
+
+                st.write(item["explanation"])
+
+            st.caption(item["created_at"])
+
+            if st.button(
+                "Delete Concept",
+                key=f"delete_concept_{item['id']}"
+            ):
+
+                execute(
+                    """
+                    DELETE FROM concepts
+                    WHERE id=? AND user_id=?
+                    """,
+                    (
+                        item["id"],
+                        uid
+                    )
+                )
+
+                st.rerun()
+
+    st.divider()
+
+    st.subheader("Concept Connections")
+
+    st.caption(
+        "This view displays your saved concept relationships."
+    )
+
+    for item in concepts:
+
+        if item["connects_to"]:
+
+            st.markdown(
+                f"**{item['concept']}** → "
+                f"**{item['connects_to']}**"
+            )
+
+    try:
+
+        import graphviz
+
+        graph = graphviz.Digraph()
+
+        graph.attr(
+            rankdir="LR"
+        )
+
+        for item in concepts:
+
+            graph.node(
+                item["concept"]
+            )
+
+            if item["connects_to"]:
+
+                graph.edge(
+                    item["concept"],
+                    item["connects_to"]
+                )
+
+        st.graphviz_chart(graph)
+
+    except ImportError:
+
+        st.info(
+            "Install graphviz to enable the visual concept map."
+        )
+
+    except Exception:
+
+        st.info(
+            "Some concepts could not be displayed in the graph."
+        )
+
+
+# =========================================================
+# PART 5 — VOICE STUDIO
+# =========================================================
+
+def voice_studio_page(user):
+
+    section_title(
+        "🎙️ Voice Studio",
+        "Record your thoughts and explore voice-based reflection."
+    )
+
+    st.write(
+        """
+        Use Voice Studio to record an idea, research thought
+        or personal reflection.
+
+        Recordings are not automatically stored in the
+        research library.
+        """
+    )
+
+    audio = st.audio_input(
+        "Record a voice message",
+        key="voice_studio_recording"
+    )
+
+    if audio:
+
+        st.audio(audio)
+
+        st.caption(
+            f"Recording size: {len(audio.getvalue())} bytes"
+        )
+
+        if st.button(
+            "Analyze Recording with Ayna"
+        ):
+
+            client = get_gemini_client()
+
+            if client is None:
+
+                st.error(
+                    "Gemini AI is not configured."
+                )
+
+            else:
+
+                try:
+
+                    audio_part = types.Part.from_bytes(
+                        data=audio.getvalue(),
+                        mime_type=audio.type or "audio/wav"
+                    )
+
+                    instruction = """
+                    You are Ayna, the neuroscience assistant
+                    inside NeuroLens.
+
+                    Analyze the supplied audio.
+
+                    1. Transcribe the spoken content if possible.
+                    2. Summarize the main idea.
+                    3. Identify any neuroscience-related concepts.
+                    4. Clearly mention uncertainty if the audio
+                       is unclear.
+
+                    Do not invent words or scientific facts.
+                    """
+
+                    with st.spinner(
+                        "Analyzing your recording..."
+                    ):
+
+                        response = client.models.generate_content(
+                            model=MODEL,
+                            contents=[
+                                instruction,
+                                audio_part
+                            ]
+                        )
+
+                    result = getattr(
+                        response,
+                        "text",
+                        None
+                    )
+
+                    if result:
+
+                        st.subheader("Ayna's Analysis")
+
+                        st.markdown(result)
+
+                    else:
+
+                        st.warning(
+                            "No analysis was returned."
+                        )
+
+                except Exception as error:
+
+                    st.error(
+                        "Audio analysis failed: "
+                        f"{str(error)[:250]}"
+                    )
+
+    st.divider()
+
+    st.subheader("Write a Voice Reflection")
+
+    reflection = st.text_area(
+        "Write your reflection or voice-note summary",
+        key="voice_reflection_text"
+    )
+
+    if st.button(
+        "Save Reflection"
+    ):
+
+        if not reflection.strip():
+
+            st.warning(
+                "Please write something first."
+            )
+
+        else:
+
+            execute(
+                """
+                INSERT INTO voice_logs
+                (
+                    user_id,
+                    transcript,
+                    reflection,
+                    emoji,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    user["id"],
+                    "",
+                    reflection.strip(),
+                    "🎙️",
+                    now()
+                )
+            )
+
+            st.success(
+                "Your written reflection has been saved."
+            )
+
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Saved Reflections")
+
+    logs = get_user_rows(
+        "voice_logs",
+        user["id"]
+    )
+
+    if not logs:
+
+        st.info(
+            "No saved reflections yet."
+        )
+
+    for item in logs:
+
+        with st.expander(
+            f"🎙️ Reflection — {item['created_at']}"
+        ):
+
+            st.write(item["reflection"])
+
+            if st.button(
+                "Delete Reflection",
+                key=f"delete_voice_{item['id']}"
+            ):
+
+                execute(
+                    """
+                    DELETE FROM voice_logs
+                    WHERE id=? AND user_id=?
+                    """,
+                    (
+                        item["id"],
+                        user["id"]
+                    )
+                )
+
+                st.rerun()
+
+
+# =========================================================
+# PART 5 — PROGRESS DASHBOARD
+# =========================================================
+
+def progress_dashboard_page(user):
+
+    uid = user["id"]
+
+    section_title(
+        "📊 Progress Dashboard",
+        "Review your saved learning activities and research progress."
+    )
+
+    activities = get_user_rows(
+        "activities",
+        uid
+    )
+
+    research = get_user_rows(
+        "research",
+        uid
+    )
+
+    concepts = get_user_rows(
+        "concepts",
+        uid
+    )
+
+    journal_entries = get_user_rows(
+        "journal",
+        uid
+    )
+
+    voice_entries = get_user_rows(
+        "voice_logs",
+        uid
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            "Activities",
+            len(activities)
+        )
+
+    with col2:
+
+        st.metric(
+            "Research Notes",
+            len(research)
+        )
+
+    with col3:
+
+        st.metric(
+            "Concepts",
+            len(concepts)
+        )
+
+    col4, col5 = st.columns(2)
+
+    with col4:
+
+        st.metric(
+            "Journal Entries",
+            len(journal_entries)
+        )
+
+    with col5:
+
+        st.metric(
+            "Saved Reflections",
+            len(voice_entries)
+        )
+
+    st.divider()
+
+    st.subheader("Activity History")
+
+    if not activities:
+
+        st.info(
+            "Complete a neuroscience lab activity to see your history."
+        )
+
+        return
+
+    activity_data = []
+
+    for item in activities:
+
+        activity_data.append(
+            {
+                "Activity": item["activity"],
+                "Score": item["score"],
+                "Date": item["created_at"]
+            }
+        )
+
+    df = pd.DataFrame(activity_data)
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    numeric_scores = pd.to_numeric(
+        df["Score"],
+        errors="coerce"
+    ).dropna()
+
+    if not numeric_scores.empty:
+
+        average_score = float(
+            numeric_scores.mean()
+        )
+
+        st.metric(
+            "Average Recorded Activity Score",
+            f"{average_score:.1f}%"
+        )
+
+        st.caption(
+            "This is an average of saved activity scores, "
+            "not a clinical cognitive performance measure."
+        )
+
+        st.subheader("Activity Score History")
+
+        chart_df = df.copy()
+
+        chart_df["Score"] = pd.to_numeric(
+            chart_df["Score"],
+            errors="coerce"
+        )
+
+        st.line_chart(
+            chart_df.set_index("Date")["Score"]
+        )
+
+    st.divider()
+
+    st.subheader("Your Learning Activity")
+
+    activity_counts = (
+        df.groupby("Activity")
+        .size()
+        .reset_index(name="Completed")
+    )
+
+    st.bar_chart(
+        activity_counts.set_index("Activity")
+    )
+
+    st.caption(
+        "Progress reflects activity recorded inside NeuroLens. "
+        "It does not measure intelligence, brain activity, "
+        "or neurological health."
+    )
+
+
+# =========================================================
+# END OF PART 5
+# =========================================================
+# =========================================================
+# PART 6 — APPOINTMENTS
+# =========================================================
+
+def appointments_page(user):
+
+    uid = user["id"]
+
+    section_title(
+        "📅 Appointments",
+        "Submit an appointment or consultation request."
+    )
+
+    st.info(
+        "Submitting a request does not confirm a booking. "
+        "The owner must review and update its status."
+    )
+
+    with st.form("appointment_form"):
+
+        topic = st.selectbox(
+            "Appointment topic",
+            [
+                "Cognitive Neuroscience Discussion",
+                "Research Consultation",
+                "AI and Neuroscience",
+                "Learning and Memory",
+                "Other"
+            ]
+        )
+
+        preferred_date = st.date_input(
+            "Preferred date"
+        )
+
+        preferred_time = st.selectbox(
+            "Preferred time",
+            [
+                "Morning",
+                "Afternoon",
+                "Evening"
+            ]
+        )
+
+        message = st.text_area(
+            "Additional details"
+        )
+
+        submitted = st.form_submit_button(
+            "Submit Request"
+        )
+
+    if submitted:
+
+        execute(
+            """
+            INSERT INTO appointments
+            (
+                user_id,
+                topic,
+                preferred_date,
+                preferred_time,
+                message,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, 'Pending', ?)
+            """,
+            (
+                uid,
+                topic,
+                str(preferred_date),
+                preferred_time,
+                message.strip(),
+                now()
+            )
+        )
+
+        st.success(
+            "Your appointment request has been submitted."
+        )
+
+        st.rerun()
+
+    st.divider()
+
+    st.subheader("My Appointment Requests")
+
+    requests = get_user_rows(
+        "appointments",
+        uid
+    )
+
+    if not requests:
+
+        st.info("No appointment requests yet.")
+
+    for item in requests:
+
+        with st.expander(
+            f"{item['topic']} — {item['status']}"
+        ):
+
+            st.write(
+                f"**Date:** {item['preferred_date']}"
+            )
+
+            st.write(
+                f"**Time:** {item['preferred_time']}"
+            )
+
+            st.write(
+                f"**Message:** {item['message'] or 'None'}"
+            )
+
+            st.caption(
+                f"Submitted: {item['created_at']}"
+            )
+
+
+# =========================================================
+# PART 6 — NEUROSOCIAL
+# =========================================================
+
+def neurosocial_page(user):
+
+    uid = user["id"]
+
+    section_title(
+        "🌐 NeuroSocial",
+        "Share neuroscience ideas and learn with the community."
+    )
+
+    st.caption(
+        "Do not share private journal entries, passwords "
+        "or sensitive personal information here."
+    )
+
+    with st.form("create_social_post"):
+
+        post_body = st.text_area(
+            "Share a thought, question or research idea",
+            max_chars=2000
+        )
+
+        submitted = st.form_submit_button(
+            "Publish Post"
+        )
+
+    if submitted:
+
+        if not post_body.strip():
+
+            st.error("Post cannot be empty.")
+
+        else:
+
+            execute(
+                """
+                INSERT INTO posts
+                (
+                    user_id,
+                    body,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    uid,
+                    post_body.strip(),
+                    now()
+                )
+            )
+
+            st.success("Your post has been published.")
+
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Community Feed")
+
+    posts = query(
+        """
+        SELECT
+            posts.id,
+            posts.user_id,
+            posts.body,
+            posts.created_at,
+            users.username
+        FROM posts
+        JOIN users
+            ON users.id = posts.user_id
+        WHERE users.is_active=1
+        ORDER BY posts.id DESC
+        LIMIT 100
+        """
+    )
+
+    if not posts:
+
+        st.info(
+            "No community posts yet. Be the first to share an idea."
+        )
+
+    for post in posts:
+
+        with st.container(border=True):
+
+            st.markdown(
+                f"**@{post['username']}**"
+            )
+
+            st.write(post["body"])
+
+            st.caption(post["created_at"])
+
+            reaction_count = query(
+                """
+                SELECT COUNT(*) AS total
+                FROM reactions
+                WHERE post_id=?
+                """,
+                (post["id"],),
+                one=True
+            )
+
+            st.caption(
+                f"❤️ {reaction_count['total']} reactions"
+            )
+
+            existing_reaction = query(
+                """
+                SELECT id
+                FROM reactions
+                WHERE post_id=? AND user_id=?
+                """,
+                (
+                    post["id"],
+                    uid
+                ),
+                one=True
+            )
+
+            if existing_reaction:
+
+                if st.button(
+                    "Remove Reaction",
+                    key=f"unlike_{post['id']}"
+                ):
+
+                    execute(
+                        """
+                        DELETE FROM reactions
+                        WHERE post_id=? AND user_id=?
+                        """,
+                        (
+                            post["id"],
+                            uid
+                        )
+                    )
+
+                    st.rerun()
+
+            else:
+
+                if st.button(
+                    "❤️ React",
+                    key=f"like_{post['id']}"
+                ):
+
+                    execute(
+                        """
+                        INSERT OR IGNORE INTO reactions
+                        (
+                            post_id,
+                            user_id,
+                            reaction
+                        )
+                        VALUES (?, ?, 'heart')
+                        """,
+                        (
+                            post["id"],
+                            uid
+                        )
+                    )
+
+                    st.rerun()
+
+            comments = query(
+                """
+                SELECT
+                    comments.id,
+                    comments.body,
+                    comments.created_at,
+                    users.username
+                FROM comments
+                JOIN users
+                    ON users.id=comments.user_id
+                WHERE comments.post_id=?
+                ORDER BY comments.id ASC
+                LIMIT 50
+                """,
+                (post["id"],)
+            )
+
+            if comments:
+
+                st.markdown("**Comments**")
+
+                for comment in comments:
+
+                    st.write(
+                        f"@{comment['username']}: "
+                        f"{comment['body']}"
+                    )
+
+            with st.form(
+                f"comment_form_{post['id']}"
+            ):
+
+                comment_text = st.text_input(
+                    "Write a comment",
+                    max_chars=500,
+                    key=f"comment_input_{post['id']}"
+                )
+
+                comment_submit = st.form_submit_button(
+                    "Comment"
+                )
+
+            if comment_submit:
+
+                if comment_text.strip():
+
+                    execute(
+                        """
+                        INSERT INTO comments
+                        (
+                            post_id,
+                            user_id,
+                            body,
+                            created_at
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            post["id"],
+                            uid,
+                            comment_text.strip(),
+                            now()
+                        )
+                    )
+
+                    st.rerun()
+
+            if post["user_id"] == uid:
+
+                if st.button(
+                    "Delete My Post",
+                    key=f"delete_post_{post['id']}"
+                ):
+
+                    execute(
+                        """
+                        DELETE FROM posts
+                        WHERE id=? AND user_id=?
+                        """,
+                        (
+                            post["id"],
+                            uid
+                        )
+                    )
+
+                    st.rerun()
+
+
+# =========================================================
+# PART 6 — SETTINGS
+# =========================================================
+
+def settings_page(user):
+
+    section_title(
+        "⚙️ Settings",
+        "Manage your account and connection settings."
+    )
+
+    st.subheader("Account Information")
+
+    st.write(
+        f"**Username:** @{user['username']}"
+    )
+
+    st.write(
+        f"**Role:** {user['role'].title()}"
+    )
+
+    st.write(
+        f"**Email:** {user.get('email') or 'Not provided'}"
+    )
+
+    st.divider()
+
+    st.subheader("Password")
+
+    if st.button(
+        "Open Change Password"
+    ):
+
+        st.session_state["settings_open_password"] = True
+
+    if st.session_state.get(
+        "settings_open_password",
+        False
+    ):
+
+        change_password_page(user)
+
+    st.divider()
+
+    st.subheader("Connection Status")
+
+    if st.button(
+        "Test Gemini AI"
+    ):
+
+        if get_gemini_client() is None:
+
+            st.error(
+                "Gemini AI is not configured."
+            )
+
+        else:
+
+            with st.spinner("Testing Gemini..."):
+
+                result = ask_gemini(
+                    "Reply with: NeuroLens Gemini connection test successful."
+                )
+
+            st.write(result)
+
+    if st.button(
+        "Test Supabase"
+    ):
+
+        success, message = test_supabase_connection()
+
+        if success:
+
+            st.success(message)
+
+        else:
+
+            st.error(message)
+
+    st.divider()
+
+    st.subheader("Session")
+
+    if st.button(
+        "Log Out",
+        type="primary"
+    ):
+
+        logout()
+
+
+# =========================================================
+# PART 6 — OWNER ACCESS CONTROL
+# =========================================================
+
+def require_owner(user):
+
+    if not user:
+
+        st.error("Please log in.")
+
+        return False
+
+    if user["role"] != "owner":
+
+        st.error(
+            "Access denied. Owner permission is required."
+        )
+
+        return False
+
+    return True
+
+
+# =========================================================
+# PART 6 — OWNER CONTROL CENTER
+# =========================================================
+
+def owner_control_center(user):
+
+    if not require_owner(user):
+        return
+
+    section_title(
+        "👑 Owner Control Center",
+        "NeuroLens administration and overview."
+    )
+
+    users = query(
+        """
+        SELECT id, username, role, is_active, created_at
+        FROM users
+        ORDER BY id DESC
+        """
+    )
+
+    posts = query(
+        "SELECT COUNT(*) AS total FROM posts",
+        one=True
+    )
+
+    research = query(
+        "SELECT COUNT(*) AS total FROM research",
+        one=True
+    )
+
+    appointments = query(
+        "SELECT COUNT(*) AS total FROM appointments",
+        one=True
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Users",
+            len(users)
+        )
+
+    with col2:
+
+        st.metric(
+            "Community Posts",
+            posts["total"]
+        )
+
+    with col3:
+
+        st.metric(
+            "Research Notes",
+            research["total"]
+        )
+
+    with col4:
+
+        st.metric(
+            "Appointments",
+            appointments["total"]
+        )
+
+    st.divider()
+
+    st.subheader("User Accounts")
+
+    for account in users:
+
+        with st.expander(
+            f"@{account['username']} — {account['role']}"
+        ):
+
+            st.write(
+                f"User ID: {account['id']}"
+            )
+
+            st.write(
+                f"Account created: {account['created_at']}"
+            )
+
+            st.write(
+                f"Active: {'Yes' if account['is_active'] else 'No'}"
+            )
+
+            if account["role"] != "owner":
+
+                new_status = st.selectbox(
+                    "Account status",
+                    ["Active", "Inactive"],
+                    index=0 if account["is_active"] else 1,
+                    key=f"account_status_{account['id']}"
+                )
+
+                if st.button(
+                    "Update Account Status",
+                    key=f"update_account_{account['id']}"
+                ):
+
+                    active_value = (
+                        1 if new_status == "Active" else 0
+                    )
+
+                    execute(
+                        """
+                        UPDATE users
+                        SET is_active=?
+                        WHERE id=? AND role!='owner'
+                        """,
+                        (
+                            active_value,
+                            account["id"]
+                        )
+                    )
+
+                    audit_event(
+                        user["id"],
+                        user["username"],
+                        "account_status_changed",
+                        "user",
+                        account["id"],
+                        new_status
+                    )
+
+                    st.success("Account status updated.")
+
+                    st.rerun()
+
+    st.divider()
+
+    st.subheader("Appointment Requests")
+
+    requests = query(
+        """
+        SELECT
+            appointments.*,
+            users.username
+        FROM appointments
+        JOIN users
+            ON users.id=appointments.user_id
+        ORDER BY appointments.id DESC
+        LIMIT 100
+        """
+    )
+
+    if not requests:
+
+        st.info("No appointment requests.")
+
+    for item in requests:
+
+        with st.expander(
+            f"@{item['username']} — {item['topic']}"
+        ):
+
+            st.write(
+                f"Date: {item['preferred_date']}"
+            )
+
+            st.write(
+                f"Time: {item['preferred_time']}"
+            )
+
+            st.write(
+                f"Message: {item['message'] or 'None'}"
+            )
+
+            new_status = st.selectbox(
+                "Request status",
+                [
+                    "Pending",
+                    "Approved",
+                    "Declined",
+                    "Completed"
+                ],
+                index=[
+                    "Pending",
+                    "Approved",
+                    "Declined",
+                    "Completed"
+                ].index(item["status"])
+                if item["status"] in [
+                    "Pending",
+                    "Approved",
+                    "Declined",
+                    "Completed"
+                ] else 0,
+                key=f"appointment_status_{item['id']}"
+            )
+
+            if st.button(
+                "Save Status",
+                key=f"save_appointment_{item['id']}"
+            ):
+
+                execute(
+                    """
+                    UPDATE appointments
+                    SET status=?
+                    WHERE id=?
+                    """,
+                    (
+                        new_status,
+                        item["id"]
+                    )
+                )
+
+                audit_event(
+                    user["id"],
+                    user["username"],
+                    "appointment_status_changed",
+                    "appointment",
+                    item["id"],
+                    new_status
+                )
+
+                st.success("Appointment status updated.")
+
+                st.rerun()
+
+    st.divider()
+
+    st.subheader("System Information")
+
+    st.write(
+        f"**App:** {APP_NAME}"
+    )
+
+    st.write(
+        f"**Owner display:** {OWNER}"
+    )
+
+    st.write(
+        f"**AI model configured:** {MODEL}"
+    )
+
+    st.warning(
+        "This dashboard does not display private journal "
+        "contents. The current SQLite database is local "
+        "application storage, not durable multi-user cloud storage."
+    )
+
+
+# =========================================================
+# PART 6 — STAFF MANAGEMENT
+# =========================================================
+
+def staff_management(user):
+
+    if not require_owner(user):
+        return
+
+    section_title(
+        "👥 Staff Management",
+        "Create and manage staff accounts."
+    )
+
+    with st.form("create_staff_form"):
+
+        username = st.text_input(
+            "Staff username"
+        )
+
+        email = st.text_input(
+            "Staff email"
+        )
+
+        password = st.text_input(
+            "Temporary password",
+            type="password"
+        )
+
+        submitted = st.form_submit_button(
+            "Create Staff Account"
+        )
+
+    if submitted:
+
+        username = username.strip().lower()
+
+        if not re.fullmatch(
+            r"[a-z0-9_.-]{3,30}",
+            username
+        ):
+
+            st.error("Invalid username.")
+
+        elif len(password) < 14:
+
+            st.error(
+                "Temporary password must have at least 14 characters."
+            )
+
+        else:
+
+            try:
+
+                staff_id = execute(
+                    """
+                    INSERT INTO users
+                    (
+                        username,
+                        email,
+                        password_hash,
+                        created_at,
+                        role,
+                        is_active,
+                        force_password_change
+                    )
+                    VALUES (?, ?, ?, ?, 'staff', 1, 1)
+                    """,
+                    (
+                        username,
+                        email.strip() or None,
+                        hash_password(password),
+                        now()
+                    )
+                )
+
+                audit_event(
+                    user["id"],
+                    user["username"],
+                    "staff_account_created",
+                    "user",
+                    staff_id
+                )
+
+                st.success(
+                    "Staff account created. "
+                    "The staff member must change the temporary password."
+                )
+
+                st.rerun()
+
+            except sqlite3.IntegrityError:
+
+                st.error(
+                    "That username is already in use."
+                )
+
+    st.divider()
+
+    st.subheader("Existing Staff")
+
+    staff = query(
+        """
+        SELECT id, username, email, is_active, created_at
+        FROM users
+        WHERE role='staff'
+        ORDER BY id DESC
+        """
+    )
+
+    if not staff:
+
+        st.info("No staff accounts yet.")
+
+    for member in staff:
+
+        st.write(
+            f"**@{member['username']}** — "
+            f"{'Active' if member['is_active'] else 'Inactive'}"
+        )
+
+
+# =========================================================
+# PART 6 — AUDIT LOGS
+# =========================================================
+
+def audit_logs_page(user):
+
+    if not require_owner(user):
+        return
+
+    section_title(
+        "📋 Audit Logs",
+        "Review administrative and account events."
+    )
+
+    logs = query(
+        """
+        SELECT *
+        FROM audit_logs
+        ORDER BY id DESC
+        LIMIT 300
+        """
+    )
+
+    if not logs:
+
+        st.info("No audit logs available.")
+
+        return
+
+    data = []
+
+    for item in logs:
+
+        data.append(
+            {
+                "Date": item["created_at"],
+                "Username": item["actor_username"],
+                "Action": item["action"],
+                "Target": item["target_type"],
+                "Target ID": item["target_id"],
+                "Details": item["details"]
+            }
+        )
+
+    st.dataframe(
+        pd.DataFrame(data),
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# =========================================================
+# END OF PART 6
+# =========================================================
+# ============================================================
+# PART 7 — MAIN APP ROUTER, NAVIGATION & PHOTO STUDIO
+# ============================================================
+
+
+def photo_studio_page(user):
+    st.title("📸 Photo Studio")
+    st.caption("Upload and enhance images inside NeuroLens.")
+
+    uploaded_file = st.file_uploader(
+        "Upload an image",
+        type=["png", "jpg", "jpeg"],
+        key="photo_studio_upload"
+    )
+
+    if uploaded_file is None:
+        st.info("Upload an image to start editing.")
+        return
+
+    try:
+        original_image = Image.open(uploaded_file).convert("RGB")
+
+        st.subheader("Original Image")
+        st.image(original_image, use_container_width=True)
+
+        st.divider()
+        st.subheader("Image Adjustments")
+
+        brightness = st.slider(
+            "Brightness",
+            min_value=0.2,
+            max_value=2.0,
+            value=1.0,
+            step=0.1
+        )
+
+        contrast = st.slider(
+            "Contrast",
+            min_value=0.2,
+            max_value=2.0,
+            value=1.0,
+            step=0.1
+        )
+
+        sharpness = st.slider(
+            "Sharpness",
+            min_value=0.0,
+            max_value=3.0,
+            value=1.0,
+            step=0.1
+        )
+
+        edited_image = ImageEnhance.Brightness(
+            original_image
+        ).enhance(brightness)
+
+        edited_image = ImageEnhance.Contrast(
+            edited_image
+        ).enhance(contrast)
+
+        edited_image = ImageEnhance.Sharpness(
+            edited_image
+        ).enhance(sharpness)
+
+        st.subheader("Edited Image")
+        st.image(edited_image, use_container_width=True)
+
+        image_buffer = io.BytesIO()
+        edited_image.save(image_buffer, format="PNG")
+
+        st.download_button(
+            label="⬇️ Download Edited Image",
+            data=image_buffer.getvalue(),
+            file_name="neurolens_edited_image.png",
+            mime="image/png",
+            use_container_width=True
+        )
+
+    except Exception as error:
+        st.error(f"Could not process this image: {error}")
+
+
+# ============================================================
+# MAIN NAVIGATION
+# ============================================================
+
+def main():
+
+    # Initialize application database
+    init_db()
+
+    # Check login
+    if not get_user():
+        login_screen()
+        return
+
+    user = get_user()
+
+    if not user:
+        login_screen()
+        return
+
+    uid = user.get("id")
+    role = str(user.get("role", "member")).lower()
+
+    # --------------------------------------------------------
+    # FORCE PASSWORD CHANGE
+    # --------------------------------------------------------
+
+    if user.get("force_password_change"):
+        st.warning(
+            "For account security, please change your temporary password."
+        )
+
+        change_password_page(user)
+        return
+
+    # --------------------------------------------------------
+    # SIDEBAR
+    # --------------------------------------------------------
+
+    st.sidebar.title("🧠 NEUROLENS")
+
+    st.sidebar.caption(
+        "Explore cognition, behavior & the brain"
+    )
+
+    st.sidebar.divider()
+
+    st.sidebar.write(
+        f"Welcome, @{user.get('username', 'user')}"
+    )
+
+    st.sidebar.caption(
+        f"Account role: {role.title()}"
+    )
+
+    st.sidebar.divider()
+
+    # --------------------------------------------------------
+    # AVAILABLE PAGES
+    # --------------------------------------------------------
+
+    pages = [
+        "Home",
+        "Brain Explorer",
+        "CSTC Circuit Learning",
+        "Neuroscience Lab",
+        "Brain Puzzle",
+        "Ask Ayna AI",
+        "Personal Healing",
+        "Private Journal",
+        "Research Book",
+        "Concept Map",
+        "Voice Studio",
+        "Photo Studio",
+        "Progress Dashboard",
+        "Appointments",
+        "NeuroSocial",
+        "Settings"
+    ]
+
+    # --------------------------------------------------------
+    # OWNER-ONLY PAGES
+    # --------------------------------------------------------
+
+    if role == "owner":
+        pages.extend([
+            "Owner Control Center",
+            "Staff Management",
+            "Audit Logs"
+        ])
+
+    # --------------------------------------------------------
+    # PAGE SELECTOR
+    # --------------------------------------------------------
+
+    selected_page = st.sidebar.radio(
+        "Navigation",
+        pages,
+        key="neurolens_navigation"
+    )
+
+    st.sidebar.divider()
+
+    # --------------------------------------------------------
+    # LOGOUT
+    # --------------------------------------------------------
+
+    if st.sidebar.button(
+        "🚪 Logout",
+        use_container_width=True
+    ):
+        logout()
+        st.rerun()
+
+    # --------------------------------------------------------
+    # PAGE ROUTING
+    # --------------------------------------------------------
+
+    if selected_page == "Home":
+        home_page(user)
+
+    elif selected_page == "Brain Explorer":
+        brain_explorer_page(user)
+
+    elif selected_page == "CSTC Circuit Learning":
+        cstc_circuit_page(user)
+
+    elif selected_page == "Neuroscience Lab":
+        neuroscience_lab_page(user)
+
+    elif selected_page == "Brain Puzzle":
+        brain_puzzle_page(user)
+
+    elif selected_page == "Ask Ayna AI":
+        ask_ayna_page(user)
+
+    elif selected_page == "Personal Healing":
+        personal_healing_page(user)
+
+    elif selected_page == "Private Journal":
+        private_journal_page(user)
+
+    elif selected_page == "Research Book":
+        research_book_page(user)
+
+    elif selected_page == "Concept Map":
+        concept_map_page(user)
+
+    elif selected_page == "Voice Studio":
+        voice_studio_page(user)
+
+    elif selected_page == "Photo Studio":
+        photo_studio_page(user)
+
+    elif selected_page == "Progress Dashboard":
+        progress_dashboard_page(user)
+
+    elif selected_page == "Appointments":
+        appointments_page(user)
+
+    elif selected_page == "NeuroSocial":
+        neurosocial_page(user)
+
+    elif selected_page == "Settings":
+        settings_page(user)
+
+    # --------------------------------------------------------
+    # OWNER PAGES
+    # --------------------------------------------------------
+
+    elif selected_page == "Owner Control Center":
+
+        if role == "owner":
+            owner_control_center(user)
+        else:
+            st.error("Access denied.")
+
+    elif selected_page == "Staff Management":
+
+        if role == "owner":
+            staff_management(user)
+        else:
+            st.error("Access denied.")
+
+    elif selected_page == "Audit Logs":
+
+        if role == "owner":
+            audit_logs_page(user)
+        else:
+            st.error("Access denied.")
+
+    # --------------------------------------------------------
+    # FOOTER
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.caption(
+        "NEUROLENS | Explore cognition, behavior & the brain"
+    )
+
+    st.caption(
+        "Created by Ayna Jaffri"
+    )
+
+    st.caption(
+        "Educational neuroscience platform. "
+        "Activities are not clinical assessments or diagnoses."
+    )
+
+
+# ============================================================
+# APPLICATION ENTRY POINT
+# ============================================================
+
+if __name__ == "__main__":
+    main()
+
+# ============================================================
+# END OF NEUROLENS APP CODE
+# ============================================================
