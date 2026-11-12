@@ -2295,7 +2295,58 @@ def settings_page(uid):
         st.session_state.pop("user", None)
         st.session_state.pop("chat_history", None)
         st.rerun()
+def change_password_page(user):
+    st.title("🔐 Change Password")
 
+    with st.form("change_password_form"):
+        current_password = st.text_input(
+            "Current password",
+            type="password"
+        )
+
+        new_password = st.text_input(
+            "New password (minimum 10 characters)",
+            type="password"
+        )
+
+        confirm_password = st.text_input(
+            "Confirm new password",
+            type="password"
+        )
+
+        submit = st.form_submit_button("Update Password")
+
+    if submit:
+        row = query(
+            "SELECT password_hash FROM users WHERE id=?",
+            (user["id"],),
+            one=True
+        )
+
+        if not row or not verify_password(
+            current_password, row["password_hash"]
+        ):
+            st.error("Current password is incorrect.")
+
+        elif len(new_password) < 10:
+            st.error("Password must be at least 10 characters.")
+
+        elif new_password != confirm_password:
+            st.error("New passwords do not match.")
+
+        else:
+            execute(
+                """
+                UPDATE users
+                SET password_hash=?, force_password_change=0
+                WHERE id=?
+                """,
+                (hash_password(new_password), user["id"])
+            )
+
+            st.session_state["user"]["force_password_change"] = 0
+            st.success("Password updated successfully.")
+            st.rerun()
 def require_owner(user):
     if not user or user.get("role") != "owner":
         st.error("Access denied. Owner permission required.")
