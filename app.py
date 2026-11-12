@@ -445,8 +445,53 @@ def authenticate_user(username, password, expected_role=None):
     return True, row
 
 
+
 def get_user():
-    return st.session_state.get("user")
+    user = st.session_state.get("user")
+
+    if not user:
+        return None
+
+    current_time = datetime.now().timestamp()
+    last_activity = st.session_state.get("last_activity")
+
+    # Automatic logout after 30 minutes of inactivity
+    if last_activity is not None:
+        if current_time - last_activity > 1800:
+            st.session_state.pop("user", None)
+            st.session_state.pop("last_activity", None)
+            st.warning("Your session expired. Please log in again.")
+            return None
+
+    # Refresh activity time
+    st.session_state["last_activity"] = current_time
+
+    # Always verify account status and role from database
+    row = query(
+        "SELECT id, username, email, role, is_active, "
+        "force_password_change FROM users WHERE id=?",
+        (user["id"],),
+        one=True
+    )
+
+    if not row or not row["is_active"]:
+        st.session_state.pop("user", None)
+        st.session_state.pop("last_activity", None)
+        st.warning("Your account is unavailable. Please log in again.")
+        return None
+
+    updated_user = {
+        "id": row["id"],
+        "username": row["username"],
+        "email": row["email"],
+        "role": row["role"],
+        "force_password_change": row["force_password_change"]
+    }
+
+    st.session_state["user"] = updated_user
+
+    return updated_user
+
 
 
 def auth_screen():
