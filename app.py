@@ -2451,6 +2451,41 @@ def staff_management(user):
     else:
         st.info("No staff accounts created yet.")
 
+def audit_logs_page(user):
+    require_owner(user)
+
+    st.title("📋 NeuroLens Audit Logs")
+    st.caption("Owner-only security and activity records")
+
+    logs = query(
+        """
+        SELECT
+            id,
+            actor_username,
+            action,
+            target_type,
+            target_id,
+            details,
+            created_at
+        FROM audit_logs
+        ORDER BY id DESC
+        LIMIT 200
+        """
+    )
+
+    if logs:
+        st.dataframe(
+            [dict(row) for row in logs],
+            use_container_width=True
+        )
+
+        st.caption(
+            f"Showing latest {len(logs)} audit events."
+        )
+
+    else:
+        st.info("No audit events recorded yet.")
+
 
 def main():
     # Aapka existing main code 
