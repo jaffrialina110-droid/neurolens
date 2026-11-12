@@ -302,6 +302,148 @@ def verify_password(password, stored):
     except (ValueError, TypeError, AttributeError):
         return False
 
+def audit_event(
+    actor_user_id,
+    actor_username,
+    action,
+    target_type=None,
+    target_id=None,
+    details=None
+):
+    execute(
+        """
+        INSERT INTO audit_logs
+        (actor_user_id, actor_username, action,
+         target_type, target_id, details, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            actor_user_id,
+            actor_username,
+            action,
+            target_type,
+            str(target_id) if target_id is not None else None,
+            details,
+            now()
+        )
+    )
+
+
+def login_is_locked(username):
+    row = query(
+        "SELECT locked_until FROM login_attempts WHERE username=?",
+        (username,),
+        one=True
+    )
+
+    if not row or not row["locked_until"]:
+        return False
+
+    try:
+        return datetime.fromisoformat(
+            row["locked_until"]
+        ) > datetime.fromisoformat(now())
+    except (ValueError, TypeError):
+        return False
+
+
+def record_login_failure(username):
+    row = query(
+        "SELECT failed_count, locked_until "
+        "FROM login_attempts WHERE username=?",
+        (username,),
+        one=True
+    )
+
+    current_time = datetime.fromisoformat(now())
+
+    if row:
+        locked_until = row["locked_until"]
+
+        # Reset attempts if an earlier lock has expired
+        if locked_until:
+            try:
+                if datetime.fromisoformat(locked_until) <= current_time:
+                    failed_count = 0
+                else:
+                    failed_count = row["failed_count"]
+            except (ValueError, TypeError):
+                failed_count = 0
+        else:
+            failed_count = row["failed_count"]
+    else:
+        failed_count = 0
+
+    failed_count += 1
+
+    lock_time = None
+
+    if failed_count >= 5:
+        from datetime import timedelta
+        lock_time = (
+            current_time + timedelta(minutes=15)
+        ).isoformat(timespec="seconds")
+
+    execute(
+        """
+        INSERT INTO login_attempts
+        (username, failed_count, locked_until, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(username) DO UPDATE SET
+            failed_count=excluded.failed_count,
+            locked_until=excluded.locked_until,
+            updated_at=excluded.updated_at
+        """,
+        (username, failed_count, lock_time, now())
+    )
+
+
+def clear_login_failures(username):
+    execute(
+        "DELETE FROM login_attempts WHERE username=?",
+        (username,)
+    )
+
+
+def authenticate_user(username, password, expected_role=None):
+    username = username.strip().lower()
+
+    if login_is_locked(username):
+        return False, "Too many failed attempts. Try again later."
+
+    row = query(
+        "SELECT * FROM users WHERE username=?",
+        (username,),
+        one=True
+    )
+
+    if not row or not verify_password(password, row["password_hash"]):
+        record_login_failure(username)
+        return False, "Username or password is incorrect."
+
+    if not row["is_active"]:
+        return False, "Username or password is incorrect."
+
+    if expected_role and row["role"] != expected_role:
+        return False, "Username or password is incorrect."
+
+    clear_login_failures(username)
+
+    execute(
+        "UPDATE users SET last_login=? WHERE id=?",
+        (now(), row["id"])
+    )
+
+    audit_event(
+        row["id"],
+        row["username"],
+        "login_success",
+        "user",
+        row["id"]
+    )
+
+    return True, row
+
 
 def get_user():
     return st.session_state.get("user")
