@@ -2296,7 +2296,10 @@ def settings_page(uid):
         st.session_state.pop("chat_history", None)
         st.rerun()
 
-
+def require_owner(user):
+    if not user or user.get("role") != "owner":
+        st.error("Access denied. Owner permission required.")
+        st.stop()
 # =========================================================
 # MAIN ROUTER
 # =========================================================
