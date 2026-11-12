@@ -174,6 +174,32 @@ CREATE TABLE IF NOT EXISTS users (
     conn = db()
     try:
         conn.executescript(schema)
+
+        # Safe migration for existing users
+        existing_columns = {
+            row[1] for row in
+            conn.execute("PRAGMA table_info(users)").fetchall()
+        }
+
+        migrations = {
+            "role": "TEXT NOT NULL DEFAULT 'member'",
+            "is_active": "INTEGER NOT NULL DEFAULT 1",
+            "force_password_change": "INTEGER NOT NULL DEFAULT 0",
+            "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
+            "locked_until": "TEXT",
+            "last_login": "TEXT"
+        }
+
+        for column, definition in migrations.items():
+            if column not in existing_columns:
+                conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {column} {definition}"
+                )
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)"
+        )
+
         conn.commit()
     finally:
         conn.close()
