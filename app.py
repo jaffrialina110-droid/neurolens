@@ -63,13 +63,21 @@ def now():
 
 def init_db():
     schema = """
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-    );
+    
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    force_password_change INTEGER NOT NULL DEFAULT 0,
+    failed_login_count INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    last_login TEXT
+);
+
 
     CREATE TABLE IF NOT EXISTS journal (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
