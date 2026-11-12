@@ -2351,6 +2351,29 @@ def require_owner(user):
     if not user or user.get("role") != "owner":
         st.error("Access denied. Owner permission required.")
         st.stop()
+       def settings_page(uid):
+    # Aapka existing Settings code
+    ...
+
+
+def change_password_page(user):
+    # Password change wala complete code
+    ...
+
+
+def require_owner(user):
+    if not user or user.get("role") != "owner":
+        st.error("Access denied. Owner permission required.")
+        st.stop()
+
+
+def owner_control_center(user):
+    # Owner Control Center ka complete code
+    ...
+
+
+def main():
+    # Aapka existing main code 
 # =========================================================
 # MAIN ROUTER
 # =========================================================
