@@ -2320,6 +2320,14 @@ def main():
     )
 
     pages = [
+        "
+    role = user.get("role", "member")
+
+    pages = [
+        "
+    role = user.get("role", "member")
+
+    pages = [
         "Home",
         "Brain Explorer",
         "CSTC Circuit Learning",
@@ -2335,6 +2343,24 @@ def main():
         "Photo Studio",
         "Progress Dashboard",
         "Settings"
+    ]
+
+    if role == "owner":
+        pages.extend([
+            "Owner Control Center",
+            "Staff Management",
+            "Audit Logs"
+        ])
+
+    ]
+
+    if role == "owner":
+        pages.extend([
+            "Owner Control Center",
+            "Staff Management",
+            "Audit Logs"
+        ])
+
     ]
 
     page = st.sidebar.radio(
