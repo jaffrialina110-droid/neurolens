@@ -1731,10 +1731,573 @@ def page_cstc_learning():
         "collateral projection, feedback connection or "
         "cell-type-specific pathway."
     )
-
-
 # ============================================================
 # REGISTER PART 4 PAGES
 # ============================================================
 
 # These functions are now available to the main router.
+# ============================================================
+# PART 5 — INTERACTIVE NEUROSCIENCE LAB
+# ============================================================
+
+def save_experiment_result(name, score, details=None):
+    if st.session_state.authenticated:
+        return save_challenge_result(
+            name,
+            score,
+            details or {}
+        )
+
+    st.session_state.challenge_results.append({
+        "challenge": name,
+        "score": score,
+        "details": details or {},
+        "date": datetime.now().isoformat()
+    })
+
+    return True
+
+
+def page_lab():
+
+    render_brand_header()
+
+    st.title("Interactive Neuroscience Lab")
+
+    st.write(
+        "Welcome to your interactive cognitive learning lab. "
+        "Choose an experiment and explore your task performance."
+    )
+
+    st.markdown(
+        """
+        <div class="neuro-card">
+            <h3>Neuroscience Learning Environment</h3>
+            <p>
+                These experiments measure task performance,
+                such as response accuracy and completion time.
+                They do not directly measure brain activity.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    experiment = st.selectbox(
+        "Select your experiment",
+        [
+            "Memory Sequence",
+            "Attention Detection",
+            "Stroop Control",
+            "Decision and Reward",
+            "Pattern Recognition"
+        ]
+    )
+
+    st.divider()
+
+    if experiment == "Memory Sequence":
+        memory_experiment()
+
+    elif experiment == "Attention Detection":
+        attention_experiment()
+
+    elif experiment == "Stroop Control":
+        stroop_experiment()
+
+    elif experiment == "Decision and Reward":
+        decision_experiment()
+
+    elif experiment == "Pattern Recognition":
+        pattern_experiment()
+
+
+# ============================================================
+# MEMORY EXPERIMENT
+# ============================================================
+
+def memory_experiment():
+
+    st.subheader("Memory Sequence")
+
+    if "memory_sequence" not in st.session_state:
+        st.session_state.memory_sequence = None
+
+    if "memory_started" not in st.session_state:
+        st.session_state.memory_started = False
+
+    if "memory_submitted" not in st.session_state:
+        st.session_state.memory_submitted = False
+
+    if st.button("Start Memory Experiment"):
+
+        sequence = [
+            random.randint(0, 9)
+            for _ in range(6)
+        ]
+
+        st.session_state.memory_sequence = sequence
+        st.session_state.memory_started = True
+        st.session_state.memory_submitted = False
+        st.rerun()
+
+    if st.session_state.memory_started:
+
+        st.info(
+            "Memorize this sequence. When you are ready, "
+            "press Hide Sequence."
+        )
+
+        if not st.session_state.memory_submitted:
+            st.markdown(
+                "### " + "  —  ".join(
+                    map(
+                        str,
+                        st.session_state.memory_sequence
+                    )
+                )
+            )
+
+            if st.button("Hide Sequence"):
+                st.session_state.memory_submitted = True
+                st.rerun()
+
+        else:
+            answer = st.text_input(
+                "Enter the six digits in the same order",
+                max_chars=6
+            )
+
+            if st.button("Submit Memory Answer"):
+
+                correct = "".join(
+                    map(
+                        str,
+                        st.session_state.memory_sequence
+                    )
+                )
+
+                submitted = answer.strip()
+
+                if len(submitted) != 6 or not submitted.isdigit():
+                    st.error("Enter exactly six digits.")
+
+                else:
+                    score = sum(
+                        a == b
+                        for a, b in zip(correct, submitted)
+                    )
+
+                    percentage = score / 6 * 100
+
+                    save_experiment_result(
+                        "Memory Sequence",
+                        percentage,
+                        {
+                            "correct_positions": score,
+                            "total_positions": 6
+                        }
+                    )
+
+                    st.success(
+                        f"Correct positions: {score}/6"
+                    )
+
+                    st.metric(
+                        "Position accuracy",
+                        f"{percentage:.1f}%"
+                    )
+
+                    st.session_state.memory_started = False
+                    st.session_state.memory_submitted = False
+                    st.session_state.memory_sequence = None
+
+
+# ============================================================
+# ATTENTION EXPERIMENT
+# ============================================================
+
+def attention_experiment():
+
+    st.subheader("Attention Detection")
+
+    st.write(
+        "Find the target letter X among distractors."
+    )
+
+    if "attention_grid" not in st.session_state:
+        st.session_state.attention_grid = None
+
+    if "attention_target" not in st.session_state:
+        st.session_state.attention_target = None
+
+    if st.button("Generate Attention Task"):
+
+        letters = [
+            random.choice(["O", "Q", "C", "G"])
+            for _ in range(24)
+        ]
+
+        target_index = random.randint(0, 23)
+        letters[target_index] = "X"
+
+        st.session_state.attention_grid = letters
+        st.session_state.attention_target = target_index
+
+    if st.session_state.attention_grid is not None:
+
+        st.markdown("### Find X")
+
+        grid = st.columns(6)
+
+        for index, letter in enumerate(
+            st.session_state.attention_grid
+        ):
+
+            with grid[index % 6]:
+
+                st.markdown(
+                    f"<div class='neuro-card' "
+                    f"style='text-align:center'>"
+                    f"<h2>{letter}</h2></div>",
+                    unsafe_allow_html=True
+                )
+
+        selected = st.number_input(
+            "Enter the position of X (1–24)",
+            min_value=1,
+            max_value=24,
+            step=1
+        )
+
+        if st.button("Check Attention Answer"):
+
+            correct = (
+                selected - 1
+                == st.session_state.attention_target
+            )
+
+            score = 100 if correct else 0
+
+            save_experiment_result(
+                "Attention Detection",
+                score,
+                {
+                    "correct": correct,
+                    "target_position":
+                        st.session_state.attention_target + 1
+                }
+            )
+
+            if correct:
+                st.success("Correct target detected!")
+
+            else:
+                st.error(
+                    "Not quite. The target was at position "
+                    f"{st.session_state.attention_target + 1}."
+                )
+
+            st.session_state.attention_grid = None
+            st.session_state.attention_target = None
+
+
+# ============================================================
+# STROOP CONTROL EXPERIMENT
+# ============================================================
+
+def stroop_experiment():
+
+    st.subheader("Stroop Control Task")
+
+    st.write(
+        "Select the ink color, not the written word."
+    )
+
+    colors = {
+        "RED": "#FF3333",
+        "BLUE": "#3399FF",
+        "GREEN": "#20C878",
+        "YELLOW": "#E6C229"
+    }
+
+    if "stroop_word" not in st.session_state:
+        st.session_state.stroop_word = None
+
+    if "stroop_ink" not in st.session_state:
+        st.session_state.stroop_ink = None
+
+    if st.button("Start Stroop Trial"):
+
+        word = random.choice(list(colors.keys()))
+        ink = random.choice(list(colors.keys()))
+
+        st.session_state.stroop_word = word
+        st.session_state.stroop_ink = ink
+
+    if st.session_state.stroop_word:
+
+        st.markdown(
+            f"""
+            <div style="
+                padding:35px;
+                text-align:center;
+                font-size:44px;
+                font-weight:900;
+                color:{colors[st.session_state.stroop_ink]};
+            ">
+                {st.session_state.stroop_word}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        answer = st.radio(
+            "What is the ink color?",
+            list(colors.keys()),
+            horizontal=True
+        )
+
+        if st.button("Submit Stroop Answer"):
+
+            correct = (
+                answer == st.session_state.stroop_ink
+            )
+
+            score = 100 if correct else 0
+
+            save_experiment_result(
+                "Stroop Control",
+                score,
+                {
+                    "correct": correct,
+                    "word": st.session_state.stroop_word,
+                    "ink": st.session_state.stroop_ink
+                }
+            )
+
+            if correct:
+                st.success("Correct ink color!")
+
+            else:
+                st.error(
+                    "Incorrect. The ink color was "
+                    f"{st.session_state.stroop_ink}."
+                )
+
+            st.session_state.stroop_word = None
+            st.session_state.stroop_ink = None
+
+
+# ============================================================
+# DECISION AND REWARD EXPERIMENT
+# ============================================================
+
+def decision_experiment():
+
+    st.subheader("Decision and Reward")
+
+    st.write(
+        "Choose between two hypothetical reward options."
+    )
+
+    st.markdown(
+        """
+        <div class="neuro-card">
+            <h3>Option A</h3>
+            <p>Receive Rs. 1,000 today.</p>
+        </div>
+
+        <div class="neuro-card">
+            <h3>Option B</h3>
+            <p>Receive Rs. 1,500 after 30 days.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    choice = st.radio(
+        "Which option would you choose?",
+        [
+            "Option A — Rs. 1,000 today",
+            "Option B — Rs. 1,500 after 30 days"
+        ]
+    )
+
+    reason = st.text_area(
+        "Why did you choose this option?",
+        max_chars=500
+    )
+
+    if st.button("Save My Decision"):
+
+        save_experiment_result(
+            "Decision and Reward",
+            0,
+            {
+                "choice": choice,
+                "reason": reason
+            }
+        )
+
+        st.success("Your decision has been recorded.")
+
+        st.info(
+            "Reflection: Your choice may involve time "
+            "preference, perceived uncertainty, immediate "
+            "reward and future value. One choice cannot "
+            "identify your personality or brain activity."
+        )
+
+
+# ============================================================
+# PATTERN RECOGNITION EXPERIMENT
+# ============================================================
+
+def pattern_experiment():
+
+    st.subheader("Pattern Recognition")
+
+    patterns = [
+        {
+            "sequence": [2, 4, 8, 16, 32],
+            "answer": 64,
+            "explanation": "Each number doubles."
+        },
+        {
+            "sequence": [3, 6, 9, 12, 15],
+            "answer": 18,
+            "explanation": "Add 3 each time."
+        },
+        {
+            "sequence": [1, 4, 9, 16, 25],
+            "answer": 36,
+            "explanation": "These are consecutive square numbers."
+        },
+        {
+            "sequence": [5, 10, 20, 40, 80],
+            "answer": 160,
+            "explanation": "Each number doubles."
+        }
+    ]
+
+    if "pattern_task" not in st.session_state:
+        st.session_state.pattern_task = None
+
+    if st.button("Generate Pattern"):
+
+        st.session_state.pattern_task = random.choice(
+            patterns
+        )
+
+    if st.session_state.pattern_task:
+
+        task = st.session_state.pattern_task
+
+        sequence_text = " → ".join(
+            map(str, task["sequence"])
+        )
+
+        st.markdown(
+            f"### {sequence_text} → ?"
+        )
+
+        answer = st.number_input(
+            "Enter the next number",
+            min_value=0,
+            max_value=10000,
+            step=1
+        )
+
+        if st.button("Check Pattern"):
+
+            correct = answer == task["answer"]
+
+            score = 100 if correct else 0
+
+            save_experiment_result(
+                "Pattern Recognition",
+                score,
+                {
+                    "correct": correct,
+                    "answer": task["answer"]
+                }
+            )
+
+            if correct:
+                st.success("Correct pattern!")
+
+            else:
+                st.error(
+                    f"The correct answer was {task['answer']}."
+                )
+
+            st.info(task["explanation"])
+
+            st.session_state.pattern_task = None
+
+
+# ============================================================
+# COGNITIVE CHALLENGES PAGE
+# ============================================================
+
+def page_cognitive_challenges():
+
+    render_brand_header()
+
+    st.title("Cognitive Challenges")
+
+    st.write(
+        "Practice five cognitive task categories and "
+        "review your task performance."
+    )
+
+    st.markdown(
+        """
+        <div class="neuro-card">
+            <h3>Learning and Self-Observation</h3>
+            <p>
+                Results describe performance on these specific
+                tasks only. They are not clinical assessments,
+                IQ tests or direct measurements of brain activity.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    challenge_names = [
+        "Memory Sequence",
+        "Attention Detection",
+        "Stroop Control",
+        "Decision and Reward",
+        "Pattern Recognition"
+    ]
+
+    selected = st.selectbox(
+        "Choose a cognitive challenge",
+        challenge_names
+    )
+
+    if selected == "Memory Sequence":
+        memory_experiment()
+
+    elif selected == "Attention Detection":
+        attention_experiment()
+
+    elif selected == "Stroop Control":
+        stroop_experiment()
+
+    elif selected == "Decision and Reward":
+        decision_experiment()
+
+    elif selected == "Pattern Recognition":
+        pattern_experiment()
+
+
+# ============================================================
+# PART 5 PAGE REGISTRATION
+# ============================================================
+
+# page_lab() and page_cognitive_challenges()
+# are now available for the final application router.
