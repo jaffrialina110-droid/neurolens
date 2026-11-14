@@ -5351,3 +5351,266 @@ def page_appointments():
         "Ayna AI is a separate educational AI assistant. "
         "Submitting this form does not automatically book a meeting."
     )
+
+# ============================================================
+# PART 12 — NEUROLENS OWNER CONTROL CENTER
+# ============================================================
+
+def get_owner_email():
+    return str(get_secret("OWNER_EMAIL", "") or "").strip().lower()
+
+
+def is_neurolens_owner():
+    user = st.session_state.get("user")
+
+    if not isinstance(user, dict):
+        return False
+
+    owner_email = get_owner_email()
+    user_email = str(user.get("email", "") or "").strip().lower()
+
+    return bool(owner_email and user_email and user_email == owner_email)
+
+
+def owner_safe_count(table_name):
+    allowed_tables = {
+        "users",
+        "ai_conversations",
+        "ai_messages",
+        "challenge_results",
+        "research_bookmarks",
+        "appointment_requests",
+        "audit_logs",
+    }
+
+    if table_name not in allowed_tables:
+        return 0
+
+    try:
+        result = db_fetch_all(
+            f"SELECT COUNT(*) AS total FROM {table_name}"
+        )
+
+        if result:
+            first = result[0]
+            if isinstance(first, dict):
+                return int(first.get("total", 0) or 0)
+
+        return 0
+
+    except Exception:
+        return 0
+
+
+def owner_recent_records(table_name, limit=10):
+    allowed_queries = {
+        "users": """
+            SELECT id, email, created_at
+            FROM users
+            ORDER BY id DESC
+            LIMIT ?
+        """,
+        "appointments": """
+            SELECT id, user_id, purpose, preferred_date,
+                   preferred_time, contact_method,
+                   payment_status, appointment_status, created_at
+            FROM appointment_requests
+            ORDER BY id DESC
+            LIMIT ?
+        """,
+        "bookmarks": """
+            SELECT user_id, title, created_at
+            FROM research_bookmarks
+            ORDER BY created_at DESC
+            LIMIT ?
+        """,
+        "ai_usage": """
+            SELECT conversation_id, role, created_at
+            FROM ai_messages
+            ORDER BY created_at DESC
+            LIMIT ?
+        """,
+        "audit": """
+            SELECT *
+            FROM audit_logs
+            ORDER BY id DESC
+            LIMIT ?
+        """,
+    }
+
+    if table_name not in allowed_queries:
+        return []
+
+    try:
+        return db_fetch_all(allowed_queries[table_name], (limit,)) or []
+    except Exception:
+        return []
+
+
+def page_owner_control_center():
+
+    st.title("🛡️ NeuroLens Owner Control Center")
+    st.caption("Platform overview, operational monitoring and management")
+
+    if not st.session_state.get("user"):
+        st.warning("Please login first.")
+        return
+
+    if not is_neurolens_owner():
+        st.error("Access denied. Owner permission required.")
+        return
+
+    st.success("Owner access verified.")
+
+    st.markdown("### Platform Overview")
+
+    metric_data = [
+        ("Registered Users", "users"),
+        ("AI Conversations", "ai_conversations"),
+        ("AI Messages", "ai_messages"),
+        ("Challenge Results", "challenge_results"),
+        ("Research Bookmarks", "research_bookmarks"),
+        ("Appointment Requests", "appointment_requests"),
+        ("Audit Records", "audit_logs"),
+    ]
+
+    for start in range(0, len(metric_data), 3):
+        cols = st.columns(3)
+
+        for col, item in zip(cols, metric_data[start:start + 3]):
+            label, table = item
+            with col:
+                st.metric(label, owner_safe_count(table))
+
+    st.divider()
+
+    tab_users, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
+        "Users",
+        "Appointments",
+        "Research",
+        "AI Activity",
+        "Security",
+        "Advanced Stage"
+    ])
+
+    with tab_users:
+        st.subheader("Registered Users")
+
+        users = owner_recent_records("users", 30)
+
+        if users:
+            st.dataframe(
+                pd.DataFrame(users),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No user records available.")
+
+        st.caption(
+            "This view shows basic account information only. "
+            "It does not provide access to private journal entries."
+        )
+
+    with tab_appointments:
+        st.subheader("Appointment Requests")
+
+        appointments = owner_recent_records("appointments", 50)
+
+        if appointments:
+            st.dataframe(
+                pd.DataFrame(appointments),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No appointment requests available.")
+
+        st.warning(
+            "Requests shown here are not automatically confirmed. "
+            "Payment and appointment status must be verified separately."
+        )
+
+    with tab_research:
+        st.subheader("Research Activity")
+
+        bookmarks = owner_recent_records("bookmarks", 30)
+
+        if bookmarks:
+            st.dataframe(
+                pd.DataFrame(bookmarks),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No research bookmarks available.")
+
+    with tab_ai:
+        st.subheader("AI Activity Overview")
+
+        messages = owner_recent_records("ai_usage", 30)
+
+        if messages:
+            st.dataframe(
+                pd.DataFrame(messages),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No AI activity records available.")
+
+        st.caption(
+            "This is operational metadata, not a private conversation viewer. "
+            "Private Ayna conversations must remain protected."
+        )
+
+    with tab_security:
+        st.subheader("Security and Audit Overview")
+
+        st.write("Audit records:", owner_safe_count("audit_logs"))
+
+        audit_records = owner_recent_records("audit", 30)
+
+        if audit_records:
+            st.dataframe(
+                pd.DataFrame(audit_records),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No audit records available.")
+
+        st.warning(
+            "This dashboard does not replace database-level security, "
+            "Supabase RLS policies, server-side authorization or security audits."
+        )
+
+    with tab_roadmap:
+        st.subheader("Advanced Stage — Preview")
+
+        planned_features = [
+            "NeuroSocial advanced community and private messaging",
+            "Advanced Ayna AI research assistant",
+            "Research Workspace and Research Engine Pro",
+            "3D Brain and advanced CSTC circuit simulations",
+            "EEG and eye-tracking hardware integrations",
+            "Advanced Behaviour Decoding",
+            "Advanced Photo Studio and face-tracking effects",
+            "Staff Workspace and role-based permissions",
+            "Advanced privacy and security controls",
+            "Advanced analytics and platform monitoring",
+        ]
+
+        for feature in planned_features:
+            st.markdown(f"- 🔒 Planned: {feature}")
+
+        st.info(
+            "These features are roadmap previews, not claims that "
+            "the Advanced Stage is already operational."
+        )
+
+    st.divider()
+
+    if st.button("Refresh Owner Dashboard", use_container_width=True):
+        st.rerun()
+
