@@ -3224,3 +3224,230 @@ def page_personal_healing():
 # page_private_journal()
 # page_personal_healing()
 # are ready for the final router.
+# ============================================================
+# PART 7A — RESEARCH LIBRARY
+# ============================================================
+
+def search_europe_pmc(query, page_size=10):
+
+    query = query.strip()
+
+    if not query:
+        return []
+
+    from urllib.parse import urlencode
+    from urllib.request import Request, urlopen
+
+    params = urlencode({
+        "query": query,
+        "format": "json",
+        "pageSize": page_size,
+        "resultType": "core"
+    })
+
+    url = (
+        "https://www.ebi.ac.uk/europepmc/webservices/"
+        "rest/search?" + params
+    )
+
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "NeuroLens-Research-App/1.0"
+        }
+    )
+
+    try:
+        with urlopen(request, timeout=20) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+
+        return data.get("resultList", {}).get("result", [])
+
+    except Exception as exc:
+        st.error(f"Research search failed: {exc}")
+        return []
+
+
+def research_article_url(article):
+
+    pmid = article.get("pmid")
+    pmcid = article.get("pmcid")
+    doi = article.get("doi")
+
+    if pmcid:
+        return f"https://europepmc.org/articles/{pmcid}"
+
+    if pmid:
+        return f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+
+    if doi:
+        return f"https://doi.org/{doi}"
+
+    return ""
+
+
+def page_research_library():
+
+    render_brand_header()
+
+    st.title("NeuroLens Research Library")
+
+    st.write(
+        "Search scientific publications in neuroscience, "
+        "mental health, cognition, behavior and related fields."
+    )
+
+    st.caption(
+        "Research records are retrieved from Europe PMC. "
+        "Full-text availability depends on publisher and access rights."
+    )
+
+    query = st.text_input(
+        "Search research publications",
+        placeholder=(
+            "Example: cognitive neuroscience, CSTC circuits, "
+            "consciousness, memory, addiction"
+        )
+    )
+
+    max_results = st.selectbox(
+        "Number of results",
+        [5, 10, 20],
+        index=1
+    )
+
+    if st.button("Search Research"):
+
+        results = search_europe_pmc(
+            query,
+            max_results
+        )
+
+        st.session_state.research_results = results
+
+    results = st.session_state.get(
+        "research_results",
+        []
+    )
+
+    if results:
+
+        st.divider()
+
+        for index, article in enumerate(results):
+
+            title = article.get(
+                "title",
+                "Title unavailable"
+            )
+
+            authors = article.get(
+                "authorString",
+                "Authors unavailable"
+            )
+
+            journal = article.get(
+                "journalTitle",
+                "Journal unavailable"
+            )
+
+            year = article.get(
+                "firstPublicationDate",
+                article.get("pubYear", "Date unavailable")
+            )
+
+            doi = article.get(
+                "doi",
+                "Not available"
+            )
+
+            abstract = article.get(
+                "abstractText",
+                "Abstract not available in this record."
+            )
+
+            article_url = research_article_url(article)
+
+            with st.expander(
+                f"{index + 1}. {title}"
+            ):
+
+                st.write(f"**Authors:** {authors}")
+                st.write(f"**Journal:** {journal}")
+                st.write(f"**Publication date:** {year}")
+                st.write(f"**DOI:** {doi}")
+
+                st.markdown("**Abstract**")
+                st.write(abstract)
+
+                if article_url:
+                    st.markdown(
+                        f"[Open publication]({article_url})"
+                    )
+
+                if st.button(
+                    "Bookmark Publication",
+                    key=f"research_bookmark_{index}"
+                ):
+
+                    if require_login():
+
+                        success = save_research_bookmark(
+                            title,
+                            article_url
+                        )
+
+                        if success:
+                            st.success("Publication bookmarked.")
+
+                if st.button(
+                    "Prepare AI Summary",
+                    key=f"research_summary_{index}"
+                ):
+
+                    st.session_state.research_summary_text = (
+                        f"Title: {title}\n"
+                        f"Authors: {authors}\n"
+                        f"Journal: {journal}\n"
+                        f"Date: {year}\n"
+                        f"DOI: {doi}\n"
+                        f"Abstract: {abstract}"
+                    )
+
+                    st.session_state.page = "Ask Ayna AI"
+                    st.rerun()
+
+    elif query:
+        st.info(
+            "No results loaded yet. Press Search Research."
+        )
+
+    st.divider()
+
+    st.subheader("My Research Bookmarks")
+
+    if require_login():
+
+        bookmarks = user_data_query(
+            "research_bookmarks"
+        )
+
+        if bookmarks:
+
+            for item in bookmarks:
+
+                st.markdown(
+                    f"**{item['title']}**"
+                )
+
+                if item.get("article_url"):
+                    st.markdown(
+                        f"[Open article]({item['article_url']})"
+                    )
+
+                st.caption(item["created_at"])
+
+        else:
+            st.info("You have not saved any publications yet.")
