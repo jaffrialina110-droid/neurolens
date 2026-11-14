@@ -936,3 +936,426 @@ def account_status():
     user = current_user()
 
     return user["display_name"]
+# ============================================================
+# NEUROLENS — WELCOME DASHBOARD
+# ============================================================
+
+def render_neural_animation():
+    components.html(
+        """
+        <div class="neural-stage">
+            <div class="neural-orbit orbit-one"></div>
+            <div class="neural-orbit orbit-two"></div>
+            <div class="neural-orbit orbit-three"></div>
+
+            <div class="neural-brain">
+                <div class="brain-core">N</div>
+                <div class="brain-pulse"></div>
+            </div>
+        </div>
+
+        <style>
+        .neural-stage {
+            height: 280px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .neural-brain {
+            width: 125px;
+            height: 125px;
+            border-radius: 48% 52% 45% 55%;
+            background: linear-gradient(
+                135deg,
+                #8057F5,
+                #38BDF8
+            );
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow:
+                0 0 35px rgba(128,87,245,.65),
+                0 0 75px rgba(56,189,248,.25);
+            animation: brainFloat 3s ease-in-out infinite;
+            position: relative;
+            z-index: 2;
+        }
+
+        .brain-core {
+            color: white;
+            font-size: 48px;
+            font-weight: 900;
+            font-family: Arial;
+        }
+
+        .brain-pulse {
+            position: absolute;
+            inset: -15px;
+            border: 2px solid #38BDF8;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .neural-orbit {
+            position: absolute;
+            border: 1px solid rgba(56,189,248,.45);
+            border-radius: 50%;
+            animation: rotateOrbit 12s linear infinite;
+        }
+
+        .orbit-one {
+            width: 190px;
+            height: 190px;
+        }
+
+        .orbit-two {
+            width: 235px;
+            height: 235px;
+            animation-duration: 18s;
+        }
+
+        .orbit-three {
+            width: 275px;
+            height: 275px;
+            animation-duration: 25s;
+        }
+
+        @keyframes brainFloat {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-12px);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(.85);
+                opacity: .9;
+            }
+            100% {
+                transform: scale(1.45);
+                opacity: 0;
+            }
+        }
+
+        @keyframes rotateOrbit {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        </style>
+        """,
+        height=290
+    )
+
+
+# ============================================================
+# FEATURE NAVIGATION
+# ============================================================
+
+INITIAL_STAGE_PAGES = [
+    "Welcome",
+    "Account",
+    "Brain Explorer",
+    "CSTC Learning",
+    "Interactive Lab",
+    "Brain Puzzle",
+    "Cognitive Challenges",
+    "Personal Healing",
+    "Private Journal",
+    "Research Library",
+    "Personal eBook",
+    "Photo Studio",
+    "Progress Dashboard",
+    "Appointments",
+    "Ask Ayna AI",
+    "Owner Control Center",
+    "Staff Workspace",
+    "Advanced Stage Preview",
+    "Settings",
+]
+
+
+def navigate_to(page_name):
+    st.session_state.page = page_name
+    st.rerun()
+
+
+# ============================================================
+# FEATURE CARD
+# ============================================================
+
+def feature_card(title, description, page_name):
+    with st.container(border=True):
+        st.markdown(f"**{title}**")
+        st.caption(description)
+
+        if st.button(
+            "Open",
+            key=f"open_{page_name.replace(' ', '_')}",
+            use_container_width=True
+        ):
+            navigate_to(page_name)
+
+
+# ============================================================
+# WELCOME DASHBOARD
+# ============================================================
+
+def page_welcome():
+    render_brand_header()
+
+    st.markdown(
+        """
+        <div class="neuro-hero">
+            <h1>Welcome to NeuroLens</h1>
+            <h3>Explore the science behind your mind.</h3>
+            <p>
+                Discover cognition, behavior, brain circuits,
+                learning, memory and artificial intelligence
+                through interactive neuroscience experiences.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    left, right = st.columns([1.1, 1])
+
+    with left:
+        render_neural_animation()
+
+    with right:
+        st.markdown("### Meet Ayna AI")
+
+        st.write(
+            "Hello! I am Ayna, your NeuroLens AI learning "
+            "companion. Let's explore the brain, behavior "
+            "and cognition together."
+        )
+
+        st.caption(
+            "Educational AI assistant — not a medical professional."
+        )
+
+        if st.button(
+            "Start Exploring",
+            use_container_width=True,
+            type="primary"
+        ):
+            navigate_to("Brain Explorer")
+
+        if st.button(
+            "Talk to Ayna AI",
+            use_container_width=True
+        ):
+            navigate_to("Ask Ayna AI")
+
+    st.divider()
+
+    st.markdown("## Explore NeuroLens")
+
+    feature_data = [
+        (
+            "Brain Explorer",
+            "Explore brain regions and their cognitive functions."
+        ),
+        (
+            "CSTC Learning",
+            "Learn direct, indirect and hyperdirect pathways."
+        ),
+        (
+            "Interactive Lab",
+            "Try cognitive experiments and learning activities."
+        ),
+        (
+            "Brain Puzzle",
+            "Reconstruct brain images using interactive puzzles."
+        ),
+        (
+            "Cognitive Challenges",
+            "Practice memory, attention, Stroop and decision tasks."
+        ),
+        (
+            "Personal Healing",
+            "Explore reflection and evidence-informed coping tools."
+        ),
+        (
+            "Private Journal",
+            "Keep personal reflections in a protected space."
+        ),
+        (
+            "Research Library",
+            "Discover neuroscience and research publications."
+        ),
+        (
+            "Personal eBook",
+            "Write and organize your own chapters and stories."
+        ),
+        (
+            "Photo Studio",
+            "Create portraits, effects and downloadable edits."
+        ),
+        (
+            "Progress Dashboard",
+            "Review your learning activity and self-reports."
+        ),
+        (
+            "Appointments",
+            "Submit a request for a discussion with the creator."
+        ),
+    ]
+
+    columns = st.columns(3)
+
+    for index, item in enumerate(feature_data):
+        with columns[index % 3]:
+            feature_card(
+                item[0],
+                item[1],
+                item[0]
+            )
+
+    st.divider()
+
+    st.markdown("## Your Learning Journey")
+
+    journey_steps = [
+        "Discover the brain",
+        "Understand neural circuits",
+        "Explore cognitive processes",
+        "Practice interactive challenges",
+        "Read scientific research",
+        "Track your learning progress"
+    ]
+
+    for index, step in enumerate(journey_steps, 1):
+        st.markdown(f"**{index}.** {step}")
+
+    st.divider()
+
+    st.markdown(
+        """
+        <div class="neuro-card">
+            <h3>Advanced Stage</h3>
+            <p>
+                Future extensions will include advanced
+                NeuroSocial, 3D brain simulations, hardware
+                integrations, research tools and expanded
+                Ayna AI capabilities.
+            </p>
+            <p><b>Status: Planned / Preview</b></p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.caption(
+        "NeuroLens | Created by Ayna Jaffri | "
+        "Explore cognition, behavior & the brain"
+    )
+
+
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
+def render_sidebar():
+    with st.sidebar:
+        st.image(APP_LOGO, width=115)
+
+        st.markdown("## NEUROLENS")
+        st.caption(TAGLINE)
+
+        if st.session_state.authenticated:
+            user = current_user()
+            st.success(
+                f"Welcome, {user['display_name']}"
+            )
+        else:
+            st.info("Guest access")
+
+        st.divider()
+
+        st.markdown("### Initial Stage")
+
+        for page_name in INITIAL_STAGE_PAGES:
+            if st.button(
+                page_name,
+                key=f"sidebar_{page_name}",
+                use_container_width=True
+            ):
+                st.session_state.page = page_name
+                st.rerun()
+
+        st.divider()
+
+        st.markdown("### Advanced Stage")
+
+        st.caption("Planned extensions")
+
+        advanced_pages = [
+            "NeuroSocial Advanced",
+            "Behaviour Decoding",
+            "Advanced Brain Lab",
+            "Research Engine Pro",
+            "Hardware Hub"
+        ]
+
+        for page_name in advanced_pages:
+            st.button(
+                page_name,
+                key=f"advanced_{page_name}",
+                disabled=True,
+                use_container_width=True
+            )
+
+        st.divider()
+
+        st.caption(
+            "NeuroLens © Ayna Jaffri"
+        )
+
+
+# ============================================================
+# PAGE ROUTER
+# ============================================================
+
+def render_current_page():
+    page = st.session_state.page
+
+    if page == "Welcome":
+        page_welcome()
+
+    elif page == "Account":
+        page_account()
+
+    else:
+        st.info(
+            f"{page} module will be connected in its "
+            "respective implementation section."
+        )
+
+        if st.button("Back to Welcome"):
+            navigate_to("Welcome")
+
+
+# ============================================================
+# MAIN APPLICATION ENTRY
+# ============================================================
+
+def run_neurolens():
+    render_sidebar()
+    render_current_page()
+
+
+if __name__ == "__main__":
+    run_neurolens()
