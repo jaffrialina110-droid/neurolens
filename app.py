@@ -6275,3 +6275,255 @@ def page_advanced_stage():
         f"Current database migration version: {get_schema_version()}"
     )
 
+# ============================================================
+# PART 15 — FINAL NAVIGATION, PAGE ROUTER & APP STARTUP
+# Replace the OLD sidebar, router and footer section with this.
+# ============================================================
+
+NEUROLENS_NAVIGATION = [
+    "Welcome",
+    "Account",
+    "Lab",
+    "Cognitive Challenges",
+    "CSTC Circuit Learning",
+    "Explore Brain",
+    "Brain Journey",
+    "Brain Puzzle",
+    "Personal Healing",
+    "Private Journal",
+    "Research Library",
+    "Research Book",
+    "Personal eBook",
+    "Photo Studio",
+    "Progress Dashboard",
+    "My Progress",
+    "Ayna AI",
+    "Ask Ayna",
+    "Private Ask Ayna",
+    "AI Mood & Behaviour",
+    "NeuroSocial",
+    "Behaviour Decoding Forum",
+    "Eye Tracking",
+    "EEG / Biosignal Lab",
+    "Brain Exercises",
+    "Appointments",
+    "Payment Demo",
+    "Owner Control Center",
+    "Staff Workspace",
+    "Advanced Stage",
+    "System Health",
+    "Settings",
+]
+
+
+NEUROLENS_PAGE_FUNCTIONS = {
+    "Welcome": ("page_welcome",),
+    "Account": ("page_account",),
+    "Lab": ("page_lab",),
+    "Cognitive Challenges": ("page_cognitive_challenges",),
+    "CSTC Circuit Learning": ("page_cstc_learning",),
+    "Explore Brain": ("page_brain_explorer", "page_explore_brain"),
+    "Brain Journey": ("page_brain_journey",),
+    "Brain Puzzle": ("page_brain_puzzle",),
+    "Personal Healing": ("page_personal_healing",),
+    "Private Journal": ("page_private_journal",),
+    "Research Library": ("page_research_library",),
+    "Research Book": ("page_research_book",),
+    "Personal eBook": ("page_personal_ebook",),
+    "Photo Studio": ("page_photo_studio",),
+    "Progress Dashboard": ("page_progress_dashboard", "page_progress"),
+    "My Progress": ("page_progress_dashboard", "page_progress"),
+    "Ayna AI": ("page_ayna_ai", "page_ask_ayna"),
+    "Ask Ayna": ("page_ayna_ai", "page_ask_ayna"),
+    "Private Ask Ayna": ("page_private_ask_ayna",),
+    "AI Mood & Behaviour": ("page_mood_behaviour",),
+    "NeuroSocial": ("page_neurosocial",),
+    "Behaviour Decoding Forum": ("page_forum",),
+    "Eye Tracking": ("page_eye_tracking",),
+    "EEG / Biosignal Lab": ("page_eeg_lab",),
+    "Brain Exercises": ("page_brain_exercises",),
+    "Appointments": ("page_appointments",),
+    "Payment Demo": ("page_payment_demo",),
+    "Owner Control Center": ("page_owner_control_center",),
+    "Staff Workspace": ("page_staff_workspace",),
+    "Advanced Stage": ("page_advanced_stage",),
+    "System Health": ("page_system_health",),
+    "Settings": ("page_settings",),
+}
+
+
+def neurolens_find_page_function(page_name):
+    candidates = NEUROLENS_PAGE_FUNCTIONS.get(page_name, ())
+
+    for function_name in candidates:
+        function = globals().get(function_name)
+
+        if callable(function):
+            return function
+
+    return None
+
+
+def neurolens_initialize_modules():
+    """
+    Initialize available modules without allowing an optional
+    module failure to stop the main application.
+    """
+
+    initializers = [
+        "initialize_database",
+        "initialize_appointment_table",
+        "initialize_staff_tables",
+        "initialize_extension_registry",
+    ]
+
+    for initializer_name in initializers:
+        initializer = globals().get(initializer_name)
+
+        if callable(initializer):
+            try:
+                initializer()
+            except Exception as error:
+                print(
+                    f"NeuroLens initialization warning "
+                    f"({initializer_name}): {error}"
+                )
+
+
+def neurolens_render_sidebar():
+    with st.sidebar:
+
+        logo_path = globals().get("LOGO_PATH")
+
+        if logo_path and os.path.exists(str(logo_path)):
+            st.image(str(logo_path), use_container_width=True)
+        else:
+            app_logo = globals().get("APP_LOGO")
+
+            if app_logo and os.path.exists(str(app_logo)):
+                st.image(str(app_logo), use_container_width=True)
+
+        app_name = globals().get("APP_NAME", "NEUROLENS")
+        creator = globals().get("CREATOR", "Ayna Jaffri")
+
+        st.markdown(
+            f"""
+            <div style="text-align:center;padding:5px 8px 12px;">
+                <h2>{app_name}</h2>
+                <div>{creator}</div>
+                <small>Explore cognition, behavior & the brain</small>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        current_page = st.session_state.get("page", "Welcome")
+
+        if current_page not in NEUROLENS_NAVIGATION:
+            current_page = "Welcome"
+            st.session_state.page = current_page
+
+        selected_page = st.radio(
+            "Navigate NeuroLens",
+            NEUROLENS_NAVIGATION,
+            index=NEUROLENS_NAVIGATION.index(current_page),
+            key="neurolens_main_navigation",
+        )
+
+        if selected_page != current_page:
+            st.session_state.page = selected_page
+            st.rerun()
+
+        st.divider()
+
+        st.caption(
+            "Initial Stage and Advanced Stage are kept as separate "
+            "feature areas."
+        )
+
+
+def neurolens_render_current_page():
+    page_name = st.session_state.get("page", "Welcome")
+
+    page_function = neurolens_find_page_function(page_name)
+
+    if not callable(page_function):
+        st.warning(
+            f"The page '{page_name}' is not available in this build yet."
+        )
+        st.info(
+            "Check that its module code has been added before opening it."
+        )
+        return
+
+    try:
+        page_function()
+
+    except Exception as error:
+        st.error(
+            f"The '{page_name}' page encountered an error."
+        )
+
+        st.caption(
+            "The error has been isolated to this page. "
+            "Other pages may still be available."
+        )
+
+        st.session_state["last_error"] = str(error)[:1000]
+
+        try:
+            if "health_log" in st.session_state:
+                st.session_state.health_log.append({
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "kind": "ERROR",
+                    "feature": page_name,
+                    "message": str(error)[:500],
+                })
+        except Exception:
+            pass
+
+        with st.expander("Technical error details"):
+            st.code(str(error))
+
+
+def run_neurolens():
+    if "page" not in st.session_state:
+        st.session_state.page = "Welcome"
+
+    neurolens_initialize_modules()
+
+    render_header_function = globals().get("render_header")
+
+    if callable(render_header_function):
+        try:
+            render_header_function()
+        except Exception:
+            pass
+
+    neurolens_render_sidebar()
+
+    neurolens_render_current_page()
+
+    st.divider()
+
+    app_name = globals().get("APP_NAME", "NEUROLENS")
+    creator = globals().get("CREATOR", "Ayna Jaffri")
+
+    st.markdown(
+        f"""
+        <div style="text-align:center;opacity:0.65;font-size:13px;">
+            {app_name} · Explore cognition, behavior & the brain
+            <br>
+            Created by {creator}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# This must be the ONLY final app startup block.
+if __name__ == "__main__":
+    run_neurolens()
+
