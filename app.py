@@ -3451,3 +3451,407 @@ def page_research_library():
 
         else:
             st.info("You have not saved any publications yet.")
+# ============================================================
+# PART 7B — PERSONAL EBOOK DATABASE
+# ============================================================
+
+def initialize_ebook_database():
+
+    connection = get_local_db()
+
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS ebook_chapters (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            chapter_title TEXT NOT NULL,
+            category TEXT DEFAULT 'Personal Writing',
+            encrypted_content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+
+    connection.commit()
+    connection.close()
+
+
+initialize_ebook_database()
+
+
+# ============================================================
+# SAVE PRIVATE EBOOK CHAPTER
+# ============================================================
+
+def save_ebook_chapter(title, category, content):
+
+    if not require_login():
+        return False
+
+    if not private_session_active():
+        return False
+
+    title = title.strip()
+    content = content.strip()
+
+    if not title or not content:
+        return False
+
+    master_key = base64.urlsafe_b64decode(
+        st.session_state.private_master_key
+    )
+
+    encrypted_content = encrypt_private_data(
+        content,
+        master_key
+    )
+
+    now = datetime.now().isoformat()
+
+    return db_execute(
+        """
+        INSERT INTO ebook_chapters (
+            id,
+            user_id,
+            chapter_title,
+            category,
+            encrypted_content,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            secrets.token_hex(16),
+            st.session_state.user_id,
+            title,
+            category,
+            encrypted_content,
+            now,
+            now
+        )
+    )
+
+
+# ============================================================
+# LOAD PRIVATE EBOOK CHAPTERS
+# ============================================================
+
+def load_ebook_chapters():
+
+    if not require_login():
+        return []
+
+    if not private_session_active():
+        return []
+
+    master_key = base64.urlsafe_b64decode(
+        st.session_state.private_master_key
+    )
+
+    chapters = db_fetch_all(
+        """
+        SELECT *
+        FROM ebook_chapters
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        """,
+        (st.session_state.user_id,)
+    )
+
+    output = []
+
+    for chapter in chapters:
+
+        try:
+            content = decrypt_private_data(
+                chapter["encrypted_content"],
+                master_key
+            )
+
+            output.append({
+                "id": chapter["id"],
+                "title": chapter["chapter_title"],
+                "category": chapter["category"],
+                "content": content,
+                "created_at": chapter["created_at"]
+            })
+
+        except Exception:
+            continue
+
+    return output
+
+
+# ============================================================
+# DELETE EBOOK CHAPTER
+# ============================================================
+
+def delete_ebook_chapter(chapter_id):
+
+    if not require_login():
+        return False
+
+    if not private_session_active():
+        return False
+
+    return db_execute(
+        """
+        DELETE FROM ebook_chapters
+        WHERE id = ? AND user_id = ?
+        """,
+        (
+            chapter_id,
+            st.session_state.user_id
+        )
+    )
+
+
+# ============================================================
+# EBOOK EXPORT
+# ============================================================
+
+def create_ebook_pdf(title, chapters):
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+            PageBreak
+        )
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+
+    except ImportError:
+        return None
+
+    output = io.BytesIO()
+
+    document = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        rightMargin=0.7 * inch,
+        leftMargin=0.7 * inch,
+        topMargin=0.7 * inch,
+        bottomMargin=0.7 * inch
+    )
+
+    styles = getSampleStyleSheet()
+
+    story = [
+        Paragraph(title, styles["Title"]),
+        Spacer(1, 20),
+        Paragraph(
+            f"Created in NeuroLens by "
+            f"{st.session_state.user['display_name']}",
+            styles["Normal"]
+        ),
+        Spacer(1, 30)
+    ]
+
+    for chapter in chapters:
+
+        story.append(
+            Paragraph(
+                chapter["title"],
+                styles["Heading1"]
+            )
+        )
+
+        story.append(Spacer(1, 12))
+
+        safe_content = (
+            chapter["content"]
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\n", "<br/>")
+        )
+
+        story.append(
+            Paragraph(
+                safe_content,
+                styles["BodyText"]
+            )
+        )
+
+        story.append(Spacer(1, 25))
+
+    document.build(story)
+
+    output.seek(0)
+
+    return output.getvalue()
+
+
+# ============================================================
+# PERSONAL EBOOK PAGE
+# ============================================================
+
+def page_personal_ebook():
+
+    render_brand_header()
+
+    st.title("Personal eBook Studio")
+
+    st.write(
+        "Create your own digital book with chapters, "
+        "research notes, personal stories and reflections."
+    )
+
+    if not require_login():
+        return
+
+    if Fernet is None:
+        st.error("Encryption library is required.")
+        return
+
+    vault = db_fetch_one(
+        """
+        SELECT user_id FROM journal_vault
+        WHERE user_id = ?
+        """,
+        (st.session_state.user_id,)
+    )
+
+    if not vault:
+        st.warning(
+            "Create your Private Journal vault first."
+        )
+        return
+
+    if not private_session_active():
+
+        st.info(
+            "Unlock your Private Journal to access "
+            "your encrypted eBook."
+        )
+
+        pin = st.text_input(
+            "Enter your private PIN",
+            type="password",
+            key="ebook_unlock_pin"
+        )
+
+        if st.button("Unlock eBook Studio"):
+
+            if unlock_private_vault(pin):
+                st.rerun()
+
+        return
+
+    st.subheader("Create a new chapter")
+
+    title = st.text_input(
+        "Chapter title",
+        placeholder="My First Chapter"
+    )
+
+    category = st.selectbox(
+        "Category",
+        [
+            "Personal Writing",
+            "Research Notes",
+            "Neuroscience",
+            "Thoughts and Reflections",
+            "Stories",
+            "Learning Journal"
+        ]
+    )
+
+    content = st.text_area(
+        "Chapter content",
+        height=260,
+        placeholder="Start writing your chapter..."
+    )
+
+    if st.button("Save Chapter"):
+
+        success = save_ebook_chapter(
+            title,
+            category,
+            content
+        )
+
+        if success:
+            st.success(
+                "Chapter saved in encrypted form."
+            )
+            st.rerun()
+
+        else:
+            st.error("Chapter could not be saved.")
+
+    st.divider()
+
+    st.subheader("My eBook Chapters")
+
+    chapters = load_ebook_chapters()
+
+    if not chapters:
+
+        st.info("Your eBook is currently empty.")
+
+    for chapter in chapters:
+
+        with st.expander(
+            chapter["title"]
+        ):
+
+            st.caption(chapter["category"])
+            st.write(chapter["content"])
+
+            if st.button(
+                "Delete Chapter",
+                key=f"ebook_delete_{chapter['id']}"
+            ):
+
+                if delete_ebook_chapter(chapter["id"]):
+                    st.success("Chapter deleted.")
+                    st.rerun()
+
+    st.divider()
+
+    if chapters:
+
+        ebook_title = st.text_input(
+            "Your book title",
+            value="My NeuroLens eBook"
+        )
+
+        if st.button("Prepare PDF eBook"):
+
+            pdf_data = create_ebook_pdf(
+                ebook_title,
+                chapters
+            )
+
+            if pdf_data:
+
+                st.download_button(
+                    "Download My eBook PDF",
+                    data=pdf_data,
+                    file_name="my_neurolens_ebook.pdf",
+                    mime="application/pdf"
+                )
+
+            else:
+                st.error(
+                    "PDF export unavailable. Install reportlab."
+                )
+
+    st.caption(
+        "Your eBook chapters are encrypted at rest. "
+        "PDF exports are downloaded as readable documents."
+    )
+
+
+# ============================================================
+# PART 7 PAGE REGISTRATION
+# ============================================================
+
+# page_research_library()
+# page_personal_ebook()
+# are ready for the final application router.
