@@ -1,0 +1,126 @@
+
+"""NeuroLens Progress Dashboard."""
+
+from datetime import datetime
+import streamlit as st
+import pandas as pd
+
+
+def render(st):
+    st.title("📊 My Progress Dashboard")
+    st.write("Track your learning journey and personal goals.")
+
+    st.info(
+        "These insights show learning activity and self-reported "
+        "information. They are not brain measurements, diagnoses, "
+        "or clinical assessments."
+    )
+
+    st.subheader("Your learning activity")
+
+    activities = st.session_state.get("nl_learning_activity", [])
+
+    if not isinstance(activities, list):
+        activities = []
+
+    if activities:
+        df = pd.DataFrame(activities)
+        if {"date", "activity"}.issubset(df.columns):
+            st.dataframe(df, use_container_width=True)
+    else:
+        st.caption(
+            "Your activity history will appear here when "
+            "other NeuroLens modules are connected."
+        )
+
+    st.divider()
+    st.subheader("Self-reported wellbeing and confidence")
+
+    with st.form("nl_progress_form"):
+        sleep = st.slider("Sleep quality", 1, 10, 5)
+        attention = st.slider("Attention confidence", 1, 10, 5)
+        memory = st.slider("Memory confidence", 1, 10, 5)
+        mental_load = st.slider("Mental load", 1, 10, 5)
+
+        submitted = st.form_submit_button(
+            "Save my self-report",
+            use_container_width=True,
+        )
+
+    if submitted:
+        entry = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "sleep": sleep,
+            "attention": attention,
+            "memory": memory,
+            "mental_load": mental_load,
+        }
+
+        history = st.session_state.get(
+            "nl_self_report_history", []
+        )
+
+        history.append(entry)
+        st.session_state["nl_self_report_history"] = history
+
+        st.success("Your self-report has been saved in this session.")
+
+    history = st.session_state.get(
+        "nl_self_report_history", []
+    )
+
+    if history:
+        st.divider()
+        st.subheader("Your self-report history")
+
+        report_df = pd.DataFrame(history)
+
+        st.line_chart(
+            report_df[
+                ["sleep", "attention", "memory", "mental_load"]
+            ]
+        )
+
+        st.dataframe(
+            report_df,
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.subheader("Personal learning goals")
+
+    with st.form("nl_learning_goal_form"):
+        goal = st.text_input(
+            "What would you like to learn next?",
+            max_chars=150,
+        )
+
+        goal_submitted = st.form_submit_button("Add goal")
+
+    if goal_submitted and goal.strip():
+        goals = st.session_state.get("nl_learning_goals", [])
+        goals.append({
+            "goal": goal.strip(),
+            "created": datetime.now().strftime("%Y-%m-%d"),
+            "completed": False,
+        })
+        st.session_state["nl_learning_goals"] = goals
+        st.success("Learning goal added.")
+
+    goals = st.session_state.get("nl_learning_goals", [])
+
+    if goals:
+        for index, item in enumerate(goals):
+            completed = st.checkbox(
+                item["goal"],
+                value=item["completed"],
+                key=f"nl_goal_{index}",
+            )
+            item["completed"] = completed
+
+        st.session_state["nl_learning_goals"] = goals
+
+    st.caption(
+        "Current progress records are session-based. "
+        "Permanent multi-user history will require database integration."
+    )
