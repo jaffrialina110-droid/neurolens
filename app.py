@@ -1355,7 +1355,386 @@ def render_current_page():
 def run_neurolens():
     render_sidebar()
     render_current_page()
-
-
 if __name__ == "__main__":
     run_neurolens()
+# ============================================================
+# PART 4 — BRAIN EXPLORER
+# ============================================================
+
+BRAIN_REGIONS = {
+    "Prefrontal Cortex": {
+        "location": "Frontal lobe",
+        "functions": [
+            "Planning",
+            "Working memory",
+            "Decision-making",
+            "Cognitive control",
+            "Goal-directed behavior"
+        ],
+        "explanation": (
+            "The prefrontal cortex contributes to executive "
+            "functions, including planning, working memory, "
+            "decision-making and cognitive control."
+        ),
+        "connection": (
+            "It interacts with other cortical and subcortical "
+            "regions, including the basal ganglia and thalamus."
+        )
+    },
+
+    "Hippocampus": {
+        "location": "Medial temporal lobe",
+        "functions": [
+            "Episodic memory",
+            "Memory consolidation",
+            "Spatial navigation",
+            "Contextual learning"
+        ],
+        "explanation": (
+            "The hippocampus is important for forming and "
+            "retrieving episodic memories and for spatial "
+            "and contextual learning."
+        ),
+        "connection": (
+            "It interacts with cortical areas and other "
+            "limbic structures."
+        )
+    },
+
+    "Striatum": {
+        "location": "Basal ganglia",
+        "functions": [
+            "Action selection",
+            "Reward learning",
+            "Habit formation",
+            "Motor and cognitive loops"
+        ],
+        "explanation": (
+            "The striatum receives cortical and thalamic input "
+            "and participates in selecting and learning actions."
+        ),
+        "connection": (
+            "It is a major input structure of the basal ganglia "
+            "and participates in CSTC circuits."
+        )
+    },
+
+    "Anterior Cingulate Cortex": {
+        "location": "Medial frontal cortex",
+        "functions": [
+            "Conflict monitoring",
+            "Error processing",
+            "Effort allocation",
+            "Motivational control"
+        ],
+        "explanation": (
+            "The anterior cingulate cortex contributes to "
+            "monitoring actions, detecting conflict and "
+            "evaluating the need for control."
+        ),
+        "connection": (
+            "It interacts with prefrontal, limbic and "
+            "subcortical networks."
+        )
+    },
+
+    "Amygdala": {
+        "location": "Medial temporal lobe",
+        "functions": [
+            "Emotional learning",
+            "Threat processing",
+            "Emotional salience",
+            "Associative learning"
+        ],
+        "explanation": (
+            "The amygdala contributes to emotional learning "
+            "and the processing of biologically relevant stimuli."
+        ),
+        "connection": (
+            "It interacts with hippocampal, prefrontal and "
+            "hypothalamic systems."
+        )
+    },
+
+    "Thalamus": {
+        "location": "Diencephalon",
+        "functions": [
+            "Information relay",
+            "Sensory processing",
+            "Cortical communication",
+            "Motor circuit integration"
+        ],
+        "explanation": (
+            "The thalamus is a major relay and integration "
+            "structure connecting multiple brain networks."
+        ),
+        "connection": (
+            "Basal ganglia output reaches motor and other "
+            "cortical areas through thalamic nuclei."
+        )
+    }
+}
+
+
+def page_brain_explorer():
+
+    render_brand_header()
+
+    st.title("Interactive Brain Explorer")
+
+    st.write(
+        "Explore selected brain structures, their functions "
+        "and their connections with cognitive processes."
+    )
+
+    selected_region = st.selectbox(
+        "Select a brain region",
+        list(BRAIN_REGIONS.keys())
+    )
+
+    data = BRAIN_REGIONS[selected_region]
+
+    st.markdown(
+        f"""
+        <div class="neuro-card">
+            <h2>{selected_region}</h2>
+            <p><b>Location:</b> {data['location']}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    left, right = st.columns(2)
+
+    with left:
+        st.subheader("Main functions")
+
+        for function in data["functions"]:
+            st.markdown(f"- {function}")
+
+    with right:
+        st.subheader("Scientific explanation")
+        st.write(data["explanation"])
+
+        st.subheader("Neural connections")
+        st.write(data["connection"])
+
+    st.divider()
+
+    st.subheader("Explore cognitive roles")
+
+    for function in data["functions"]:
+        with st.expander(function):
+            st.write(
+                f"{function} is one of the processes "
+                f"associated with the {selected_region}. "
+                "Its performance depends on distributed "
+                "brain networks rather than one isolated region."
+            )
+
+    st.caption(
+        "Educational overview. Brain functions are distributed "
+        "and should not be interpreted as one-region-one-function."
+    )
+
+
+# ============================================================
+# PART 4 — CSTC CIRCUIT LEARNING
+# ============================================================
+
+CSTC_PATHWAYS = {
+
+    "Direct Pathway": {
+        "summary": (
+            "The direct pathway is commonly described as "
+            "facilitating selected actions through reduced "
+            "inhibitory output from basal ganglia output nuclei."
+        ),
+
+        "steps": [
+            ("Cortex", "Excitatory glutamatergic input"),
+            ("Striatum D1", "Inhibitory GABAergic projection"),
+            ("GPi / SNr", "Reduced inhibitory output"),
+            ("Thalamus", "Disinhibition"),
+            ("Cortex", "Increased facilitation of selected activity")
+        ],
+
+        "direction": (
+            "Cortex → Striatum D1 → GPi/SNr → Thalamus → Cortex"
+        )
+    },
+
+    "Indirect Pathway": {
+        "summary": (
+            "The indirect pathway contributes to suppressing "
+            "competing or unwanted actions through a sequence "
+            "of inhibitory and excitatory connections."
+        ),
+
+        "steps": [
+            ("Cortex", "Excitatory glutamatergic input"),
+            ("Striatum D2", "Inhibitory GABAergic projection"),
+            ("GPe", "Reduced inhibitory output"),
+            ("STN", "Increased excitatory drive"),
+            ("GPi / SNr", "Increased inhibitory output"),
+            ("Thalamus", "Greater inhibition"),
+            ("Cortex", "Reduced facilitation")
+        ],
+
+        "direction": (
+            "Cortex → Striatum D2 → GPe → STN → GPi/SNr "
+            "→ Thalamus → Cortex"
+        )
+    },
+
+    "Hyperdirect Pathway": {
+        "summary": (
+            "The hyperdirect pathway provides a relatively "
+            "rapid route from cortex to the subthalamic nucleus, "
+            "which can increase basal ganglia output inhibition."
+        ),
+
+        "steps": [
+            ("Cortex", "Excitatory glutamatergic projection"),
+            ("STN", "Excitatory glutamatergic projection"),
+            ("GPi / SNr", "Increased inhibitory output"),
+            ("Thalamus", "Increased inhibition"),
+            ("Cortex", "Reduced thalamocortical facilitation")
+        ],
+
+        "direction": (
+            "Cortex → STN → GPi/SNr → Thalamus → Cortex"
+        )
+    }
+}
+
+
+def render_cstc_pathway(pathway_name):
+
+    pathway = CSTC_PATHWAYS[pathway_name]
+
+    st.markdown(f"### {pathway_name}")
+
+    st.write(pathway["summary"])
+
+    st.markdown("**Circuit direction:**")
+
+    st.code(
+        pathway["direction"],
+        language="text"
+    )
+
+    st.markdown("**Step-by-step circuit nodes:**")
+
+    for index, step in enumerate(pathway["steps"]):
+
+        node, explanation = step
+
+        st.markdown(
+            f"""
+            <div class="neuro-card">
+                <h4>{index + 1}. {node}</h4>
+                <p>{explanation}</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if index < len(pathway["steps"]) - 1:
+            st.markdown(
+                "<div style='text-align:center;"
+                "font-size:24px;color:#38BDF8'>↓</div>",
+                unsafe_allow_html=True
+            )
+
+
+def page_cstc_learning():
+
+    render_brand_header()
+
+    st.title("CSTC Circuit Learning")
+
+    st.write(
+        "Cortico-Striato-Thalamo-Cortical circuits "
+        "connect cortical regions, basal ganglia structures "
+        "and thalamic nuclei."
+    )
+
+    st.info(
+        "This section focuses on structural circuit organization. "
+        "Functional and molecular explanations can be explored "
+        "as separate learning layers."
+    )
+
+    selected_pathway = st.radio(
+        "Choose a circuit",
+        [
+            "Direct Pathway",
+            "Indirect Pathway",
+            "Hyperdirect Pathway"
+        ],
+        horizontal=False
+    )
+
+    render_cstc_pathway(selected_pathway)
+
+    st.divider()
+
+    st.subheader("Important structures")
+
+    structures = {
+        "Striatum": (
+            "Includes caudate nucleus and putamen in the "
+            "dorsal striatum. D1 and D2 describe receptor "
+            "populations, not completely separate anatomical organs."
+        ),
+
+        "GPe": (
+            "External segment of globus pallidus. "
+            "A key node in the indirect pathway."
+        ),
+
+        "STN": (
+            "Subthalamic nucleus. Provides excitatory "
+            "glutamatergic input to basal ganglia output nuclei."
+        ),
+
+        "GPi": (
+            "Internal segment of globus pallidus. "
+            "A major inhibitory output structure."
+        ),
+
+        "SNr": (
+            "Substantia nigra pars reticulata. "
+            "Another important basal ganglia output structure."
+        ),
+
+        "SNc": (
+            "Substantia nigra pars compacta. "
+            "Provides dopaminergic modulation of striatal circuits."
+        ),
+
+        "Thalamus": (
+            "Relevant motor loop relays include VA and VL nuclei. "
+            "Different CSTC loops involve different thalamic regions."
+        )
+    }
+
+    for structure, description in structures.items():
+
+        with st.expander(structure):
+
+            st.write(description)
+
+    st.warning(
+        "Simplified teaching diagrams do not represent every "
+        "collateral projection, feedback connection or "
+        "cell-type-specific pathway."
+    )
+
+
+# ============================================================
+# REGISTER PART 4 PAGES
+# ============================================================
+
+# These functions are now available to the main router.
