@@ -349,10 +349,590 @@ def private_session_active(timeout_minutes=10):
     elapsed = (
         datetime.now() - last
     ).total_seconds()
-
     if elapsed > timeout_minutes * 60:
         clear_private_session()
         return False
 
     st.session_state.private_last_activity = datetime.now()
     return True
+# ============================================================
+# NEUROLENS — DATABASE FOUNDATION
+# ============================================================
+
+DB_PATH = APP_DIR / "neurolens_data.db"
+
+
+def get_local_db():
+    connection = sqlite3.connect(
+        str(DB_PATH),
+        check_same_thread=False
+    )
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def initialize_database():
+    connection = get_local_db()
+    cursor = connection.cursor()
+
+    cursor.executescript("""
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT PRIMARY KEY,
+        language TEXT DEFAULT 'English',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(conversation_id)
+            REFERENCES ai_conversations(id),
+        FOREIGN KEY(user_id)
+            REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS challenge_results (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        challenge_type TEXT NOT NULL,
+        score REAL DEFAULT 0,
+        details TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS journal_entries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        encrypted_content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS research_bookmarks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        article_url TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS appointment_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        preferred_date TEXT,
+        preferred_time TEXT,
+        contact_method TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    connection.commit()
+    connection.close()
+
+
+initialize_database()
+
+
+# ============================================================
+# DATABASE HELPERS
+# ============================================================
+
+def db_execute(query, values=()):
+    connection = get_local_db()
+
+    try:
+        connection.execute(query, values)
+        connection.commit()
+        return True
+    except sqlite3.Error as exc:
+        st.error(f"Database operation failed: {exc}")
+        return False
+    finally:
+        connection.close()
+
+
+def db_fetch_one(query, values=()):
+    connection = get_local_db()
+
+    try:
+        result = connection.execute(
+            query,
+            values
+        ).fetchone()
+
+        return dict(result) if result else None
+    finally:
+        connection.close()
+
+
+def db_fetch_all(query, values=()):
+    connection = get_local_db()
+
+    try:
+        results = connection.execute(
+            query,
+            values
+        ).fetchall()
+
+        return [dict(row) for row in results]
+    finally:
+        connection.close()
+
+
+def create_audit_log(user_id, action):
+    db_execute(
+        """
+        INSERT INTO audit_logs
+        (id, user_id, action, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            secrets.token_hex(16),
+            user_id,
+            action,
+            datetime.now().isoformat()
+        )
+    )
+
+
+# ============================================================
+# ACCOUNT VALIDATION
+# ============================================================
+
+def valid_email(email):
+    return bool(
+        re.fullmatch(
+            r"[^@\s]+@[^@\s]+\.[^@\s]+",
+            email.strip()
+        )
+    )
+
+
+def valid_password(password):
+    return (
+        len(password) >= 10
+        and any(c.isupper() for c in password)
+        and any(c.islower() for c in password)
+        and any(c.isdigit() for c in password)
+    )
+
+
+# ============================================================
+# ACCOUNT REGISTRATION
+# ============================================================
+
+def register_user(username, email, password, display_name):
+    username = username.strip()
+    email = email.strip().lower()
+    display_name = display_name.strip()
+
+    if len(username) < 3:
+        return False, "Username must contain at least 3 characters."
+
+    if not valid_email(email):
+        return False, "Enter a valid email address."
+
+    if not valid_password(password):
+        return False, (
+            "Password must contain at least 10 characters, "
+            "uppercase, lowercase and a number."
+        )
+
+    if len(display_name) < 2:
+        return False, "Enter your display name."
+
+    existing = db_fetch_one(
+        """
+        SELECT id FROM users
+        WHERE username = ? OR email = ?
+        """,
+        (username, email)
+    )
+
+    if existing:
+        return False, "Username or email is already registered."
+
+    user_id = secrets.token_hex(16)
+    salt, password_hash = hash_secret(password)
+    now = datetime.now().isoformat()
+
+    success = db_execute(
+        """
+        INSERT INTO users (
+            id, username, email,
+            password_hash, password_salt,
+            display_name, role, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'user', ?)
+        """,
+        (
+            user_id,
+            username,
+            email,
+            password_hash,
+            salt,
+            display_name,
+            now
+        )
+    )
+
+    if not success:
+        return False, "Account could not be created."
+
+    db_execute(
+        """
+        INSERT INTO user_settings
+        (user_id, language, created_at)
+        VALUES (?, 'English', ?)
+        """,
+        (user_id, now)
+    )
+
+    create_audit_log(user_id, "account_created")
+
+    return True, "Account created successfully."
+
+
+# ============================================================
+# ACCOUNT LOGIN
+# ============================================================
+
+def authenticate_user(identifier, password):
+    identifier = identifier.strip().lower()
+
+    user = db_fetch_one(
+        """
+        SELECT * FROM users
+        WHERE lower(username) = ?
+           OR lower(email) = ?
+        """,
+        (identifier, identifier)
+    )
+
+    if not user:
+        return None
+
+    if not user["active"]:
+        return None
+
+    valid = verify_secret(
+        password,
+        user["password_salt"],
+        user["password_hash"]
+    )
+
+    if not valid:
+        return None
+
+    return {
+        "id": user["id"],
+        "username": user["username"],
+        "email": user["email"],
+        "display_name": user["display_name"],
+        "role": user["role"]
+    }
+
+
+# ============================================================
+# CURRENT USER ACCESS
+# ============================================================
+
+def current_user():
+    if not st.session_state.authenticated:
+        return None
+
+    return {
+        "id": st.session_state.user_id,
+        **(st.session_state.user or {})
+    }
+
+
+def require_login():
+    if not st.session_state.authenticated:
+        st.warning("Please login to access this feature.")
+        return False
+
+    return True
+
+
+def user_data_query(table, columns="*"):
+    allowed_tables = {
+        "challenge_results",
+        "journal_entries",
+        "research_bookmarks",
+        "appointment_requests"
+    }
+
+    if table not in allowed_tables:
+        raise ValueError("Table is not permitted.")
+
+    if not require_login():
+        return []
+
+    user_id = st.session_state.user_id
+
+    return db_fetch_all(
+        f"""
+        SELECT {columns}
+        FROM {table}
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        """,
+        (user_id,)
+    )
+
+
+# ============================================================
+# ACCOUNT LOGIN / SIGNUP PAGE
+# ============================================================
+
+def page_account():
+    render_brand_header()
+
+    st.title("Your NeuroLens Account")
+
+    if st.session_state.authenticated:
+        user = current_user()
+
+        st.success(
+            f"Welcome, {user['display_name']}!"
+        )
+
+        st.write(f"Username: {user['username']}")
+        st.write(f"Email: {user['email']}")
+        st.write(f"Account role: {user['role']}")
+
+        if st.button("Logout", use_container_width=True):
+            create_audit_log(
+                st.session_state.user_id,
+                "logout"
+            )
+
+            clear_private_session()
+
+            st.session_state.authenticated = False
+            st.session_state.user = None
+            st.session_state.user_id = None
+
+            st.session_state.ai_messages = []
+
+            st.rerun()
+
+        return
+
+    login_tab, signup_tab = st.tabs([
+        "Login",
+        "Create Account"
+    ])
+
+    with login_tab:
+        st.subheader("Login to NeuroLens")
+
+        identifier = st.text_input(
+            "Username or email",
+            key="account_login_identifier"
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="account_login_password"
+        )
+
+        if st.button(
+            "Login",
+            key="account_login_button",
+            use_container_width=True
+        ):
+            user = authenticate_user(
+                identifier,
+                password
+            )
+
+            if user:
+                st.session_state.authenticated = True
+                st.session_state.user = user
+                st.session_state.user_id = user["id"]
+
+                create_audit_log(
+                    user["id"],
+                    "login"
+                )
+
+                st.success("Login successful.")
+                st.rerun()
+            else:
+                st.error(
+                    "Login failed. Check your details."
+                )
+
+    with signup_tab:
+        st.subheader("Create your account")
+
+        display_name = st.text_input(
+            "Display name",
+            key="signup_display_name"
+        )
+
+        username = st.text_input(
+            "Username",
+            key="signup_username"
+        )
+
+        email = st.text_input(
+            "Email address",
+            key="signup_email"
+        )
+
+        new_password = st.text_input(
+            "Password",
+            type="password",
+            key="signup_password"
+        )
+
+        confirm_password = st.text_input(
+            "Confirm password",
+            type="password",
+            key="signup_confirm_password"
+        )
+
+        st.caption(
+            "Use at least 10 characters with uppercase, "
+            "lowercase and a number."
+        )
+
+        if st.button(
+            "Create Account",
+            key="signup_button",
+            use_container_width=True
+        ):
+            if new_password != confirm_password:
+                st.error("Passwords do not match.")
+
+            else:
+                success, message = register_user(
+                    username,
+                    email,
+                    new_password,
+                    display_name
+                )
+
+                if success:
+                    st.success(message)
+                    st.info(
+                        "You can now login using your username "
+                        "or email."
+                    )
+                else:
+                    st.error(message)
+
+
+# ============================================================
+# USER-SPECIFIC ACTIVITY STORAGE
+# ============================================================
+
+def save_challenge_result(
+    challenge_type,
+    score,
+    details=None
+):
+    if not require_login():
+        return False
+
+    return db_execute(
+        """
+        INSERT INTO challenge_results (
+            id,
+            user_id,
+            challenge_type,
+            score,
+            details,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            secrets.token_hex(16),
+            st.session_state.user_id,
+            challenge_type,
+            float(score),
+            json.dumps(details or {}),
+            datetime.now().isoformat()
+        )
+    )
+
+
+def save_research_bookmark(title, article_url=""):
+    if not require_login():
+        return False
+
+    return db_execute(
+        """
+        INSERT INTO research_bookmarks (
+            id,
+            user_id,
+            title,
+            article_url,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            secrets.token_hex(16),
+            st.session_state.user_id,
+            title,
+            article_url,
+            datetime.now().isoformat()
+        )
+    )
+
+
+# ============================================================
+# ACCOUNT STATUS
+# ============================================================
+
+def account_status():
+    if not st.session_state.authenticated:
+        return "Guest"
+
+    user = current_user()
+
+    return user["display_name"]
