@@ -5614,3 +5614,370 @@ def page_owner_control_center():
     if st.button("Refresh Owner Dashboard", use_container_width=True):
         st.rerun()
 
+# ============================================================
+# PART 13 — STAFF WORKSPACE & ROLE-BASED ACCESS
+# ============================================================
+
+STAFF_ROLES = {
+    "Admin": [
+        "view_staff",
+        "manage_staff",
+        "view_tasks",
+        "create_tasks",
+        "update_tasks",
+        "view_projects",
+    ],
+    "Researcher": [
+        "view_tasks",
+        "update_tasks",
+        "view_projects",
+    ],
+    "Moderator": [
+        "view_tasks",
+        "update_tasks",
+    ],
+    "Support Staff": [
+        "view_tasks",
+        "update_tasks",
+    ],
+}
+
+
+def initialize_staff_tables():
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS staff_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS staff_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            category TEXT DEFAULT 'General',
+            assigned_to INTEGER,
+            status TEXT DEFAULT 'Pending',
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS research_projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            status TEXT DEFAULT 'Planning',
+            created_by INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+
+def get_staff_record(user_id):
+    initialize_staff_tables()
+
+    return db_fetch_one(
+        """
+        SELECT staff_members.*, users.email
+        FROM staff_members
+        JOIN users ON users.id = staff_members.user_id
+        WHERE staff_members.user_id = ?
+        AND staff_members.status = 'active'
+        """,
+        (user_id,)
+    )
+
+
+def get_staff_role(user_id):
+    record = get_staff_record(user_id)
+
+    if not record:
+        return None
+
+    if isinstance(record, dict):
+        return record.get("role")
+
+    return None
+
+
+def staff_has_permission(user_id, permission):
+    role = get_staff_role(user_id)
+
+    if not role:
+        return False
+
+    return permission in STAFF_ROLES.get(role, [])
+
+
+def create_staff_member(user_id, role):
+    if role not in STAFF_ROLES:
+        return False
+
+    initialize_staff_tables()
+
+    db_execute(
+        """
+        INSERT INTO staff_members
+        (user_id, role, status, created_at)
+        VALUES (?, ?, 'active', ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET role = excluded.role, status = 'active'
+        """,
+        (user_id, role, datetime.now().isoformat())
+    )
+
+    return True
+
+
+def create_staff_task(title, description, category, assigned_to, created_by):
+    initialize_staff_tables()
+
+    db_execute(
+        """
+        INSERT INTO staff_tasks
+        (title, description, category, assigned_to,
+         status, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?)
+        """,
+        (
+            title,
+            description,
+            category,
+            assigned_to,
+            created_by,
+            datetime.now().isoformat(),
+            datetime.now().isoformat(),
+        )
+    )
+
+
+def get_staff_tasks(user_id, role):
+    initialize_staff_tables()
+
+    if role == "Admin":
+        return db_fetch_all(
+            """
+            SELECT staff_tasks.*, users.email AS assigned_email
+            FROM staff_tasks
+            LEFT JOIN users ON users.id = staff_tasks.assigned_to
+            ORDER BY staff_tasks.id DESC
+            """
+        ) or []
+
+    return db_fetch_all(
+        """
+        SELECT *
+        FROM staff_tasks
+        WHERE assigned_to = ?
+        ORDER BY id DESC
+        """,
+        (user_id,)
+    ) or []
+
+
+def update_staff_task(task_id, status, user_id, role):
+    allowed_statuses = [
+        "Pending",
+        "In Progress",
+        "Completed",
+        "On Hold",
+    ]
+
+    if status not in allowed_statuses:
+        return False
+
+    initialize_staff_tables()
+
+    if role == "Admin":
+        db_execute(
+            """
+            UPDATE staff_tasks
+            SET status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, datetime.now().isoformat(), task_id)
+        )
+    else:
+        db_execute(
+            """
+            UPDATE staff_tasks
+            SET status = ?, updated_at = ?
+            WHERE id = ? AND assigned_to = ?
+            """,
+            (
+                status,
+                datetime.now().isoformat(),
+                task_id,
+                user_id,
+            )
+        )
+
+    return True
+
+
+def page_staff_workspace():
+    st.title("👥 NeuroLens Staff Workspace")
+    st.caption("Role-based workspace for platform operations")
+
+    user = st.session_state.get("user")
+
+    if not user:
+        st.warning("Please login first.")
+        return
+
+    user_id = user.get("id")
+
+    if not user_id:
+        st.error("User account ID is unavailable.")
+        return
+
+    initialize_staff_tables()
+
+    if is_neurolens_owner():
+        st.info(
+            "Owner account detected. Staff management access "
+            "can be configured through the Owner Control Center."
+        )
+
+    role = get_staff_role(user_id)
+
+    if not role:
+        st.error(
+            "Staff access has not been assigned to this account. "
+            "Please contact the platform owner."
+        )
+        return
+
+    st.success(f"Staff role: {role}")
+
+    permissions = STAFF_ROLES.get(role, [])
+
+    st.markdown("### Your Permissions")
+
+    for permission in permissions:
+        st.markdown(f"- ✅ {permission.replace('_', ' ').title()}")
+
+    tab_tasks, tab_projects, tab_team = st.tabs([
+        "My Tasks",
+        "Research Projects",
+        "Team"
+    ])
+
+    with tab_tasks:
+        st.subheader("Assigned Tasks")
+
+        tasks = get_staff_tasks(user_id, role)
+
+        if tasks:
+            for task in tasks:
+                if not isinstance(task, dict):
+                    continue
+
+                with st.expander(
+                    f"{task.get('title', 'Task')} — {task.get('status', 'Pending')}"
+                ):
+                    st.write(task.get("description", ""))
+                    st.caption(
+                        f"Category: {task.get('category', 'General')}"
+                    )
+
+                    current_status = task.get("status", "Pending")
+
+                    statuses = [
+                        "Pending",
+                        "In Progress",
+                        "Completed",
+                        "On Hold",
+                    ]
+
+                    selected_status = st.selectbox(
+                        "Update status",
+                        statuses,
+                        index=statuses.index(current_status)
+                        if current_status in statuses else 0,
+                        key=f"staff_task_{task.get('id')}"
+                    )
+
+                    if st.button(
+                        "Save Task Status",
+                        key=f"save_staff_task_{task.get('id')}"
+                    ):
+                        if staff_has_permission(user_id, "update_tasks"):
+                            update_staff_task(
+                                task.get("id"),
+                                selected_status,
+                                user_id,
+                                role
+                            )
+                            st.success("Task status updated.")
+                            st.rerun()
+                        else:
+                            st.error("You do not have permission.")
+        else:
+            st.info("No tasks assigned yet.")
+
+    with tab_projects:
+        st.subheader("Research Projects")
+
+        if "view_projects" in permissions:
+            projects = db_fetch_all(
+                """
+                SELECT id, title, description, status, created_at
+                FROM research_projects
+                ORDER BY id DESC
+                """
+            ) or []
+
+            if projects:
+                st.dataframe(
+                    pd.DataFrame(projects),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No research projects available.")
+        else:
+            st.info("Your role does not include project access.")
+
+    with tab_team:
+        st.subheader("Team Directory")
+
+        if "view_staff" in permissions:
+            members = db_fetch_all(
+                """
+                SELECT staff_members.id,
+                       users.email,
+                       staff_members.role,
+                       staff_members.status,
+                       staff_members.created_at
+                FROM staff_members
+                JOIN users ON users.id = staff_members.user_id
+                ORDER BY staff_members.id DESC
+                """
+            ) or []
+
+            if members:
+                st.dataframe(
+                    pd.DataFrame(members),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No staff members found.")
+        else:
+            st.info("Team directory access is restricted.")
+
+    st.divider()
+
+    st.caption(
+        "Staff workspace does not provide access to private journals, "
+        "healing reflections, passwords or private AI conversations."
+    )
+
