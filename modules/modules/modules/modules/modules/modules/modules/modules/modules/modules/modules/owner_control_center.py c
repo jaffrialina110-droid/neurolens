@@ -1,0 +1,106 @@
+
+"""NeuroLens Owner Control Center — overview dashboard."""
+
+import streamlit as st
+from datetime import datetime
+
+
+def render(st):
+    st.title("🛡️ NeuroLens Owner Control Center")
+
+    st.caption("Platform administration and operational overview")
+
+    st.warning(
+        "This is an overview module, not a complete security "
+        "or access-control system. Owner-only access must be "
+        "enforced by the main application."
+    )
+
+    st.subheader("Platform Overview")
+
+    profiles = st.session_state.get("nl_profiles", [])
+    staff = st.session_state.get("nl_staff", [])
+    appointments = st.session_state.get(
+        "nl_appointment_requests", []
+    )
+    ai_requests = st.session_state.get("nl_ai_requests", [])
+    audit_logs = st.session_state.get("nl_audit_logs", [])
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Users", len(profiles))
+        st.metric("Staff Members", len(staff))
+
+    with col2:
+        st.metric("Appointment Requests", len(appointments))
+        st.metric("AI Requests (session)", len(ai_requests))
+
+    st.divider()
+    st.subheader("Module Overview")
+
+    modules = {
+        "Brain Explorer": "Initial Stage",
+        "CSTC Learning": "Initial Stage",
+        "Ayna AI": "Initial Stage",
+        "Cognitive Challenges": "Initial Stage",
+        "Research Library": "Initial Stage",
+        "Personal Healing": "Initial Stage",
+        "Photo Studio": "Initial Stage",
+        "Progress Dashboard": "Initial Stage",
+        "Appointments": "Initial Stage",
+        "NeuroSocial Advanced": "Planned — Advanced Stage",
+        "3D Brain Lab": "Planned — Advanced Stage",
+        "Hardware Hub": "Planned — Advanced Stage",
+    }
+
+    for module, status in modules.items():
+        st.write(f"**{module}** — {status}")
+
+    st.divider()
+    st.subheader("Appointment Requests")
+
+    if appointments:
+        for index, request in enumerate(
+            reversed(appointments), 1
+        ):
+            with st.expander(
+                f"Request {index}: {request.get('purpose', 'Unknown')}"
+            ):
+                st.write("Date:", request.get("date", ""))
+                st.write("Preferred time:", request.get("time_preference", ""))
+                st.write("Communication:", request.get("communication", ""))
+                st.write("Status:", request.get("status", "Pending"))
+    else:
+        st.caption("No appointment requests in this session.")
+
+    st.divider()
+    st.subheader("AI Usage Overview")
+
+    if ai_requests:
+        st.write("AI requests recorded in this session:", len(ai_requests))
+    else:
+        st.caption("No AI usage records available in this session.")
+
+    st.divider()
+    st.subheader("Security & Audit Overview")
+
+    st.write("Audit events in this session:", len(audit_logs))
+
+    if audit_logs:
+        for event in reversed(audit_logs[-20:]):
+            st.write(str(event))
+
+    st.divider()
+    st.subheader("Privacy Protection")
+
+    st.success(
+        "Private Journal and Personal Healing entries are "
+        "not displayed in this dashboard."
+    )
+
+    st.caption(
+        "This draft reads only session-state summaries. "
+        "It does not provide persistent analytics, user management, "
+        "staff permission enforcement, or database-backed audit logs."
+    )
