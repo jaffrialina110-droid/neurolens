@@ -4486,3 +4486,228 @@ def page_photo_studio():
         "automatic cat-ear placement, butterfly stickers, face tracking "
         "and background cutout are Advanced Stage features."
     )
+# ============================================================
+# PART 9 — NEUROLENS PROGRESS DASHBOARD
+# ============================================================
+
+def page_progress_dashboard():
+    st.title("📊 My Progress")
+    st.caption("Your learning journey and activity overview")
+
+    user = st.session_state.get("user")
+
+    if not user:
+        st.info("Apni progress dekhne ke liye pehle login karein.")
+        if st.button("Go to Account"):
+            st.session_state.page = "Account"
+            st.rerun()
+        return
+
+    user_id = user.get("id")
+
+    st.markdown("### 🧠 Your NeuroLens Journey")
+
+    try:
+        challenge_rows = db_fetch_all(
+            """
+            SELECT *
+            FROM challenge_results
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,)
+        )
+    except Exception:
+        challenge_rows = []
+
+    try:
+        bookmark_rows = db_fetch_all(
+            """
+            SELECT *
+            FROM research_bookmarks
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,)
+        )
+    except Exception:
+        bookmark_rows = []
+
+    try:
+        journal_rows = db_fetch_all(
+            """
+            SELECT *
+            FROM journal_entries
+            WHERE user_id = ?
+            """,
+            (user_id,)
+        )
+    except Exception:
+        journal_rows = []
+
+    total_challenges = len(challenge_rows)
+    total_bookmarks = len(bookmark_rows)
+    total_journal_entries = len(journal_rows)
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Challenges", total_challenges)
+    col2.metric("Research Saved", total_bookmarks)
+    col3.metric("Journal Entries", total_journal_entries)
+
+    st.divider()
+
+    st.markdown("### 🎯 Cognitive Challenge History")
+
+    if challenge_rows:
+        progress_data = []
+
+        for item in challenge_rows:
+            progress_data.append({
+                "Challenge": item.get("challenge_name", "Challenge"),
+                "Score": item.get("score", 0),
+                "Date": item.get("created_at", "")
+            })
+
+        progress_df = pd.DataFrame(progress_data)
+
+        st.dataframe(
+            progress_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        if "Score" in progress_df.columns:
+            numeric_scores = pd.to_numeric(
+                progress_df["Score"],
+                errors="coerce"
+            ).dropna()
+
+            if not numeric_scores.empty:
+                st.markdown("#### Score overview")
+                st.line_chart(numeric_scores.reset_index(drop=True))
+
+                st.metric(
+                    "Average recorded score",
+                    round(float(numeric_scores.mean()), 2)
+                )
+
+    else:
+        st.info(
+            "Abhi koi saved challenge result nahi hai. "
+            "Interactive Lab ya Cognitive Challenges try karein."
+        )
+
+    st.divider()
+
+    st.markdown("### 📚 Research Activity")
+
+    if bookmark_rows:
+        for item in bookmark_rows[:10]:
+            title = item.get("title", "Saved research")
+            st.write("•", title)
+    else:
+        st.write("Aapne abhi tak koi research article bookmark nahi kiya.")
+
+    st.divider()
+
+    st.markdown("### 🌱 Personal Journey")
+
+    st.metric(
+        "Saved journal entries",
+        total_journal_entries
+    )
+
+    st.caption(
+        "Private Journal content yahan display nahi hota. "
+        "Dashboard sirf entry count dikhata hai."
+    )
+
+    st.divider()
+
+    st.markdown("### 💜 Self-Reflection")
+
+    st.write(
+        "Aap apni daily experience ko reflect kar sakte hain. "
+        "Yeh self-reported information hai, brain measurement nahi."
+    )
+
+    with st.form("neurolens_self_reflection"):
+        sleep_quality = st.slider(
+            "How was your sleep quality?",
+            1, 10, 5
+        )
+
+        attention = st.slider(
+            "How focused did you feel?",
+            1, 10, 5
+        )
+
+        mental_load = st.slider(
+            "How mentally overloaded did you feel?",
+            1, 10, 5
+        )
+
+        memory_confidence = st.slider(
+            "How confident did you feel about your memory?",
+            1, 10, 5
+        )
+
+        submitted = st.form_submit_button(
+            "Save reflection",
+            use_container_width=True
+        )
+
+        if submitted:
+            st.session_state["latest_self_reflection"] = {
+                "sleep_quality": sleep_quality,
+                "attention": attention,
+                "mental_load": mental_load,
+                "memory_confidence": memory_confidence,
+                "saved_at": datetime.now().strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+            }
+
+            st.success("Your reflection is saved for this session.")
+
+    reflection = st.session_state.get("latest_self_reflection")
+
+    if reflection:
+        st.markdown("#### Your latest self-reflection")
+
+        reflection_df = pd.DataFrame({
+            "Metric": [
+                "Sleep quality",
+                "Attention",
+                "Mental load",
+                "Memory confidence"
+            ],
+            "Self-reported rating": [
+                reflection["sleep_quality"],
+                reflection["attention"],
+                reflection["mental_load"],
+                reflection["memory_confidence"]
+            ]
+        })
+
+        st.bar_chart(
+            reflection_df.set_index("Metric")
+        )
+
+        st.caption(
+            "Session-only data: this reflection is not yet stored "
+            "permanently in your account."
+        )
+
+    st.divider()
+
+    st.markdown("### 🚀 Keep Exploring")
+
+    if st.button("Open Interactive Lab", use_container_width=True):
+        st.session_state.page = "Interactive Lab"
+        st.rerun()
+
+    if st.button("Explore the Brain", use_container_width=True):
+        st.session_state.page = "Explore Brain"
+        st.rerun()
