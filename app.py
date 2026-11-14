@@ -5107,3 +5107,247 @@ def page_ayna_ai():
     if st.button("Explore the Brain", use_container_width=True):
         st.session_state.page = "Explore Brain"
         st.rerun()
+# ============================================================
+# PART 11 — APPOINTMENTS & CONSULTATION REQUESTS
+# ============================================================
+
+def initialize_appointment_table():
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS appointment_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            purpose TEXT NOT NULL,
+            preferred_date TEXT NOT NULL,
+            preferred_time TEXT NOT NULL,
+            contact_method TEXT NOT NULL,
+            message TEXT,
+            fee TEXT,
+            payment_status TEXT DEFAULT 'Not paid',
+            appointment_status TEXT DEFAULT 'Pending',
+            created_at TEXT NOT NULL
+        )
+    """)
+
+
+def create_appointment_request(
+    user_id,
+    purpose,
+    preferred_date,
+    preferred_time,
+    contact_method,
+    message,
+    fee
+):
+    try:
+        db_execute(
+            """
+            INSERT INTO appointment_requests
+            (
+                user_id,
+                purpose,
+                preferred_date,
+                preferred_time,
+                contact_method,
+                message,
+                fee,
+                payment_status,
+                appointment_status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                purpose,
+                preferred_date,
+                preferred_time,
+                contact_method,
+                message,
+                fee,
+                "Not paid",
+                "Pending",
+                datetime.now().isoformat()
+            )
+        )
+        return True
+
+    except Exception:
+        return False
+
+
+def get_user_appointments(user_id):
+    try:
+        return db_fetch_all(
+            """
+            SELECT *
+            FROM appointment_requests
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,)
+        )
+    except Exception:
+        return []
+
+
+def page_appointments():
+    initialize_appointment_table()
+
+    st.title("📅 Appointments & Consultation")
+    st.caption("Appointment requests with Ayna Jaffri")
+
+    user = st.session_state.get("user")
+
+    if not user:
+        st.warning("Please login before requesting an appointment.")
+        return
+
+    user_id = user.get("id")
+
+    st.info(
+        "Submit your preferred date and time. Your request will remain "
+        "pending until availability is checked and confirmed."
+    )
+
+    st.markdown("### 1. Select your appointment purpose")
+
+    purposes = [
+        "NeuroLens Discussion",
+        "Cognitive Neuroscience Research Guidance",
+        "Research Collaboration",
+        "Research Methodology Discussion",
+        "General Consultation"
+    ]
+
+    purpose = st.selectbox(
+        "Purpose",
+        purposes,
+        key="appointment_purpose"
+    )
+
+    st.markdown("### 2. Preferred date and time")
+
+    preferred_date = st.date_input(
+        "Preferred date",
+        min_value=date.today(),
+        key="appointment_date"
+    )
+
+    preferred_time = st.selectbox(
+        "Preferred time",
+        [
+            "09:00 AM",
+            "10:00 AM",
+            "11:00 AM",
+            "12:00 PM",
+            "02:00 PM",
+            "03:00 PM",
+            "04:00 PM",
+            "05:00 PM"
+        ],
+        key="appointment_time"
+    )
+
+    st.caption(
+        "These are requested time preferences, not confirmed available slots. "
+        "All times are interpreted as Pakistan Standard Time."
+    )
+
+    st.markdown("### 3. Contact preference")
+
+    contact_method = st.radio(
+        "How would you prefer to communicate?",
+        [
+            "Text / Email",
+            "Video meeting (if mutually arranged)",
+            "Call (if mutually arranged)"
+        ],
+        index=0,
+        key="appointment_contact"
+    )
+
+    message = st.text_area(
+        "Tell Ayna briefly what you would like to discuss",
+        max_chars=1500,
+        key="appointment_message"
+    )
+
+    configured_fee = str(
+        globals().get("CONSULTATION_FEE", "")
+    ).strip()
+
+    if configured_fee:
+        st.markdown("### 4. Consultation fee")
+        st.write(f"Configured consultation fee: {configured_fee}")
+        st.caption(
+            "Confirm the applicable fee and payment instructions before "
+            "making any payment."
+        )
+    else:
+        st.markdown("### 4. Consultation fee")
+        st.info(
+            "No consultation fee has been configured. "
+            "Please confirm the terms before proceeding."
+        )
+
+    st.divider()
+
+    if st.button(
+        "📩 Submit Appointment Request",
+        type="primary",
+        use_container_width=True
+    ):
+        if preferred_date < date.today():
+            st.error("Please choose a future date.")
+        elif not message.strip():
+            st.error("Please briefly describe the purpose of your request.")
+        else:
+            saved = create_appointment_request(
+                user_id=user_id,
+                purpose=purpose,
+                preferred_date=preferred_date.isoformat(),
+                preferred_time=preferred_time,
+                contact_method=contact_method,
+                message=message.strip(),
+                fee=configured_fee or "To be confirmed"
+            )
+
+            if saved:
+                st.success(
+                    "Your appointment request has been submitted. "
+                    "Its status is Pending, not Confirmed."
+                )
+                st.rerun()
+            else:
+                st.error(
+                    "Your request could not be saved. "
+                    "Please try again later."
+                )
+
+    st.divider()
+
+    st.markdown("### 5. My appointment requests")
+
+    requests = get_user_appointments(user_id)
+
+    if not requests:
+        st.info("You have not submitted an appointment request yet.")
+
+    for request in requests:
+        with st.expander(
+            f"{request.get('purpose', 'Appointment')} — "
+            f"{request.get('preferred_date', '')}"
+        ):
+            st.write("**Preferred date:**", request.get("preferred_date"))
+            st.write("**Preferred time:**", request.get("preferred_time"))
+            st.write("**Contact preference:**", request.get("contact_method"))
+            st.write("**Request:**", request.get("message"))
+            st.write("**Fee:**", request.get("fee"))
+            st.write("**Payment:**", request.get("payment_status"))
+            st.write("**Status:**", request.get("appointment_status"))
+
+    st.caption(
+        "Ayna Jaffri is the human creator/consultation contact. "
+        "Ayna AI is a separate educational AI assistant. "
+        "Submitting this form does not automatically book a meeting."
+    )
