@@ -2301,3 +2301,926 @@ def page_cognitive_challenges():
 
 # page_lab() and page_cognitive_challenges()
 # are now available for the final application router.
+
+# ============================================================
+# PART 6 — PERSONAL HEALING + PRIVATE JOURNAL
+# ============================================================
+
+import base64
+
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+except ImportError:
+    Fernet = None
+    InvalidToken = Exception
+
+
+# ============================================================
+# PRIVATE JOURNAL DATABASE EXTENSION
+# ============================================================
+
+def initialize_private_journal():
+
+    connection = get_local_db()
+
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS journal_vault (
+            user_id TEXT PRIMARY KEY,
+            pin_salt TEXT NOT NULL,
+            pin_hash TEXT NOT NULL,
+            recovery_salt TEXT NOT NULL,
+            recovery_hash TEXT NOT NULL,
+            pin_wrapped_key TEXT NOT NULL,
+            recovery_wrapped_key TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+
+    connection.commit()
+    connection.close()
+
+
+initialize_private_journal()
+
+
+# ============================================================
+# ENCRYPTION HELPERS
+# ============================================================
+
+def derive_encryption_key(secret, salt_hex):
+
+    salt = bytes.fromhex(salt_hex)
+
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        secret.encode("utf-8"),
+        salt,
+        480000,
+        dklen=32
+    )
+
+    return base64.urlsafe_b64encode(derived)
+
+
+def encrypt_private_data(data, master_key):
+
+    if Fernet is None:
+        raise RuntimeError(
+            "Install cryptography to enable private encryption."
+        )
+
+    cipher = Fernet(master_key)
+
+    return cipher.encrypt(
+        data.encode("utf-8")
+    ).decode("utf-8")
+
+
+def decrypt_private_data(encrypted_data, master_key):
+
+    if Fernet is None:
+        raise RuntimeError(
+            "Install cryptography to enable private encryption."
+        )
+
+    cipher = Fernet(master_key)
+
+    return cipher.decrypt(
+        encrypted_data.encode("utf-8")
+    ).decode("utf-8")
+
+
+# ============================================================
+# CREATE PRIVATE JOURNAL VAULT
+# ============================================================
+
+def create_private_vault(pin):
+
+    if not require_login():
+        return False, "Please login first.", None
+
+    if Fernet is None:
+        return (
+            False,
+            "Encryption library is not installed.",
+            None
+        )
+
+    if not pin.isdigit() or not 6 <= len(pin) <= 12:
+        return (
+            False,
+            "PIN must contain 6 to 12 digits.",
+            None
+        )
+
+    user_id = st.session_state.user_id
+
+    existing = db_fetch_one(
+        """
+        SELECT user_id FROM journal_vault
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    if existing:
+        return (
+            False,
+            "A private vault already exists.",
+            None
+        )
+
+    pin_salt, pin_hash = hash_secret(pin)
+
+    recovery_code = secrets.token_urlsafe(24)
+
+    recovery_salt, recovery_hash = hash_secret(
+        recovery_code
+    )
+
+    master_key = Fernet.generate_key()
+
+    pin_key = derive_encryption_key(
+        pin,
+        pin_salt
+    )
+
+    recovery_key = derive_encryption_key(
+        recovery_code,
+        recovery_salt
+    )
+
+    pin_wrapped_key = Fernet(
+        pin_key
+    ).encrypt(master_key).decode("utf-8")
+
+    recovery_wrapped_key = Fernet(
+        recovery_key
+    ).encrypt(master_key).decode("utf-8")
+
+    connection = get_local_db()
+
+    try:
+        connection.execute(
+            """
+            INSERT INTO journal_vault (
+                user_id,
+                pin_salt,
+                pin_hash,
+                recovery_salt,
+                recovery_hash,
+                pin_wrapped_key,
+                recovery_wrapped_key,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                pin_salt,
+                pin_hash,
+                recovery_salt,
+                recovery_hash,
+                pin_wrapped_key,
+                recovery_wrapped_key,
+                datetime.now().isoformat()
+            )
+        )
+
+        connection.commit()
+
+    except sqlite3.Error as exc:
+        return False, str(exc), None
+
+    finally:
+        connection.close()
+
+    create_audit_log(
+        user_id,
+        "private_vault_created"
+    )
+
+    return (
+        True,
+        "Private journal created.",
+        recovery_code
+    )
+
+
+# ============================================================
+# LOAD MASTER KEY USING PIN
+# ============================================================
+
+def unlock_private_vault(pin):
+
+    if not require_login():
+        return False
+
+    if Fernet is None:
+        st.error("Encryption library is unavailable.")
+        return False
+
+    user_id = st.session_state.user_id
+
+    lock_until = st.session_state.private_lock_until
+
+    if lock_until:
+        if datetime.now() < lock_until:
+            st.error(
+                "Too many attempts. Please wait before trying again."
+            )
+            return False
+
+        st.session_state.private_lock_until = None
+        st.session_state.private_failed_attempts = 0
+
+    vault = db_fetch_one(
+        """
+        SELECT * FROM journal_vault
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    if not vault:
+        st.error("Create your private journal first.")
+        return False
+
+    if not verify_secret(
+        pin,
+        vault["pin_salt"],
+        vault["pin_hash"]
+    ):
+
+        st.session_state.private_failed_attempts += 1
+
+        if st.session_state.private_failed_attempts >= 5:
+
+            st.session_state.private_lock_until = (
+                datetime.now() + timedelta(minutes=5)
+            )
+
+            st.error(
+                "Five incorrect attempts. Vault locked for 5 minutes."
+            )
+
+        else:
+            st.error("Incorrect PIN.")
+
+        return False
+
+    pin_key = derive_encryption_key(
+        pin,
+        vault["pin_salt"]
+    )
+
+    try:
+        master_key = Fernet(
+            pin_key
+        ).decrypt(
+            vault["pin_wrapped_key"].encode("utf-8")
+        )
+
+    except Exception:
+        st.error("Vault could not be unlocked.")
+        return False
+
+    st.session_state.private_master_key = (
+        base64.urlsafe_b64encode(master_key).decode("utf-8")
+    )
+
+    st.session_state.private_unlocked = True
+    st.session_state.private_last_activity = datetime.now()
+    st.session_state.private_failed_attempts = 0
+
+    create_audit_log(
+        user_id,
+        "private_vault_unlocked"
+    )
+
+    return True
+
+
+# ============================================================
+# RECOVER VAULT USING RECOVERY CODE
+# ============================================================
+
+def recover_private_vault(recovery_code, new_pin):
+
+    if not require_login():
+        return False, "Please login first."
+
+    if Fernet is None:
+        return False, "Encryption library is unavailable."
+
+    if not new_pin.isdigit() or not 6 <= len(new_pin) <= 12:
+        return False, "New PIN must contain 6 to 12 digits."
+
+    user_id = st.session_state.user_id
+
+    vault = db_fetch_one(
+        """
+        SELECT * FROM journal_vault
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    if not vault:
+        return False, "Private vault does not exist."
+
+    if not verify_secret(
+        recovery_code,
+        vault["recovery_salt"],
+        vault["recovery_hash"]
+    ):
+        return False, "Incorrect recovery code."
+
+    recovery_key = derive_encryption_key(
+        recovery_code,
+        vault["recovery_salt"]
+    )
+
+    try:
+        master_key = Fernet(
+            recovery_key
+        ).decrypt(
+            vault["recovery_wrapped_key"].encode("utf-8")
+        )
+
+    except Exception:
+        return False, "Recovery failed."
+
+    new_salt, new_hash = hash_secret(new_pin)
+
+    new_key = derive_encryption_key(
+        new_pin,
+        new_salt
+    )
+
+    wrapped_key = Fernet(
+        new_key
+    ).encrypt(master_key).decode("utf-8")
+
+    db_execute(
+        """
+        UPDATE journal_vault
+        SET pin_salt = ?,
+            pin_hash = ?,
+            pin_wrapped_key = ?
+        WHERE user_id = ?
+        """,
+        (
+            new_salt,
+            new_hash,
+            wrapped_key,
+            user_id
+        )
+    )
+
+    clear_private_session()
+
+    create_audit_log(
+        user_id,
+        "private_vault_pin_recovered"
+    )
+
+    return True, "PIN changed successfully."
+
+
+# ============================================================
+# SAVE ENCRYPTED JOURNAL ENTRY
+# ============================================================
+
+def save_private_journal_entry(content):
+
+    if not require_login():
+        return False
+
+    if not private_session_active():
+        st.error("Unlock your journal first.")
+        return False
+
+    content = content.strip()
+
+    if not content:
+        st.warning("Write something before saving.")
+        return False
+
+    master_key = base64.urlsafe_b64decode(
+        st.session_state.private_master_key
+    )
+
+    encrypted = encrypt_private_data(
+        content,
+        master_key
+    )
+
+    entry_id = secrets.token_hex(16)
+
+    now = datetime.now().isoformat()
+
+    success = db_execute(
+        """
+        INSERT INTO journal_entries (
+            id,
+            user_id,
+            encrypted_content,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            entry_id,
+            st.session_state.user_id,
+            encrypted,
+            now,
+            now
+        )
+    )
+
+    if success:
+        create_audit_log(
+            st.session_state.user_id,
+            "private_journal_entry_saved"
+        )
+
+    return success
+
+
+# ============================================================
+# READ PRIVATE JOURNAL ENTRIES
+# ============================================================
+
+def get_private_journal_entries():
+
+    if not require_login():
+        return []
+
+    if not private_session_active():
+        return []
+
+    master_key = base64.urlsafe_b64decode(
+        st.session_state.private_master_key
+    )
+
+    entries = db_fetch_all(
+        """
+        SELECT id, encrypted_content, created_at
+        FROM journal_entries
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        """,
+        (st.session_state.user_id,)
+    )
+
+    decrypted_entries = []
+
+    for entry in entries:
+
+        try:
+            content = decrypt_private_data(
+                entry["encrypted_content"],
+                master_key
+            )
+
+            decrypted_entries.append({
+                "id": entry["id"],
+                "content": content,
+                "created_at": entry["created_at"]
+            })
+
+        except Exception:
+            decrypted_entries.append({
+                "id": entry["id"],
+                "content": "[Unable to decrypt entry]",
+                "created_at": entry["created_at"]
+            })
+
+    return decrypted_entries
+
+
+# ============================================================
+# DELETE PRIVATE JOURNAL ENTRY
+# ============================================================
+
+def delete_private_journal_entry(entry_id):
+
+    if not require_login():
+        return False
+
+    if not private_session_active():
+        return False
+
+    success = db_execute(
+        """
+        DELETE FROM journal_entries
+        WHERE id = ? AND user_id = ?
+        """,
+        (
+            entry_id,
+            st.session_state.user_id
+        )
+    )
+
+    if success:
+        create_audit_log(
+            st.session_state.user_id,
+            "private_journal_entry_deleted"
+        )
+
+    return success
+
+
+# ============================================================
+# PERSONAL JOURNAL PAGE
+# ============================================================
+
+def page_private_journal():
+
+    render_brand_header()
+
+    st.title("Private Journal")
+    st.caption("Your personal space. Private by default.")
+
+    if not require_login():
+        return
+
+    if Fernet is None:
+        st.error(
+            "Private encryption is unavailable. "
+            "Install cryptography before using this feature."
+        )
+        return
+
+    vault = db_fetch_one(
+        """
+        SELECT user_id FROM journal_vault
+        WHERE user_id = ?
+        """,
+        (st.session_state.user_id,)
+    )
+
+    if not vault:
+
+        st.subheader("Create your private vault")
+
+        pin = st.text_input(
+            "Create a 6–12 digit PIN",
+            type="password",
+            key="journal_new_pin"
+        )
+
+        confirm = st.text_input(
+            "Confirm PIN",
+            type="password",
+            key="journal_confirm_pin"
+        )
+
+        if st.button("Create Private Journal"):
+
+            if pin != confirm:
+                st.error("PINs do not match.")
+
+            else:
+                success, message, recovery = (
+                    create_private_vault(pin)
+                )
+
+                if success:
+
+                    st.success(message)
+
+                    st.warning(
+                        "Save this recovery code somewhere safe. "
+                        "It will not be shown again."
+                    )
+
+                    st.code(recovery)
+
+                    st.info(
+                        "After saving the recovery code, unlock "
+                        "your journal using your PIN."
+                    )
+
+                else:
+                    st.error(message)
+
+        return
+
+    if not private_session_active():
+
+        st.subheader("Unlock Private Journal")
+
+        pin = st.text_input(
+            "Enter your PIN",
+            type="password",
+            key="journal_unlock_pin"
+        )
+
+        if st.button("Unlock Journal"):
+
+            if unlock_private_vault(pin):
+                st.success("Journal unlocked.")
+                st.rerun()
+
+        with st.expander("Forgot your PIN?"):
+
+            recovery_code = st.text_input(
+                "Recovery code",
+                type="password",
+                key="journal_recovery_code"
+            )
+
+            new_pin = st.text_input(
+                "New PIN",
+                type="password",
+                key="journal_recovery_new_pin"
+            )
+
+            if st.button("Recover and Change PIN"):
+
+                success, message = recover_private_vault(
+                    recovery_code,
+                    new_pin
+                )
+
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
+
+        return
+
+    st.success("Your private journal is unlocked.")
+
+    st.subheader("Write a private entry")
+
+    content = st.text_area(
+        "Your thoughts",
+        height=180,
+        placeholder="Write your private reflection here..."
+    )
+
+    if st.button("Save Private Entry"):
+
+        if save_private_journal_entry(content):
+            st.success("Your encrypted entry has been saved.")
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Your saved entries")
+
+    entries = get_private_journal_entries()
+
+    if not entries:
+        st.info("No journal entries yet.")
+
+    for entry in entries:
+
+        with st.expander(
+            entry["created_at"][:16]
+        ):
+
+            st.write(entry["content"])
+
+            if st.button(
+                "Delete this entry",
+                key=f"delete_journal_{entry['id']}"
+            ):
+
+                if delete_private_journal_entry(
+                    entry["id"]
+                ):
+                    st.success("Entry deleted.")
+                    st.rerun()
+
+    st.divider()
+
+    if st.button("Lock My Journal"):
+
+        clear_private_session()
+
+        if "private_master_key" in st.session_state:
+            del st.session_state["private_master_key"]
+
+        st.rerun()
+
+
+# ============================================================
+# PERSONAL HEALING CONTENT
+# ============================================================
+
+HEALING_EXERCISES = {
+
+    "Grounding Exercise": {
+        "description": (
+            "A short sensory grounding activity to help "
+            "you reconnect with the present moment."
+        ),
+        "steps": [
+            "Notice five things you can see.",
+            "Notice four things you can physically feel.",
+            "Listen for three sounds around you.",
+            "Identify two smells, if possible.",
+            "Notice one taste or take a gentle breath."
+        ]
+    },
+
+    "Gentle Breathing": {
+        "description": (
+            "A gentle breathing practice. Keep your breathing "
+            "comfortable; do not force or hold your breath."
+        ),
+        "steps": [
+            "Sit comfortably.",
+            "Relax your shoulders.",
+            "Breathe in gently.",
+            "Breathe out slowly.",
+            "Repeat for a few comfortable cycles."
+        ]
+    },
+
+    "Thought Reflection": {
+        "description": (
+            "A structured way to observe a thought without "
+            "automatically treating it as a fact."
+        ),
+        "steps": [
+            "What happened?",
+            "What thought appeared?",
+            "What emotion did you notice?",
+            "What evidence supports this thought?",
+            "What is another possible interpretation?"
+        ]
+    },
+
+    "Small Next Step": {
+        "description": (
+            "Break an overwhelming task into one manageable action."
+        ),
+        "steps": [
+            "Name one thing that feels difficult.",
+            "Identify the smallest possible next action.",
+            "Decide when you can try it.",
+            "Notice what support might help.",
+            "Recognize the effort, not just the outcome."
+        ]
+    }
+}
+
+
+# ============================================================
+# PERSONAL HEALING PAGE
+# ============================================================
+
+def page_personal_healing():
+
+    render_brand_header()
+
+    st.title("Personal Healing Journey")
+
+    st.write(
+        "A supportive space for reflection, emotional "
+        "awareness and gentle self-care."
+    )
+
+    st.info(
+        "Ayna AI provides educational and supportive guidance. "
+        "It is not a therapist, medical professional or "
+        "replacement for mental-health treatment."
+    )
+
+    st.subheader("Personal check-in")
+
+    mood = st.select_slider(
+        "How are you feeling right now?",
+        options=[
+            "Very difficult",
+            "Difficult",
+            "Neutral",
+            "Okay",
+            "Good"
+        ],
+        value="Neutral"
+    )
+
+    energy = st.select_slider(
+        "How is your energy?",
+        options=[
+            "Very low",
+            "Low",
+            "Moderate",
+            "High",
+            "Very high"
+        ],
+        value="Moderate"
+    )
+
+    reflection = st.text_area(
+        "Would you like to write what is on your mind?",
+        placeholder="Share only what you feel comfortable sharing."
+    )
+
+    if st.button("Save Check-in"):
+
+        st.session_state.setdefault(
+            "healing_checkins",
+            []
+        )
+
+        st.session_state.healing_checkins.append({
+            "mood": mood,
+            "energy": energy,
+            "reflection": reflection,
+            "date": datetime.now().isoformat()
+        })
+
+        st.success("Your check-in is saved in this session.")
+
+        st.caption(
+            "This check-in is currently session-only, "
+            "not permanently stored."
+        )
+
+    st.divider()
+
+    st.subheader("Choose a supportive exercise")
+
+    exercise_name = st.selectbox(
+        "Select an exercise",
+        list(HEALING_EXERCISES.keys())
+    )
+
+    exercise = HEALING_EXERCISES[exercise_name]
+
+    st.write(exercise["description"])
+
+    for index, step in enumerate(
+        exercise["steps"],
+        1
+    ):
+        st.markdown(f"**{index}.** {step}")
+
+    st.divider()
+
+    st.subheader("Reflection prompts")
+
+    prompt = random.choice([
+        "What is one thing you handled today?",
+        "What would you say to a friend feeling this way?",
+        "What is one small thing you can control today?",
+        "What do you need more of right now?",
+        "What helped you feel safe or supported recently?"
+    ])
+
+    st.markdown(
+        f"<div class='neuro-card'><h3>{prompt}</h3></div>",
+        unsafe_allow_html=True
+    )
+
+    answer = st.text_area(
+        "Your reflection",
+        key="healing_prompt_answer"
+    )
+
+    if st.button("Save Reflection"):
+
+        st.session_state.setdefault(
+            "healing_reflections",
+            []
+        )
+
+        st.session_state.healing_reflections.append({
+            "prompt": prompt,
+            "answer": answer,
+            "date": datetime.now().isoformat()
+        })
+
+        st.success(
+            "Reflection saved in this session."
+        )
+
+    st.divider()
+
+    st.subheader("Need additional support?")
+
+    st.write(
+        "If distress feels overwhelming, consider speaking "
+        "with a trusted person or qualified mental-health "
+        "professional. If you may hurt yourself or someone "
+        "else, seek immediate local emergency support and "
+        "stay with someone you trust."
+    )
+
+
+# ============================================================
+# PART 6 PAGE REGISTRATION
+# ============================================================
+
+# page_private_journal()
+# page_personal_healing()
+# are ready for the final router.
