@@ -3846,7 +3846,210 @@ def page_personal_ebook():
         "Your eBook chapters are encrypted at rest. "
         "PDF exports are downloaded as readable documents."
     )
+# ============================================================
+# PART 8 — NEUROLENS CUTE STUDIO / PHOTO STUDIO
+# ============================================================
 
+def apply_photo_filter(image, filter_name):
+    """Apply a real Pillow-based visual effect."""
+    img = image.convert("RGB")
+
+    if filter_name == "Lavender Sparkle":
+        img = ImageEnhance.Color(img).enhance(0.88)
+        img = ImageEnhance.Brightness(img).enhance(1.08)
+        img = ImageEnhance.Contrast(img).enhance(0.92)
+        overlay = Image.new("RGB", img.size, (205, 180, 255))
+        img = Image.blend(img, overlay, 0.12)
+
+    elif filter_name == "Cute Cat":
+        img = ImageEnhance.Color(img).enhance(1.18)
+        img = ImageEnhance.Brightness(img).enhance(1.06)
+        img = ImageEnhance.Contrast(img).enhance(1.04)
+
+    elif filter_name == "Butterfly Dream":
+        img = ImageEnhance.Color(img).enhance(0.82)
+        img = ImageEnhance.Brightness(img).enhance(1.12)
+        overlay = Image.new("RGB", img.size, (255, 190, 220))
+        img = Image.blend(img, overlay, 0.13)
+
+    elif filter_name == "Clean Portrait":
+        img = ImageEnhance.Color(img).enhance(0.96)
+        img = ImageEnhance.Contrast(img).enhance(1.04)
+        img = ImageEnhance.Sharpness(img).enhance(1.12)
+        img = ImageEnhance.Brightness(img).enhance(1.03)
+
+    elif filter_name == "Blue Cyber":
+        img = ImageEnhance.Color(img).enhance(0.90)
+        blue_layer = Image.new("RGB", img.size, (45, 105, 190))
+        img = Image.blend(img, blue_layer, 0.22)
+        img = ImageEnhance.Contrast(img).enhance(1.18)
+
+    elif filter_name == "Cinematic Vintage":
+        img = ImageEnhance.Color(img).enhance(0.72)
+        warm_layer = Image.new("RGB", img.size, (190, 125, 75))
+        img = Image.blend(img, warm_layer, 0.16)
+        img = ImageEnhance.Contrast(img).enhance(1.12)
+
+    return img
+
+
+def add_photo_text(image, text_value):
+    """Add user-provided text to the image."""
+    if not text_value:
+        return image
+
+    img = image.convert("RGBA")
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", max(18, img.width // 22))
+    except Exception:
+        font = ImageFont.load_default()
+
+    margin = max(12, img.width // 35)
+    x = margin
+    y = img.height - margin - max(25, img.width // 18)
+
+    try:
+        draw.text(
+            (x + 2, y + 2),
+            text_value,
+            font=font,
+            fill=(0, 0, 0, 150),
+            stroke_width=1
+        )
+        draw.text(
+            (x, y),
+            text_value,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=1
+        )
+    except Exception:
+        pass
+
+    return img.convert("RGB")
+
+
+def page_photo_studio():
+    st.title("✨ Cute Studio")
+    st.caption("Create your own photo aesthetic with NeuroLens.")
+
+    st.info(
+        "Photo filters are visual editing effects. "
+        "They do not identify personality, emotions, or mental health."
+    )
+
+    uploaded = st.file_uploader(
+        "Upload a photo from your device",
+        type=["jpg", "jpeg", "png", "webp"],
+        key="studio_photo_upload"
+    )
+
+    if uploaded is None:
+        st.markdown("### Choose a photo to begin")
+        st.write(
+            "Upload a portrait, selfie, or any image. "
+            "Your original image is kept unchanged in this editing session."
+        )
+        return
+
+    try:
+        original = Image.open(uploaded).convert("RGB")
+    except Exception:
+        st.error("Image open nahi ho saki. Please another image try karein.")
+        return
+
+    st.markdown("### 1. Choose your style")
+
+    filter_names = [
+        "Lavender Sparkle",
+        "Cute Cat",
+        "Butterfly Dream",
+        "Clean Portrait",
+        "Blue Cyber",
+        "Cinematic Vintage"
+    ]
+
+    selected_filter = st.selectbox(
+        "Photo filter",
+        filter_names,
+        key="studio_selected_filter"
+    )
+
+    st.markdown("### 2. Adjust your photo")
+
+    brightness = st.slider(
+        "Brightness",
+        min_value=50,
+        max_value=150,
+        value=100,
+        key="studio_brightness"
+    )
+
+    contrast = st.slider(
+        "Contrast",
+        min_value=50,
+        max_value=150,
+        value=100,
+        key="studio_contrast"
+    )
+
+    text_overlay = st.text_input(
+        "Add your own caption (optional)",
+        max_chars=60,
+        key="studio_text_overlay"
+    )
+
+    edited = apply_photo_filter(original, selected_filter)
+
+    edited = ImageEnhance.Brightness(edited).enhance(
+        brightness / 100
+    )
+
+    edited = ImageEnhance.Contrast(edited).enhance(
+        contrast / 100
+    )
+
+    edited = add_photo_text(edited, text_overlay)
+
+    st.markdown("### 3. Before and after")
+
+    left, right = st.columns(2)
+
+    with left:
+        st.image(
+            original,
+            caption="Original photo",
+            use_container_width=True
+        )
+
+    with right:
+        st.image(
+            edited,
+            caption=selected_filter,
+            use_container_width=True
+        )
+
+    st.markdown("### 4. Save your edited photo")
+
+    output = io.BytesIO()
+    edited.save(output, format="PNG")
+    output.seek(0)
+
+    st.download_button(
+        "⬇️ Download edited photo",
+        data=output.getvalue(),
+        file_name="neurolens_photo.png",
+        mime="image/png",
+        use_container_width=True
+    )
+
+    st.caption(
+        "Note: Cute Cat and Butterfly Dream currently apply color effects; "
+        "automatic cat-ear placement, butterfly stickers, face tracking "
+        "and background cutout are Advanced Stage features."
+    )
 
 # ============================================================
 # PART 7 PAGE REGISTRATION
