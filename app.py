@@ -4703,7 +4703,403 @@ def page_progress_dashboard():
     st.divider()
 
     st.markdown("### 🚀 Keep Exploring")
+# ============================================================
+# PART 10 — NEUROLENS AYNA AI
+# ============================================================
 
+def ayna_system_prompt():
+    return """
+You are Ayna AI inside NeuroLens, an educational cognitive
+neuroscience platform created by Ayna Jaffri.
+
+Your main topics:
+- Cognitive neuroscience
+- Attention, memory and learning
+- Emotion and decision-making
+- Reward and motivation
+- Cognitive control and CSTC circuits
+- Consciousness and awareness
+- Neuroplasticity and behavioral neuroscience
+- Research methodology and scientific literature
+
+Rules:
+1. Explain science clearly and accurately.
+2. Distinguish established evidence from hypotheses.
+3. Never invent studies, authors, citations or results.
+4. Never diagnose medical or psychiatric conditions.
+5. Never claim that NeuroLens games measure brain activity.
+6. Do not infer personality or hidden emotions from a person's face.
+7. Explain limitations and uncertainty.
+8. Encourage professional help for medical or mental-health concerns.
+9. Use the user's selected language.
+10. Be supportive, respectful and scientifically cautious.
+"""
+
+
+def ayna_generate_response(user_message, conversation_history=None):
+    if genai is None or not GEMINI_API_KEY:
+        return (
+            "Ayna AI is not connected yet. Please add GEMINI_API_KEY "
+            "to your Streamlit Secrets."
+        )
+
+    limit = int(globals().get("AI_SESSION_LIMIT", 20))
+
+    if st.session_state.get("ai_requests", 0) >= limit:
+        return (
+            "Your current AI request limit has been reached. "
+            "You can continue using the other NeuroLens learning modules."
+        )
+
+    history_text = ""
+
+    for item in (conversation_history or [])[-8:]:
+        role = item.get("role", "user")
+        content = item.get("content", "")
+        history_text += f"\n{role.upper()}: {content}\n"
+
+    research_context = st.session_state.get(
+        "research_summary_text", ""
+    )
+
+    prompt = f"""
+{ayna_system_prompt()}
+
+Preferred language:
+{st.session_state.get("language", "English")}
+
+Previous conversation:
+{history_text}
+
+Research context supplied by the user:
+{research_context}
+
+Current user message:
+{user_message}
+
+Respond to the current message. Use the research context only
+when relevant. Do not pretend that an abstract is a full paper.
+"""
+
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
+
+        answer = getattr(response, "text", None)
+
+        if not answer:
+            return "Ayna could not generate a response right now."
+
+        st.session_state.ai_requests = (
+            st.session_state.get("ai_requests", 0) + 1
+        )
+
+        return answer
+
+    except Exception:
+        return (
+            "Ayna is temporarily unavailable. Please check your "
+            "Gemini API key, model settings and internet connection."
+        )
+
+
+def ayna_speak_button(text_value, label="🔊 Listen to Ayna"):
+    safe_value = json.dumps(str(text_value))
+
+    components.html(
+        f"""
+        <button onclick="speakAyna()"
+        style="
+            width:100%;
+            padding:12px;
+            border-radius:12px;
+            border:1px solid #777;
+            background:#29234b;
+            color:white;
+            font-size:15px;">
+            {label}
+        </button>
+
+        <script>
+        function speakAyna() {{
+            if (!window.speechSynthesis) {{
+                alert("Voice output is not supported in this browser.");
+                return;
+            }}
+
+            window.speechSynthesis.cancel();
+
+            const message = {safe_value};
+            const speech = new SpeechSynthesisUtterance(message);
+
+            speech.rate = 0.95;
+            speech.pitch = 1.0;
+
+            window.speechSynthesis.speak(speech);
+        }}
+        </script>
+        """,
+        height=58
+    )
+
+
+def ayna_save_message(conversation_id, role, content):
+    try:
+        db_execute(
+            """
+            INSERT INTO ai_messages
+            (conversation_id, role, content, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                conversation_id,
+                role,
+                content,
+                datetime.now().isoformat()
+            )
+        )
+        return True
+    except Exception:
+        return False
+
+
+def ayna_load_messages(conversation_id):
+    try:
+        return db_fetch_all(
+            """
+            SELECT role, content, created_at
+            FROM ai_messages
+            WHERE conversation_id = ?
+            ORDER BY created_at ASC
+            """,
+            (conversation_id,)
+        )
+    except Exception:
+        return []
+
+
+def ayna_create_conversation(user_id, title):
+    try:
+        db_execute(
+            """
+            INSERT INTO ai_conversations
+            (user_id, title, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (
+                user_id,
+                title[:100],
+                datetime.now().isoformat()
+            )
+        )
+
+        row = db_fetch_one(
+            """
+            SELECT id
+            FROM ai_conversations
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (user_id,)
+        )
+
+        return row["id"] if row else None
+
+    except Exception:
+        return None
+
+
+def page_ayna_ai():
+    st.title("🤖 Ask Ayna AI")
+    st.caption(
+        "Explore cognition, behavior, neuroscience and research with Ayna."
+    )
+
+    user = st.session_state.get("user")
+
+    if not user:
+        st.warning("Please login to use your personal AI workspace.")
+        return
+
+    user_id = user.get("id")
+
+    if "ayna_conversation_id" not in st.session_state:
+        st.session_state.ayna_conversation_id = None
+
+    if "ayna_chat_messages" not in st.session_state:
+        st.session_state.ayna_chat_messages = []
+
+    st.markdown("### 💜 Your AI Research Companion")
+
+    if st.session_state.get("research_summary_text"):
+        with st.expander("📚 Research context attached", expanded=True):
+            st.write(st.session_state.research_summary_text)
+            if st.button("Clear research context"):
+                st.session_state.research_summary_text = ""
+                st.rerun()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("＋ New Conversation", use_container_width=True):
+            st.session_state.ayna_conversation_id = None
+            st.session_state.ayna_chat_messages = []
+            st.rerun()
+
+    with col2:
+        st.metric(
+            "AI requests this session",
+            st.session_state.get("ai_requests", 0)
+        )
+
+    conversation_id = st.session_state.ayna_conversation_id
+
+    if conversation_id:
+        saved_messages = ayna_load_messages(conversation_id)
+
+        if saved_messages:
+            st.session_state.ayna_chat_messages = [
+                {
+                    "role": row["role"],
+                    "content": row["content"]
+                }
+                for row in saved_messages
+            ]
+
+    for message in st.session_state.ayna_chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+            if message["role"] == "assistant":
+                ayna_speak_button(
+                    message["content"],
+                    "🔊 Listen to this answer"
+                )
+
+    user_message = st.chat_input(
+        "Ask Ayna about the brain, cognition or research..."
+    )
+
+    if user_message:
+        if not conversation_id:
+            conversation_id = ayna_create_conversation(
+                user_id,
+                user_message
+            )
+            st.session_state.ayna_conversation_id = conversation_id
+
+        st.session_state.ayna_chat_messages.append({
+            "role": "user",
+            "content": user_message
+        })
+
+        if conversation_id:
+            ayna_save_message(
+                conversation_id,
+                "user",
+                user_message
+            )
+
+        with st.chat_message("user"):
+            st.markdown(user_message)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Ayna is thinking..."):
+                answer = ayna_generate_response(
+                    user_message,
+                    st.session_state.ayna_chat_messages[:-1]
+                )
+
+            st.markdown(answer)
+
+            ayna_speak_button(answer)
+
+        st.session_state.ayna_chat_messages.append({
+            "role": "assistant",
+            "content": answer
+        })
+
+        if conversation_id:
+            ayna_save_message(
+                conversation_id,
+                "assistant",
+                answer
+            )
+
+        st.rerun()
+
+    st.divider()
+
+    st.markdown("### 🎙️ Ask Ayna using your voice")
+
+    voice_input = st.audio_input(
+        "Record your question",
+        key="ayna_voice_question"
+    )
+
+    if voice_input:
+        st.audio(voice_input)
+
+        if st.button(
+            "Send voice question to Ayna",
+            use_container_width=True
+        ):
+            if genai is None or not GEMINI_API_KEY:
+                st.error("Gemini API is not configured.")
+            else:
+                try:
+                    from google.genai import types
+
+                    client = genai.Client(api_key=GEMINI_API_KEY)
+
+                    audio_part = types.Part.from_bytes(
+                        data=voice_input.getvalue(),
+                        mime_type=voice_input.type or "audio/wav"
+                    )
+
+                    response = client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=[
+                            ayna_system_prompt()
+                            + "\nTranscribe the user's spoken question "
+                            + "and answer it. If unclear, say so.",
+                            audio_part
+                        ]
+                    )
+
+                    answer = getattr(response, "text", None)
+
+                    if answer:
+                        st.session_state.ai_requests = (
+                            st.session_state.get("ai_requests", 0) + 1
+                        )
+
+                        st.session_state.ayna_chat_messages.append({
+                            "role": "assistant",
+                            "content": answer
+                        })
+
+                        st.success("Ayna has processed your voice question.")
+                        st.markdown(answer)
+                        ayna_speak_button(answer)
+                    else:
+                        st.warning("No answer was returned.")
+
+                except Exception:
+                    st.error(
+                        "Voice processing failed. Try a shorter recording "
+                        "or check your Gemini configuration."
+                    )
+
+    st.caption(
+        "AI responses are educational assistance, not medical diagnosis "
+        "or a substitute for professional advice."
+    )
     if st.button("Open Interactive Lab", use_container_width=True):
         st.session_state.page = "Interactive Lab"
         st.rerun()
