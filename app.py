@@ -5981,3 +5981,297 @@ def page_staff_workspace():
         "healing reflections, passwords or private AI conversations."
     )
 
+# ============================================================
+# PART 14 — ADVANCED STAGE EXTENSION REGISTRY
+# ============================================================
+
+ADVANCED_STAGE_MODULES = {
+    "neurosocial_pro": {
+        "name": "NeuroSocial Pro",
+        "description": "Advanced community, private messaging and challenges",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "behaviour_decoding_pro": {
+        "name": "Behaviour Decoding Pro",
+        "description": "AI-assisted voice and behaviour reflection",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "research_engine_pro": {
+        "name": "Research Engine Pro",
+        "description": "Advanced literature review and research workspace",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "brain_lab_3d": {
+        "name": "Advanced Brain Lab",
+        "description": "3D brain exploration and advanced CSTC simulations",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "hardware_hub": {
+        "name": "Neuroscience Hardware Hub",
+        "description": "EEG, eye tracking and biosignal integrations",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "photo_studio_pro": {
+        "name": "Photo Studio Pro",
+        "description": "Advanced filters, tracking and sticker tools",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "healing_visual_stories": {
+        "name": "Healing Visual Stories",
+        "description": "AI-assisted visual stories and guided reflection",
+        "status": "Planned",
+        "enabled": False,
+    },
+    "advanced_privacy": {
+        "name": "Advanced Privacy",
+        "description": "Expanded account privacy and security controls",
+        "status": "Planned",
+        "enabled": False,
+    },
+}
+
+
+def initialize_extension_registry():
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS extension_registry (
+            extension_key TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            status TEXT DEFAULT 'Planned',
+            enabled INTEGER DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    db_execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            description TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        )
+    """)
+
+    for key, module in ADVANCED_STAGE_MODULES.items():
+        db_execute(
+            """
+            INSERT OR IGNORE INTO extension_registry
+            (extension_key, display_name, description, status,
+             enabled, updated_at)
+            VALUES (?, ?, ?, ?, 0, ?)
+            """,
+            (
+                key,
+                module["name"],
+                module["description"],
+                "Planned",
+                datetime.now().isoformat(),
+            )
+        )
+
+
+def register_advanced_extension(
+    extension_key,
+    display_name,
+    description,
+    status="Planned"
+):
+    if not re.fullmatch(r"[a-z0-9_]{2,60}", extension_key or ""):
+        return False
+
+    allowed_statuses = {
+        "Planned",
+        "Preview",
+        "Available",
+        "Disabled",
+    }
+
+    if status not in allowed_statuses:
+        return False
+
+    initialize_extension_registry()
+
+    db_execute(
+        """
+        INSERT INTO extension_registry
+        (extension_key, display_name, description,
+         status, enabled, updated_at)
+        VALUES (?, ?, ?, ?, 0, ?)
+        ON CONFLICT(extension_key)
+        DO UPDATE SET
+            display_name = excluded.display_name,
+            description = excluded.description,
+            status = excluded.status,
+            updated_at = excluded.updated_at
+        """,
+        (
+            extension_key,
+            display_name,
+            description,
+            status,
+            datetime.now().isoformat(),
+        )
+    )
+
+    return True
+
+
+def is_extension_enabled(extension_key):
+    initialize_extension_registry()
+
+    record = db_fetch_one(
+        """
+        SELECT enabled, status
+        FROM extension_registry
+        WHERE extension_key = ?
+        """,
+        (extension_key,)
+    )
+
+    if not record:
+        return False
+
+    if isinstance(record, dict):
+        return (
+            bool(record.get("enabled"))
+            and record.get("status") == "Available"
+        )
+
+    return False
+
+
+def get_extension_registry():
+    initialize_extension_registry()
+
+    return db_fetch_all(
+        """
+        SELECT extension_key, display_name, description,
+               status, enabled, updated_at
+        FROM extension_registry
+        ORDER BY display_name
+        """
+    ) or []
+
+
+def record_schema_migration(version, description):
+    if not isinstance(version, int) or version < 1:
+        return False
+
+    db_execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations
+        (version, description, applied_at)
+        VALUES (?, ?, ?)
+        """,
+        (
+            version,
+            description,
+            datetime.now().isoformat(),
+        )
+    )
+
+    return True
+
+
+def get_schema_version():
+    try:
+        record = db_fetch_one(
+            "SELECT MAX(version) AS version FROM schema_migrations"
+        )
+
+        if isinstance(record, dict):
+            return int(record.get("version") or 0)
+
+    except Exception:
+        pass
+
+    return 0
+
+
+def safe_extension_call(extension_function, *args, **kwargs):
+    """
+    Optional extension failures must not stop the core app.
+    """
+    try:
+        if not callable(extension_function):
+            return None
+
+        return extension_function(*args, **kwargs)
+
+    except Exception as error:
+        try:
+            st.warning(
+                "An optional NeuroLens extension is temporarily unavailable."
+            )
+            print("NeuroLens extension error:", error)
+        except Exception:
+            pass
+
+        return None
+
+
+def page_advanced_stage():
+    st.title("🚀 NeuroLens Advanced Stage")
+    st.caption("Future expansion modules and research technology roadmap")
+
+    initialize_extension_registry()
+
+    st.info(
+        "Advanced Stage is a planned expansion. "
+        "The Initial Stage remains separate and independent."
+    )
+
+    extensions = get_extension_registry()
+
+    if not extensions:
+        st.info("No extension modules registered.")
+        return
+
+    for extension in extensions:
+        if not isinstance(extension, dict):
+            continue
+
+        with st.container(border=True):
+            st.subheader(extension.get("display_name", "Extension"))
+            st.write(extension.get("description", ""))
+
+            status = extension.get("status", "Planned")
+
+            if status == "Available":
+                st.success("Available")
+            elif status == "Preview":
+                st.info("Preview")
+            else:
+                st.caption(f"Status: {status}")
+
+            st.caption(
+                "Extension key: "
+                + str(extension.get("extension_key", ""))
+            )
+
+    st.divider()
+
+    st.subheader("Architecture Principles")
+
+    principles = [
+        "Keep Initial Stage independent and stable.",
+        "Add Advanced features through separate modules.",
+        "Use feature flags before enabling new functionality.",
+        "Use backward-compatible database migrations.",
+        "Isolate optional module errors.",
+        "Never expose private user data to unauthorized roles.",
+        "Test extensions before production activation.",
+    ]
+
+    for principle in principles:
+        st.markdown(f"- ✅ {principle}")
+
+    st.caption(
+        f"Current database migration version: {get_schema_version()}"
+    )
+
