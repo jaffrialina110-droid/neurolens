@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# NeuroLens private database files
+neurolens_data.db
+neurolens_data.db-wal
+neurolens_data.db-shm
+neurolens_data.db-journal
