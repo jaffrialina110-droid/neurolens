@@ -9,6 +9,12 @@ import secrets
 import sqlite3
 import unittest
 
+from modules.ai_chat_crypto import (
+    AIChatCryptoError, decrypt_ai_message, encrypt_ai_message
+)
+
+TEST_SECRET = "ownership-test-master-secret-at-least-32-bytes"
+
 
 APP_PATH = pathlib.Path(__file__).resolve().parents[1] / "app.py"
 HELPER_NAMES = {
@@ -38,7 +44,9 @@ class AIConversationOwnershipTests(unittest.TestCase):
                 user_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                content_version INTEGER NOT NULL DEFAULT 0,
+                encryption_nonce TEXT
             );
             """
         )
@@ -77,6 +85,10 @@ class AIConversationOwnershipTests(unittest.TestCase):
             "db_fetch_all": db_fetch_all,
             "datetime": datetime.datetime,
             "secrets": secrets,
+            "get_secret": lambda key: TEST_SECRET,
+            "encrypt_ai_message": encrypt_ai_message,
+            "decrypt_ai_message": decrypt_ai_message,
+            "AIChatCryptoError": AIChatCryptoError,
         }
         module = ast.Module(body=selected, type_ignores=[])
         exec(compile(module, str(APP_PATH), "exec"), namespace)
@@ -149,6 +161,41 @@ class AIConversationOwnershipTests(unittest.TestCase):
         self.assertTrue(saved)
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["content"], "my own text")
+
+    def test_database_stores_ciphertext_not_plaintext(self):
+        conversation_id = self.helpers["ayna_create_conversation"](
+            "user-a", "A private topic"
+        )
+        self.helpers["ayna_save_message"](
+            conversation_id, "user-a", "user", "sensitive words"
+        )
+        row = self.connection.execute(
+            "SELECT content, content_version, encryption_nonce "
+            "FROM ai_messages"
+        ).fetchone()
+
+        self.assertEqual(row["content_version"], 1)
+        self.assertTrue(row["encryption_nonce"])
+        self.assertNotIn("sensitive words", row["content"])
+
+    def test_legacy_plaintext_rows_remain_readable(self):
+        conversation_id = self.helpers["ayna_create_conversation"](
+            "user-a", "Legacy topic"
+        )
+        self.connection.execute(
+            "INSERT INTO ai_messages "
+            "(id, conversation_id, user_id, role, content, created_at, "
+            "content_version, encryption_nonce) "
+            "VALUES (?, ?, ?, ?, ?, ?, 0, NULL)",
+            ("legacy-1", conversation_id, "user-a", "user",
+             "old plaintext", "2026-01-01T00:00:00"),
+        )
+        self.connection.commit()
+
+        messages = self.helpers["ayna_load_messages"](
+            conversation_id, "user-a"
+        )
+        self.assertEqual(messages[0]["content"], "old plaintext")
 
 
 if __name__ == "__main__":
