@@ -4846,69 +4846,89 @@ def ayna_speak_button(text_value, label="🔊 Listen to Ayna"):
     )
 
 
-def ayna_save_message(conversation_id, role, content):
+def ayna_save_message(conversation_id, user_id, role, content):
+    """Save a message only when the conversation belongs to the active user."""
+    if not conversation_id or not user_id or role not in ("user", "assistant"):
+        return False
+
     try:
-        db_execute(
+        owner = db_fetch_one(
+            """
+            SELECT id
+            FROM ai_conversations
+            WHERE id = ? AND user_id = ?
+            """,
+            (conversation_id, user_id)
+        )
+        if not owner:
+            return False
+
+        now = datetime.now().isoformat()
+        return db_execute(
             """
             INSERT INTO ai_messages
-            (conversation_id, role, content, created_at)
-            VALUES (?, ?, ?, ?)
+            (id, conversation_id, user_id, role, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
+                secrets.token_hex(16),
                 conversation_id,
+                user_id,
                 role,
                 content,
-                datetime.now().isoformat()
+                now
             )
         )
-        return True
     except Exception:
         return False
 
 
-def ayna_load_messages(conversation_id):
+def ayna_load_messages(conversation_id, user_id):
+    """Load messages only from a conversation owned by the active user."""
+    if not conversation_id or not user_id:
+        return []
+
     try:
         return db_fetch_all(
             """
-            SELECT role, content, created_at
-            FROM ai_messages
-            WHERE conversation_id = ?
-            ORDER BY created_at ASC
+            SELECT m.role, m.content, m.created_at
+            FROM ai_messages AS m
+            INNER JOIN ai_conversations AS c
+                ON c.id = m.conversation_id
+            WHERE m.conversation_id = ?
+              AND c.user_id = ?
+              AND m.user_id = ?
+            ORDER BY m.created_at ASC
             """,
-            (conversation_id,)
+            (conversation_id, user_id, user_id)
         )
     except Exception:
         return []
 
 
 def ayna_create_conversation(user_id, title):
+    """Create a conversation with explicit IDs and required timestamps."""
+    if not user_id:
+        return None
+
     try:
-        db_execute(
+        conversation_id = secrets.token_hex(16)
+        now = datetime.now().isoformat()
+        success = db_execute(
             """
             INSERT INTO ai_conversations
-            (user_id, title, created_at)
-            VALUES (?, ?, ?)
+            (id, user_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
+                conversation_id,
                 user_id,
-                title[:100],
-                datetime.now().isoformat()
+                (title or "")[:100],
+                now,
+                now
             )
         )
-
-        row = db_fetch_one(
-            """
-            SELECT id
-            FROM ai_conversations
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (user_id,)
-        )
-
-        return row["id"] if row else None
-
+        return conversation_id if success else None
     except Exception:
         return None
 
@@ -4959,7 +4979,7 @@ def page_ayna_ai():
     conversation_id = st.session_state.ayna_conversation_id
 
     if conversation_id:
-        saved_messages = ayna_load_messages(conversation_id)
+        saved_messages = ayna_load_messages(conversation_id, user_id)
 
         if saved_messages:
             st.session_state.ayna_chat_messages = [
@@ -5000,6 +5020,7 @@ def page_ayna_ai():
         if conversation_id:
             ayna_save_message(
                 conversation_id,
+                user_id,
                 "user",
                 user_message
             )
@@ -5026,6 +5047,7 @@ def page_ayna_ai():
         if conversation_id:
             ayna_save_message(
                 conversation_id,
+                user_id,
                 "assistant",
                 answer
             )
