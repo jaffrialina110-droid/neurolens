@@ -12,8 +12,8 @@ The final router registers the navigation label `Private Ask Ayna` and maps it t
 ### 2. Ask Ayna messages are stored as readable text
 The schema defines `ai_messages.content TEXT NOT NULL`. The `ayna_save_message` helper inserts message content directly, and `ayna_load_messages` reads it back. The Owner Control Center currently displays AI activity metadata (conversation_id, role, created_at), not message content. This is still sensitive personal data at rest in the application database and should be disclosed and protected accordingly. Do not describe these conversations as encrypted.
 
-### 3. AI conversation ownership checks need strengthening
-`ayna_load_messages(conversation_id)` queries by conversation ID alone and does not include the logged-in user ID in the query. The page obtains the conversation ID from Streamlit session state, but the database query itself does not enforce ownership. Add a server-side ownership check (join/where conversation user_id) before loading any conversation. Also ensure save operations verify the conversation belongs to the active user.
+### 3. AI conversation ownership and persistence — remediation committed
+The initial review found that AI message loading did not filter by the logged-in user, message saves did not verify conversation ownership, and the insert helpers omitted required schema fields. These issues were corrected on this development branch: loads now join the conversation owner and match both user IDs; saves verify ownership and write explicit message IDs/user IDs; conversation creation writes its ID and both required timestamps; an invalid/stale conversation ID clears the page's chat session state. Regression tests were added for cross-account reads/writes and normal owner access. These tests have not yet been executed in a configured project environment.
 
 ### 4. Private Journal design is separate from Personal Healing check-ins
 The reviewed `page_private_journal` uses a PIN-gated vault flow and encrypted-entry helper functions. In contrast, `page_personal_healing` saves check-ins and reflections only in Streamlit session state, not in the encrypted journal. UI copy must keep this distinction clear; do not imply that session-only Personal Healing text is part of the encrypted vault.
@@ -27,7 +27,7 @@ The legacy `modules/security.py` is not proven to be active in this app.py flow.
 ## Safe remediation sequence
 
 1. Trace actual entrypoint/imports and establish whether `modules/security.py` is used.
-2. Add conversation ownership enforcement to every load, save, delete, and export path; test cross-account access attempts.
+2. Verify the committed load/save ownership controls against the deployed schema and run the new cross-account regression tests. Review any future delete/export paths separately.
 3. Decide whether AI chat history should be stored. If stored, document retention/deletion and access controls; consider encryption at rest with managed key handling.
 4. Keep Personal Healing session-only until the user explicitly chooses persistent storage; if persisted, put it behind the same private-vault access controls.
 5. Review the complete vault implementation, key lifecycle, recovery, rate limiting, and session timeout before changing PIN logic.
