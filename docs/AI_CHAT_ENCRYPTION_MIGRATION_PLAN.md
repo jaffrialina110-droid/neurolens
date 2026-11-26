@@ -43,7 +43,8 @@ The exact implementation must be reviewed against the installed `cryptography` v
 - Version 0 rows retain an explicit legacy plaintext read path; version 1 rows require authenticated decryption.
 - New conversation titles are generic so the first prompt is not copied into the title field. Existing titles may still contain historical prompt text.
 - Added crypto and conversation regression tests plus a GitHub Actions unit-test workflow.
-- The deployment secret has **not** been configured, and GitHub Actions results have not yet been confirmed. Do not enable production encryption or migrate existing history yet.
+- GitHub Actions unit tests completed successfully on the development branch. This confirms the current unit-test suite passes, not a full deployed-app security review.
+- The deployment secret has **not** been configured. Do not enable production encrypted history or migrate existing history until the owner configures and backs up the secret and the remaining rollout gates are met.
 
 For deployment setup, generate a unique high-entropy secret outside the repository (for example with Python `secrets.token_urlsafe(48)`) and add it as `AI_CHAT_ENCRYPTION_KEY` in Streamlit Secrets. Keep a secure offline backup. Never paste the secret into GitHub code, issues, or chat.
 
