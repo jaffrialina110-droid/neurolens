@@ -2,7 +2,7 @@
 
 Date: 2026-11-26
 Target branch: `safety/database-security-foundation`
-Status: design only — no application code or database has been changed by this document.
+Status: initial code and tests added on the development branch; deployment remains disabled until the secret is configured and tests/review pass.
 
 ## 1. Current verified state
 
@@ -34,6 +34,18 @@ The design does not protect against a compromised running application, malicious
 - Fail closed for persistent writes: if the encryption key is absent, malformed, or decryption/authentication fails, do not write plaintext as a fallback. Show a clear, non-secret error. A session-only response may be offered separately, but it must not be described as saved.
 
 The exact implementation must be reviewed against the installed `cryptography` version and tested before merge.
+
+### Initial implementation status
+
+- Added `modules/ai_chat_crypto.py` with AES-256-GCM, HKDF-SHA256 per-user key derivation, fresh 12-byte nonces, and AAD binding message/conversation/user/role.
+- Added additive `content_version` and `encryption_nonce` columns in the app's startup schema initialization. Existing rows default to version 0 and are not rewritten.
+- New AI message writes use version 1 ciphertext only. If the key is missing or invalid, writes fail closed; the UI explains that chat is session-only.
+- Version 0 rows retain an explicit legacy plaintext read path; version 1 rows require authenticated decryption.
+- New conversation titles are generic so the first prompt is not copied into the title field. Existing titles may still contain historical prompt text.
+- Added crypto and conversation regression tests plus a GitHub Actions unit-test workflow.
+- The deployment secret has **not** been configured, and GitHub Actions results have not yet been confirmed. Do not enable production encryption or migrate existing history yet.
+
+For deployment setup, generate a unique high-entropy secret outside the repository (for example with Python `secrets.token_urlsafe(48)`) and add it as `AI_CHAT_ENCRYPTION_KEY` in Streamlit Secrets. Keep a secure offline backup. Never paste the secret into GitHub code, issues, or chat.
 
 ## 4. Backward-compatible schema plan
 
