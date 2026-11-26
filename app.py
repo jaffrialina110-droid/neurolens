@@ -4883,6 +4883,24 @@ def ayna_save_message(conversation_id, user_id, role, content):
         return False
 
 
+def ayna_conversation_belongs_to_user(conversation_id, user_id):
+    """Return True only when the requested conversation belongs to this user."""
+    if not conversation_id or not user_id:
+        return False
+    try:
+        row = db_fetch_one(
+            """
+            SELECT id
+            FROM ai_conversations
+            WHERE id = ? AND user_id = ?
+            """,
+            (conversation_id, user_id)
+        )
+        return bool(row)
+    except Exception:
+        return False
+
+
 def ayna_load_messages(conversation_id, user_id):
     """Load messages only from a conversation owned by the active user."""
     if not conversation_id or not user_id:
@@ -4979,9 +4997,23 @@ def page_ayna_ai():
     conversation_id = st.session_state.ayna_conversation_id
 
     if conversation_id:
-        saved_messages = ayna_load_messages(conversation_id, user_id)
-
-        if saved_messages:
+        if not ayna_conversation_belongs_to_user(
+            conversation_id,
+            user_id
+        ):
+            # Never keep another account's conversation in session state.
+            st.session_state.ayna_conversation_id = None
+            st.session_state.ayna_chat_messages = []
+            conversation_id = None
+            st.warning(
+                "This conversation is unavailable for your account. "
+                "A new private conversation can be started."
+            )
+        else:
+            saved_messages = ayna_load_messages(
+                conversation_id,
+                user_id
+            )
             st.session_state.ayna_chat_messages = [
                 {
                     "role": row["role"],
