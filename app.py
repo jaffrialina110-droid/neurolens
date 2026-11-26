@@ -18,6 +18,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 
+from modules.ai_chat_crypto import (
+    AIChatCryptoError,
+    decrypt_ai_message,
+    encrypt_ai_message,
+)
+
 from PIL import (
     Image,
     ImageEnhance,
@@ -410,6 +416,8 @@ def initialize_database():
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        content_version INTEGER NOT NULL DEFAULT 0,
+        encryption_nonce TEXT,
         FOREIGN KEY(conversation_id)
             REFERENCES ai_conversations(id),
         FOREIGN KEY(user_id)
@@ -463,6 +471,23 @@ def initialize_database():
         created_at TEXT NOT NULL
     );
     """)
+
+    # Additive, idempotent migration for existing AI message tables.
+    # Legacy rows remain content_version=0 and are not rewritten.
+    message_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(ai_messages)"
+        ).fetchall()
+    }
+    if "content_version" not in message_columns:
+        connection.execute(
+            "ALTER TABLE ai_messages ADD COLUMN content_version "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if "encryption_nonce" not in message_columns:
+        connection.execute(
+            "ALTER TABLE ai_messages ADD COLUMN encryption_nonce TEXT"
+        )
 
     connection.commit()
     connection.close()
@@ -4847,7 +4872,7 @@ def ayna_speak_button(text_value, label="🔊 Listen to Ayna"):
 
 
 def ayna_save_message(conversation_id, user_id, role, content):
-    """Save a message only when the conversation belongs to the active user."""
+    """Persist only authenticated ciphertext; never fall back to plaintext."""
     if not conversation_id or not user_id or role not in ("user", "assistant"):
         return False
 
@@ -4863,22 +4888,26 @@ def ayna_save_message(conversation_id, user_id, role, content):
         if not owner:
             return False
 
+        master_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+        message_id = secrets.token_hex(16)
+        encrypted_content, nonce, content_version = encrypt_ai_message(
+            master_secret, message_id, conversation_id, user_id, role, content
+        )
         now = datetime.now().isoformat()
         return db_execute(
             """
             INSERT INTO ai_messages
-            (id, conversation_id, user_id, role, content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (id, conversation_id, user_id, role, content, created_at,
+             content_version, encryption_nonce)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                secrets.token_hex(16),
-                conversation_id,
-                user_id,
-                role,
-                content,
-                now
+                message_id, conversation_id, user_id, role,
+                encrypted_content, now, content_version, nonce
             )
         )
+    except AIChatCryptoError:
+        return False
     except Exception:
         return False
 
@@ -4902,14 +4931,15 @@ def ayna_conversation_belongs_to_user(conversation_id, user_id):
 
 
 def ayna_load_messages(conversation_id, user_id):
-    """Load messages only from a conversation owned by the active user."""
+    """Load owned messages; decrypt v1 and retain an explicit v0 legacy path."""
     if not conversation_id or not user_id:
         return []
 
     try:
-        return db_fetch_all(
+        rows = db_fetch_all(
             """
-            SELECT m.role, m.content, m.created_at
+            SELECT m.id, m.conversation_id, m.user_id, m.role, m.content,
+                   m.created_at, m.content_version, m.encryption_nonce
             FROM ai_messages AS m
             INNER JOIN ai_conversations AS c
                 ON c.id = m.conversation_id
@@ -4920,6 +4950,30 @@ def ayna_load_messages(conversation_id, user_id):
             """,
             (conversation_id, user_id, user_id)
         )
+        messages = []
+        master_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+        for row in rows:
+            version = row.get("content_version", 0)
+            if version == 0:
+                # Explicit compatibility for rows created before encryption.
+                content = row["content"]
+            elif version == 1:
+                content = decrypt_ai_message(
+                    master_secret, row["id"], row["conversation_id"],
+                    row["user_id"], row["role"], row["content"],
+                    row.get("encryption_nonce"), version
+                )
+            else:
+                # Unknown versions are never treated as plaintext.
+                continue
+            messages.append({
+                "role": row["role"],
+                "content": content,
+                "created_at": row["created_at"]
+            })
+        return messages
+    except AIChatCryptoError:
+        return []
     except Exception:
         return []
 
