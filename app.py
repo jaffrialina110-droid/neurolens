@@ -4995,7 +4995,7 @@ def ayna_create_conversation(user_id, title):
             (
                 conversation_id,
                 user_id,
-                (title or "")[:100],
+                "Ask Ayna conversation",
                 now,
                 now
             )
