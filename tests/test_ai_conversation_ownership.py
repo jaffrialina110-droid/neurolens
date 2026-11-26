@@ -178,6 +178,33 @@ class AIConversationOwnershipTests(unittest.TestCase):
         self.assertTrue(row["encryption_nonce"])
         self.assertNotIn("sensitive words", row["content"])
 
+    def test_conversation_title_does_not_copy_private_prompt(self):
+        conversation_id = self.helpers["ayna_create_conversation"](
+            "user-a", "Highly private first question"
+        )
+        row = self.connection.execute(
+            "SELECT title FROM ai_conversations WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+        self.assertEqual(row["title"], "Ask Ayna conversation")
+        self.assertNotIn("Highly private", row["title"])
+
+    def test_missing_key_prevents_persistent_plaintext_write(self):
+        conversation_id = self.helpers["ayna_create_conversation"](
+            "user-a", "Private topic"
+        )
+        self.helpers["get_secret"] = lambda key: ""
+        saved = self.helpers["ayna_save_message"](
+            conversation_id, "user-a", "user", "must not be stored"
+        )
+        self.assertFalse(saved)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT COUNT(*) FROM ai_messages"
+            ).fetchone()[0],
+            0,
+        )
+
     def test_legacy_plaintext_rows_remain_readable(self):
         conversation_id = self.helpers["ayna_create_conversation"](
             "user-a", "Legacy topic"
