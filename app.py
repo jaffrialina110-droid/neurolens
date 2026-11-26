@@ -5018,6 +5018,22 @@ def page_ayna_ai():
         return
 
     user_id = user.get("id")
+    chat_encryption_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+    chat_encryption_ready = len(chat_encryption_secret.encode("utf-8")) >= 32
+
+    if chat_encryption_ready:
+        st.caption(
+            "AI chat history is encrypted at rest. NeuroLens servers can decrypt "
+            "it to display your history; messages sent to the AI provider are "
+            "processed under that provider's terms."
+        )
+    else:
+        st.warning(
+            "AI chat encryption is not configured. You can use this chat for "
+            "this session, but messages will NOT be saved to your account. "
+            "The owner must add AI_CHAT_ENCRYPTION_KEY (at least 32 characters) "
+            "to Streamlit Secrets before encrypted history can be stored."
+        )
 
     if "ayna_conversation_id" not in st.session_state:
         st.session_state.ayna_conversation_id = None
@@ -5104,12 +5120,17 @@ def page_ayna_ai():
         })
 
         if conversation_id:
-            ayna_save_message(
+            saved_user_message = ayna_save_message(
                 conversation_id,
                 user_id,
                 "user",
                 user_message
             )
+            if not saved_user_message:
+                st.warning(
+                    "Your message could not be saved securely. It remains "
+                    "available in this session only."
+                )
 
         with st.chat_message("user"):
             st.markdown(user_message)
@@ -5131,12 +5152,17 @@ def page_ayna_ai():
         })
 
         if conversation_id:
-            ayna_save_message(
+            saved_assistant_message = ayna_save_message(
                 conversation_id,
                 user_id,
                 "assistant",
                 answer
             )
+            if not saved_assistant_message:
+                st.warning(
+                    "Ayna's answer was not saved securely and will remain "
+                    "available in this session only."
+                )
 
         st.rerun()
 
