@@ -4760,6 +4760,20 @@ Rules:
 """
 
 
+def safe_provider_error(error, api_key=""):
+    """Return a bounded provider error with credentials and control chars redacted."""
+    message = str(error or "Unknown provider error")
+    if api_key:
+        message = message.replace(api_key, "[REDACTED_API_KEY]")
+    message = re.sub(
+        r"AIza[0-9A-Za-z_-]{20,}",
+        "[REDACTED_API_KEY]",
+        message,
+    )
+    message = re.sub(r"[\\r\\n\\t]+", " ", message)
+    return message[:500]
+
+
 def ayna_generate_response(user_message, conversation_history=None):
     if genai is None or not GEMINI_API_KEY:
         return (
@@ -4824,10 +4838,16 @@ when relevant. Do not pretend that an abstract is a full paper.
 
         return answer
 
-    except Exception:
+    except Exception as error:
+        # Log only sanitized provider diagnostics; never log prompts or credentials.
+        print(
+            "NeuroLens Gemini text error "
+            f"({type(error).__name__}): "
+            f"{safe_provider_error(error, GEMINI_API_KEY)}"
+        )
         return (
-            "Ayna is temporarily unavailable. Please check your "
-            "Gemini API key, model settings and internet connection."
+            "Ayna is temporarily unavailable. The connection error has been "
+            "recorded safely. Please try again later."
         )
 
 
@@ -5223,10 +5243,15 @@ def page_ayna_ai():
                     else:
                         st.warning("No answer was returned.")
 
-                except Exception:
+                except Exception as error:
+                    print(
+                        "NeuroLens Gemini voice error "
+                        f"({type(error).__name__}): "
+                        f"{safe_provider_error(error, GEMINI_API_KEY)}"
+                    )
                     st.error(
-                        "Voice processing failed. Try a shorter recording "
-                        "or check your Gemini configuration."
+                        "Voice processing failed. A safe diagnostic was "
+                        "recorded; please try again later."
                     )
 
     st.caption(
