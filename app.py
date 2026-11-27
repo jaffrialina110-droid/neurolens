@@ -6847,46 +6847,6 @@ def neurolens_render_current_page():
             st.code(str(error))
 
 
-def run_neurolens():
-    if "page" not in st.session_state:
-        st.session_state.page = "Welcome"
-
-    neurolens_initialize_modules()
-
-    render_header_function = globals().get("render_header")
-
-    if callable(render_header_function):
-        try:
-            render_header_function()
-        except Exception:
-            pass
-
-    neurolens_render_sidebar()
-
-    neurolens_render_current_page()
-
-    st.divider()
-
-    app_name = globals().get("APP_NAME", "NEUROLENS")
-    creator = globals().get("CREATOR", "Ayna Jaffri")
-
-    st.markdown(
-        f"""
-        <div style="text-align:center;opacity:0.65;font-size:13px;">
-            {app_name} · Explore cognition, behavior & the brain
-            <br>
-            Created by {creator}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# This must be the ONLY final app startup block.
-if __name__ == "__main__":
-    run_neurolens()
-
-
 
 # ============================================================
 # NEUROSOCIAL — FRIENDS AND SAFETY
@@ -7041,4 +7001,45 @@ def page_neurosocial():
                 st.success("Report submitted for review.")
             else:
                 st.error("Account not found or report could not be submitted.")
+
+
+
+def run_neurolens():
+    if "page" not in st.session_state:
+        st.session_state.page = "Welcome"
+
+    neurolens_initialize_modules()
+
+    render_header_function = globals().get("render_header")
+
+    if callable(render_header_function):
+        try:
+            render_header_function()
+        except Exception:
+            pass
+
+    neurolens_render_sidebar()
+
+    neurolens_render_current_page()
+
+    st.divider()
+
+    app_name = globals().get("APP_NAME", "NEUROLENS")
+    creator = globals().get("CREATOR", "Ayna Jaffri")
+
+    st.markdown(
+        f"""
+        <div style="text-align:center;opacity:0.65;font-size:13px;">
+            {app_name} · Explore cognition, behavior & the brain
+            <br>
+            Created by {creator}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# This must be the ONLY final app startup block.
+if __name__ == "__main__":
+    run_neurolens()
 
