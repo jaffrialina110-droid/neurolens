@@ -5,6 +5,7 @@ The helpers are extracted with AST so tests do not import/run the Streamlit app.
 import ast
 import datetime
 import pathlib
+import re
 import secrets
 import sqlite3
 import unittest
@@ -22,6 +23,7 @@ HELPER_NAMES = {
     "ayna_save_message",
     "ayna_load_messages",
     "ayna_create_conversation",
+    "safe_provider_error",
 }
 
 
@@ -89,10 +91,24 @@ class AIConversationOwnershipTests(unittest.TestCase):
             "encrypt_ai_message": encrypt_ai_message,
             "decrypt_ai_message": decrypt_ai_message,
             "AIChatCryptoError": AIChatCryptoError,
+            "re": re,
         }
         module = ast.Module(body=selected, type_ignores=[])
         exec(compile(module, str(APP_PATH), "exec"), namespace)
         self.helpers = namespace
+
+    def test_provider_error_redacts_credentials_and_bounds_output(self):
+        error = (
+            "request failed for key " + TEST_SECRET
+            + " and AIza123456789012345678901234567890"
+            + "\\nprivate diagnostic"
+        )
+        safe = self.helpers["safe_provider_error"](error, TEST_SECRET)
+
+        self.assertNotIn(TEST_SECRET, safe)
+        self.assertNotIn("AIza123456789012345678901234567890", safe)
+        self.assertNotIn("\\n", safe)
+        self.assertLessEqual(len(safe), 500)
 
     def tearDown(self):
         self.connection.close()
