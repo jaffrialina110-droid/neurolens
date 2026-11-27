@@ -1357,8 +1357,7 @@ def render_current_page():
 def run_neurolens():
     render_sidebar()
     render_current_page()
-if __name__ == "__main__":
-    run_neurolens()
+
 # ============================================================
 # PART 4 — BRAIN EXPLORER
 # ============================================================
