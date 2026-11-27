@@ -24,6 +24,8 @@ from modules.ai_chat_crypto import (
     encrypt_ai_message,
 )
 
+from modules.db_backup import create_sqlite_backup, backup_sha256, BackupError
+
 from modules.staff_access import (
     can_manage_staff,
     can_create_staff_task,
@@ -5692,13 +5694,14 @@ def page_owner_control_center():
 
     st.divider()
 
-    tab_users, tab_staff, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
+    tab_users, tab_staff, tab_appointments, tab_research, tab_ai, tab_security, tab_backup, tab_roadmap = st.tabs([
         "Users",
         "Staff Management",
         "Appointments",
         "Research",
         "AI Activity",
         "Security",
+        "Database Backup",
         "Advanced Stage"
     ])
 
@@ -5885,6 +5888,53 @@ def page_owner_control_center():
             "This dashboard does not replace database-level security, "
             "Supabase RLS policies, server-side authorization or security audits."
         )
+
+    with tab_backup:
+        st.subheader("Verified Database Backup")
+        st.warning(
+            "This creates a downloadable snapshot of the local SQLite database "
+            "used by this app. It does not back up Streamlit Secrets, source code, "
+            "or any separately configured Supabase project."
+        )
+        st.caption(
+            "Only the authenticated Owner can create this backup. "
+            "The source database is opened read-only; no user records are changed."
+        )
+
+        if st.button("Create & Verify Database Backup", key="owner_create_db_backup"):
+            try:
+                backup_payload = create_sqlite_backup(DB_PATH)
+                backup_checksum = backup_sha256(backup_payload)
+                st.session_state["owner_db_backup_payload"] = backup_payload
+                st.session_state["owner_db_backup_checksum"] = backup_checksum
+                st.session_state["owner_db_backup_created_at"] = datetime.now().isoformat()
+                create_audit_log(st.session_state.user_id, "owner_database_backup_created")
+                st.success("Database snapshot passed SQLite integrity verification.")
+            except BackupError as error:
+                st.session_state.pop("owner_db_backup_payload", None)
+                st.session_state.pop("owner_db_backup_checksum", None)
+                st.error(str(error))
+
+        backup_payload = st.session_state.get("owner_db_backup_payload")
+        backup_checksum = st.session_state.get("owner_db_backup_checksum")
+        if backup_payload and backup_checksum:
+            created_at = st.session_state.get("owner_db_backup_created_at", "")
+            st.write(f"**Created:** {created_at}")
+            st.code(f"SHA-256: {backup_checksum}")
+            st.download_button(
+                "Download verified SQLite backup",
+                data=backup_payload,
+                file_name=f"neurolens_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3",
+                mime="application/vnd.sqlite3",
+                key="owner_download_db_backup",
+                use_container_width=True,
+            )
+            st.caption(
+                "Store this file securely and do not upload it to a public repository. "
+                "A restore test in a separate staging database is still required."
+            )
+        else:
+            st.info("Create a backup to enable the secure download.")
 
     with tab_roadmap:
         st.subheader("Advanced Stage — Preview")
