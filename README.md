@@ -1,9 +1,28 @@
 # NeuroLens Platform — Phase 1 Foundation
 
-Separate starter foundation. The live app's `main` branch is unchanged.
+Isolated starter foundation on branch `neurolens-platform-phase1`.
+The production `main` branch and live deployment are not changed by this work.
 
-Included: Streamlit UI, Roman English/English selector, Supabase email/password auth foundation, Gemini Ayna AI text chat, modular Python structure.
+## Included
+- Streamlit starter interface
+- Roman English / English selector
+- Supabase email/password authentication foundation
+- Per-Streamlit-session Supabase client (not a shared global client)
+- Gemini Ayna AI text-chat foundation
+- Modular Python structure and secret configuration
+- Basic unit tests and GitHub Actions checks
 
-Not included: production data migration, private journal/PIN, NeuroSocial, camera/AR, voice, games, biography, research library, owner/staff tools, payments, or production security review.
+## Not included yet
+Production data migration, private journal/PIN, encrypted private AI history, NeuroSocial,
+camera/AR, voice, games, learning biography, research library, owner/staff tools,
+payments, appointments, or a complete production security review.
 
-Configure Streamlit secrets from `.streamlit/secrets.toml.example`. Use Supabase anon/public key only; never use service_role in a client app. Enable and test RLS before storing user-owned data. No existing production data has been imported. Not deployed or production-security reviewed.
+## Setup
+Configure Streamlit secrets using `.streamlit/secrets.toml.example`.
+Use the Supabase anon/public key only. Never use `service_role` in this Streamlit client app.
+Configure Supabase Auth redirect URLs for the deployed app.
+Enable and test RLS on every user-owned table before storing user data.
+
+No existing SQLite or Supabase production data has been imported. Do not connect this
+starter to production data until backup, restore, schema, and RLS reviews are complete.
+This branch has not yet been deployed or production-security reviewed.

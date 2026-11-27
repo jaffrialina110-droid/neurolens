@@ -16,4 +16,10 @@ def _secret(name: str) -> str:
     return str(value or os.getenv(name, "")).strip()
 
 def get_settings() -> Settings:
-    return Settings(_secret("SUPABASE_URL"), _secret("SUPABASE_ANON_KEY") or _secret("SUPABASE_KEY"), _secret("GEMINI_API_KEY"))
+    # Deliberately accept only the anon/public key. Never fall back to a
+    # generically named key that could contain the Supabase service_role secret.
+    return Settings(
+        supabase_url=_secret("SUPABASE_URL"),
+        supabase_anon_key=_secret("SUPABASE_ANON_KEY"),
+        gemini_api_key=_secret("GEMINI_API_KEY"),
+    )
