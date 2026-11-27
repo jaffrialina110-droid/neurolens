@@ -6,9 +6,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "modules/config.py"
-      - "modules/ai.py"
-      - "modules/i18n.py"
+      - "modules/**"
       - "tests/**"
       - ".github/workflows/phase1-checks.yml"
 
@@ -27,6 +25,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Compile Phase 1 modules
-        run: python -m compileall -q modules/config.py modules/ai.py modules/i18n.py tests
-      - name: Run Phase 1 unit tests
+        run: python -m compileall -q modules tests
+      - name: Run isolated unit tests
         run: python -m unittest discover -s tests -v
