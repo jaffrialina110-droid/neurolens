@@ -47,3 +47,17 @@ def can_update_staff_task(
         return False
 
     return str(actor_id) == str(assigned_to)
+
+def can_view_staff_tasks(is_owner, active_role):
+    """Owner and active staff may view tasks within their permitted scope."""
+    return is_owner is True or active_role in STAFF_TASK_ROLES
+
+
+def can_view_staff_directory(is_owner, active_role):
+    """Only Owner and Admin may view the active staff directory."""
+    return is_owner is True or active_role == "Admin"
+
+
+def can_view_research_projects(is_owner, active_role):
+    """Owner, Admin and Researcher may view research project summaries."""
+    return is_owner is True or active_role in {"Admin", "Researcher"}
