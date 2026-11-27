@@ -5591,11 +5591,14 @@ def page_owner_control_center():
         st.subheader("Verified Database Backup")
         st.warning(
             "This downloads the local SQLite database only. It does not back up "
-            "Streamlit Secrets or any separately configured Supabase project."
+            "Streamlit Secrets or any separately configured Supabase project. "
+            "Streamlit Community Cloud does not guarantee persistence of local "
+            "files, so keep a verified copy in secure external storage."
         )
         st.caption(
-            "Only the authenticated Owner can access this section. The source "
-            "database is opened read-only and is not modified."
+            "Only the authenticated Owner can access this section. The backup "
+            "snapshot reads the source database without writing to it. "
+            "Do not treat the app's local filesystem as permanent storage."
         )
 
         if st.button("Create & Verify Database Backup", key="owner_create_db_backup"):
@@ -5605,10 +5608,6 @@ def page_owner_control_center():
                 st.session_state["owner_db_backup_payload"] = payload
                 st.session_state["owner_db_backup_checksum"] = checksum
                 st.session_state["owner_db_backup_created_at"] = datetime.now().isoformat()
-                try:
-                    create_audit_log(st.session_state.user_id, "owner_database_backup_created")
-                except Exception:
-                    pass
                 st.success("SQLite integrity check passed. Download the backup and store it securely.")
             except BackupError as error:
                 st.session_state.pop("owner_db_backup_payload", None)
