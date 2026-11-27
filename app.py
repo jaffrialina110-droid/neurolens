@@ -6732,6 +6732,7 @@ def neurolens_initialize_modules():
         "initialize_database",
         "initialize_appointment_table",
         "initialize_staff_tables",
+        "initialize_neurosocial_tables",
         "initialize_extension_registry",
     ]
 
@@ -6884,4 +6885,160 @@ def run_neurolens():
 # This must be the ONLY final app startup block.
 if __name__ == "__main__":
     run_neurolens()
+
+
+
+# ============================================================
+# NEUROSOCIAL — FRIENDS AND SAFETY
+# ============================================================
+
+def _neurosocial_call(function, *args):
+    connection = get_local_db()
+    try:
+        return function(connection, *args)
+    finally:
+        connection.close()
+
+
+def initialize_neurosocial_tables():
+    connection = get_local_db()
+    try:
+        from modules.neurosocial import initialize_neurosocial
+        initialize_neurosocial(connection)
+    finally:
+        connection.close()
+
+
+def page_neurosocial():
+    from modules.neurosocial import (
+        send_friend_request, respond_to_friend_request, list_friend_requests,
+        list_friends, search_people, remove_friend, block_user, unblock_user,
+        set_friend_request_privacy, report_user,
+    )
+
+    if not require_login():
+        st.info("NeuroSocial use karne ke liye pehle account mein login karein.")
+        return
+
+    user_id = str(st.session_state.user_id)
+    initialize_neurosocial_tables()
+    st.title("NeuroSocial")
+    st.caption("Connect with friends. You control your requests, privacy and safety.")
+    st.info("Friend requests aur friend list ab database se connected hain. Private journal aur Ask Ayna conversations yahan share nahi hoti.")
+
+    tabs = st.tabs(["Find People", "Requests", "My Friends", "Privacy & Safety"])
+
+    with tabs[0]:
+        query = st.text_input("Search by username or display name", key="social_search")
+        if len(query.strip()) >= 2:
+            people = _neurosocial_call(search_people, user_id, query)
+            if not people:
+                st.caption("No available accounts found.")
+            for person in people:
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"**{person['display_name']}** (@{person['username']})")
+                if c2.button("Add Friend", key=f"social_add_{person['id']}"):
+                    result = _neurosocial_call(send_friend_request, user_id, person["id"])
+                    messages = {
+                        "sent": ("success", "Friend request sent."),
+                        "already_pending": ("info", "Request already pending."),
+                        "incoming_pending": ("info", "They already sent you a request. Check Requests."),
+                        "already_friends": ("info", "You are already friends."),
+                        "not_accepting": ("warning", "This person is not accepting friend requests."),
+                    }
+                    kind, message = messages.get(result, ("warning", "This account is unavailable or cannot receive a request."))
+                    getattr(st, kind)(message)
+                    st.rerun()
+        else:
+            st.caption("Enter at least 2 characters to search.")
+
+    with tabs[1]:
+        st.markdown("**Incoming requests**")
+        incoming = _neurosocial_call(list_friend_requests, user_id, "incoming")
+        if not incoming:
+            st.caption("No incoming requests.")
+        for req in incoming:
+            c1, c2, c3 = st.columns([3, 1, 1])
+            c1.write(f"**{req['display_name']}** (@{req['username']})")
+            if c2.button("Accept", key=f"social_accept_{req['id']}"):
+                if _neurosocial_call(respond_to_friend_request, user_id, req["id"], True):
+                    create_audit_log(user_id, "neurosocial_friend_request_accepted")
+                    st.success("You are now friends.")
+                st.rerun()
+            if c3.button("Decline", key=f"social_decline_{req['id']}"):
+                _neurosocial_call(respond_to_friend_request, user_id, req["id"], False)
+                st.rerun()
+        st.divider()
+        st.markdown("**Outgoing requests**")
+        outgoing = _neurosocial_call(list_friend_requests, user_id, "outgoing")
+        for req in outgoing:
+            st.write(f"{req['display_name']} (@{req['username']}) — Pending")
+
+    with tabs[2]:
+        friends = _neurosocial_call(list_friends, user_id)
+        st.metric("Friends", len(friends))
+        if not friends:
+            st.caption("Your accepted friends will appear here.")
+        for friend in friends:
+            c1, c2, c3 = st.columns([3, 1, 1])
+            c1.write(f"**{friend['display_name']}** (@{friend['username']})")
+            if c2.button("Remove", key=f"social_remove_{friend['id']}"):
+                _neurosocial_call(remove_friend, user_id, friend["id"])
+                create_audit_log(user_id, "neurosocial_friend_removed")
+                st.rerun()
+            if c3.button("Block", key=f"social_block_friend_{friend['id']}"):
+                _neurosocial_call(block_user, user_id, friend["id"])
+                create_audit_log(user_id, "neurosocial_user_blocked")
+                st.rerun()
+
+    with tabs[3]:
+        st.markdown("**Friend request privacy**")
+        current_privacy = db_fetch_one(
+            "SELECT allow_friend_requests FROM social_privacy WHERE user_id=?",
+            (user_id,)
+        )
+        allow_requests = st.toggle(
+            "Allow people to send me friend requests",
+            value=bool(current_privacy["allow_friend_requests"]) if current_privacy else True,
+            key="social_allow_requests",
+        )
+        if st.button("Save privacy setting", key="social_save_privacy"):
+            _neurosocial_call(set_friend_request_privacy, user_id, allow_requests)
+            create_audit_log(user_id, "neurosocial_privacy_updated")
+            st.success("Privacy setting saved.")
+        st.divider()
+        blocked = db_fetch_all(
+            """SELECT b.blocked_id, u.username, u.display_name
+               FROM social_blocks b JOIN users u ON u.id=b.blocked_id
+               WHERE b.blocker_id=? ORDER BY b.created_at DESC""",
+            (user_id,)
+        )
+        st.markdown("**Blocked accounts**")
+        if not blocked:
+            st.caption("You have not blocked anyone.")
+        for person in blocked:
+            c1, c2 = st.columns([3, 1])
+            c1.write(f"{person['display_name']} (@{person['username']})")
+            if c2.button("Unblock", key=f"social_unblock_{person['blocked_id']}"):
+                _neurosocial_call(unblock_user, user_id, person["blocked_id"])
+                st.rerun()
+        st.divider()
+        st.markdown("**Report an account**")
+        report_target = st.text_input("Account username", key="social_report_username")
+        report_category = st.selectbox(
+            "Reason",
+            ["harassment", "spam", "impersonation", "inappropriate_content", "other"],
+            key="social_report_category",
+        )
+        report_details = st.text_area("Optional details (do not include private information)", max_chars=1000, key="social_report_details")
+        if st.button("Submit report", key="social_submit_report"):
+            target = db_fetch_one(
+                "SELECT id FROM users WHERE username=? AND active=1",
+                (report_target.strip(),)
+            ) if report_target.strip() else None
+            if target and _neurosocial_call(report_user, user_id, target["id"], report_category, report_details):
+                create_audit_log(user_id, "neurosocial_user_reported")
+                st.success("Report submitted for review.")
+            else:
+                st.error("Account not found or report could not be submitted.")
 
