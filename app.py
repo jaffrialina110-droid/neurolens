@@ -24,6 +24,12 @@ from modules.ai_chat_crypto import (
     encrypt_ai_message,
 )
 
+from modules.staff_access import (
+    can_manage_staff,
+    can_create_staff_task,
+    can_update_staff_task,
+)
+
 from PIL import (
     Image,
     ImageEnhance,
@@ -5875,12 +5881,24 @@ def staff_has_permission(user_id, permission):
 
 
 def create_staff_member(user_id, role):
-    if role not in STAFF_ROLES:
+    # Staff provisioning is an Owner-only operation. UI visibility is not
+    # an authorization boundary; enforce the rule in this data helper too.
+    if not can_manage_staff(is_neurolens_owner()):
+        return False
+
+    if role not in STAFF_ROLES or not user_id:
         return False
 
     initialize_staff_tables()
 
-    db_execute(
+    target_user = db_fetch_one(
+        "SELECT id FROM users WHERE id = ?",
+        (user_id,)
+    )
+    if not target_user:
+        return False
+
+    result = db_execute(
         """
         INSERT INTO staff_members
         (user_id, role, status, created_at)
@@ -5891,13 +5909,35 @@ def create_staff_member(user_id, role):
         (user_id, role, datetime.now().isoformat())
     )
 
-    return True
+    return bool(result)
+
+
+def deactivate_staff_member(user_id):
+    # Revocation is also Owner-only and immediately disables active lookup.
+    if not can_manage_staff(is_neurolens_owner()) or not user_id:
+        return False
+
+    initialize_staff_tables()
+    return bool(db_execute(
+        "UPDATE staff_members SET status = 'revoked' WHERE user_id = ?",
+        (user_id,)
+    ))
 
 
 def create_staff_task(title, description, category, assigned_to, created_by):
-    initialize_staff_tables()
+    if not can_create_staff_task(is_neurolens_owner()):
+        return False
 
-    db_execute(
+    if not title or not assigned_to or not created_by:
+        return False
+
+    initialize_staff_tables()
+    assignee = get_staff_record(assigned_to)
+    if not assignee:
+        return False
+
+    now = datetime.now().isoformat()
+    return bool(db_execute(
         """
         INSERT INTO staff_tasks
         (title, description, category, assigned_to,
@@ -5905,15 +5945,15 @@ def create_staff_task(title, description, category, assigned_to, created_by):
         VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?)
         """,
         (
-            title,
-            description,
-            category,
+            title.strip()[:160],
+            str(description or "")[:4000],
+            str(category or "General")[:80],
             assigned_to,
             created_by,
-            datetime.now().isoformat(),
-            datetime.now().isoformat(),
+            now,
+            now,
         )
-    )
+    ))
 
 
 def get_staff_tasks(user_id, role):
@@ -5940,44 +5980,50 @@ def get_staff_tasks(user_id, role):
     ) or []
 
 
-def update_staff_task(task_id, status, user_id, role):
-    allowed_statuses = [
-        "Pending",
-        "In Progress",
-        "Completed",
-        "On Hold",
-    ]
+def update_staff_task(task_id, status, user_id, role=None):
+    # Never trust the role supplied by the UI/caller. Resolve the active role
+    # from the database and bind the action to the logged-in account.
+    user = st.session_state.get("user")
+    if not isinstance(user, dict) or str(user.get("id")) != str(user_id):
+        return False
 
-    if status not in allowed_statuses:
+    is_owner = is_neurolens_owner()
+    active_role = get_staff_role(user_id)
+    if not can_update_staff_task(
+        is_owner=is_owner,
+        active_role=active_role,
+        actor_id=user_id,
+        assigned_to=None,
+        status=status,
+    ):
         return False
 
     initialize_staff_tables()
+    task = db_fetch_one(
+        "SELECT id, assigned_to FROM staff_tasks WHERE id = ?",
+        (task_id,)
+    )
+    if not task:
+        return False
 
-    if role == "Admin":
-        db_execute(
-            """
-            UPDATE staff_tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (status, datetime.now().isoformat(), task_id)
-        )
-    else:
-        db_execute(
-            """
-            UPDATE staff_tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ? AND assigned_to = ?
-            """,
-            (
-                status,
-                datetime.now().isoformat(),
-                task_id,
-                user_id,
-            )
-        )
+    assigned_to = task.get("assigned_to") if isinstance(task, dict) else None
+    if not can_update_staff_task(
+        is_owner=is_owner,
+        active_role=active_role,
+        actor_id=user_id,
+        assigned_to=assigned_to,
+        status=status,
+    ):
+        return False
 
-    return True
+    return bool(db_execute(
+        """
+        UPDATE staff_tasks
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, datetime.now().isoformat(), task_id)
+    ))
 
 
 def page_staff_workspace():
