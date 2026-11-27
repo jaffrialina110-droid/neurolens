@@ -1,6 +1,12 @@
 import unittest
 
 from modules.staff_access import (
+    can_view_staff_tasks,
+    can_view_staff_directory,
+    can_view_research_projects,
+)
+
+from modules.staff_access import (
     can_create_staff_task,
     can_manage_staff,
     can_update_staff_task,
@@ -40,6 +46,24 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.assertFalse(can_update_staff_task(
             False, "Admin", "user-1", "user-1", "Delete Everything"
         ))
+
+    def test_task_visibility_is_limited_to_owner_and_active_staff(self):
+        self.assertTrue(can_view_staff_tasks(True, None))
+        self.assertTrue(can_view_staff_tasks(False, "Researcher"))
+        self.assertFalse(can_view_staff_tasks(False, None))
+        self.assertFalse(can_view_staff_tasks(False, "Unknown"))
+
+    def test_staff_directory_is_owner_or_admin_only(self):
+        self.assertTrue(can_view_staff_directory(True, None))
+        self.assertTrue(can_view_staff_directory(False, "Admin"))
+        self.assertFalse(can_view_staff_directory(False, "Researcher"))
+        self.assertFalse(can_view_staff_directory(False, "Moderator"))
+
+    def test_research_projects_are_owner_admin_or_researcher(self):
+        self.assertTrue(can_view_research_projects(True, None))
+        self.assertTrue(can_view_research_projects(False, "Admin"))
+        self.assertTrue(can_view_research_projects(False, "Researcher"))
+        self.assertFalse(can_view_research_projects(False, "Moderator"))
 
 
 if __name__ == "__main__":
