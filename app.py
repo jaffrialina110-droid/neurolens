@@ -5611,6 +5611,43 @@ def owner_recent_records(table_name, limit=10):
         return []
 
 
+def owner_staff_records():
+    """Return limited staff account metadata for the Owner dashboard only."""
+    if not is_neurolens_owner():
+        return []
+
+    initialize_staff_tables()
+    return db_fetch_all(
+        """
+        SELECT staff_members.user_id, users.email,
+               staff_members.role, staff_members.status,
+               staff_members.created_at
+        FROM staff_members
+        JOIN users ON users.id = staff_members.user_id
+        WHERE staff_members.status = 'active'
+        ORDER BY staff_members.created_at DESC
+        """
+    ) or []
+
+
+def owner_staff_candidates():
+    """List registered accounts eligible for Owner-controlled staff assignment."""
+    if not is_neurolens_owner():
+        return []
+
+    owner_email = get_owner_email()
+    return db_fetch_all(
+        """
+        SELECT id, email
+        FROM users
+        WHERE LOWER(email) != LOWER(?)
+        ORDER BY email
+        LIMIT 200
+        """,
+        (owner_email,)
+    ) or []
+
+
 def page_owner_control_center():
 
     st.title("🛡️ NeuroLens Owner Control Center")
@@ -5648,14 +5685,107 @@ def page_owner_control_center():
 
     st.divider()
 
-    tab_users, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
+    tab_users, tab_staff, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
         "Users",
+        "Staff Management",
         "Appointments",
         "Research",
         "AI Activity",
         "Security",
         "Advanced Stage"
     ])
+
+    with tab_staff:
+        st.subheader("Staff Management")
+        st.caption(
+            "Only the authenticated Owner can grant or revoke staff access. "
+            "Staff permissions are enforced again by server-side helpers."
+        )
+
+        staff_records = owner_staff_records()
+        if staff_records:
+            st.dataframe(
+                pd.DataFrame(staff_records),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No active staff accounts are assigned yet.")
+
+        st.markdown("#### Assign staff access")
+        candidates = owner_staff_candidates()
+        if candidates:
+            candidate_labels = {
+                str(item["id"]): f'{item["email"]} (ID: {item["id"]})'
+                for item in candidates
+            }
+            selected_user_id = st.selectbox(
+                "Choose an existing registered account",
+                options=list(candidate_labels.keys()),
+                format_func=lambda value: candidate_labels.get(str(value), str(value)),
+                key="owner_staff_user"
+            )
+            selected_role = st.selectbox(
+                "Assign staff role",
+                options=list(STAFF_ROLES.keys()),
+                key="owner_staff_role"
+            )
+            if st.button(
+                "Grant / Update Staff Access",
+                key="owner_grant_staff",
+                use_container_width=True
+            ):
+                if create_staff_member(selected_user_id, selected_role):
+                    create_audit_log(
+                        st.session_state.user_id,
+                        "staff_access_granted_or_updated"
+                    )
+                    st.success("Staff access updated.")
+                    st.rerun()
+                else:
+                    st.error(
+                        "Staff access could not be updated. Verify the account "
+                        "and Owner permissions."
+                    )
+        else:
+            st.info(
+                "No eligible registered accounts are available. Create the "
+                "person's normal NeuroLens account first."
+            )
+
+        active_staff = owner_staff_records()
+        if active_staff:
+            st.markdown("#### Revoke staff access")
+            active_ids = [str(item["user_id"]) for item in active_staff]
+            staff_labels = {
+                str(item["user_id"]): f'{item["email"]} — {item["role"]}'
+                for item in active_staff
+            }
+            revoke_user_id = st.selectbox(
+                "Select staff account",
+                options=active_ids,
+                format_func=lambda value: staff_labels.get(str(value), str(value)),
+                key="owner_revoke_staff_user"
+            )
+            if st.button(
+                "Revoke Staff Access",
+                key="owner_revoke_staff",
+                use_container_width=True
+            ):
+                if deactivate_staff_member(revoke_user_id):
+                    create_audit_log(
+                        st.session_state.user_id,
+                        "staff_access_revoked"
+                    )
+                    st.success("Staff access revoked.")
+                    st.rerun()
+                else:
+                    st.error("Staff access could not be revoked.")
+
+        st.warning(
+            "Revoking staff access prevents future active-role lookups. "
+            "It does not delete the person's normal user account or task history."
+        )
 
     with tab_users:
         st.subheader("Registered Users")
