@@ -1,1 +1,1 @@
-"""NeuroLens feature modules."""
+"""NeuroLens Initial Stage feature modules."""
