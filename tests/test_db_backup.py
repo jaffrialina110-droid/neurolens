@@ -28,6 +28,23 @@ class DatabaseBackupTests(unittest.TestCase):
         self.assertEqual(restored.execute("PRAGMA integrity_check").fetchone()[0], "ok")
         restored.close()
 
+    def test_backup_restores_to_separate_staging_file(self):
+        payload = create_sqlite_backup(self.path)
+        staging_path = self.path.parent / "staging_restore.db"
+        restored = sqlite3.connect(staging_path)
+        restored.deserialize(payload)
+        self.assertEqual(
+            restored.execute("SELECT username FROM users WHERE id='u1'").fetchone()[0],
+            "sample",
+        )
+        self.assertEqual(
+            restored.execute("PRAGMA integrity_check").fetchone()[0],
+            "ok",
+        )
+        restored.close()
+        self.assertTrue(staging_path.is_file())
+        self.assertNotEqual(staging_path, self.path)
+
     def test_source_database_is_not_modified(self):
         before = self.path.read_bytes()
         create_sqlite_backup(self.path)
