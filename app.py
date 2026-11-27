@@ -9,6 +9,8 @@ import hmac
 import secrets
 import random
 import sqlite3
+
+from modules.db_backup import create_sqlite_backup, backup_sha256, BackupError
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -1355,8 +1357,7 @@ def render_current_page():
 def run_neurolens():
     render_sidebar()
     render_current_page()
-if __name__ == "__main__":
-    run_neurolens()
+
 # ============================================================
 # PART 4 — BRAIN EXPLORER
 # ============================================================
@@ -5484,12 +5485,13 @@ def page_owner_control_center():
 
     st.divider()
 
-    tab_users, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
+    tab_users, tab_appointments, tab_research, tab_ai, tab_security, tab_backup, tab_roadmap = st.tabs([
         "Users",
         "Appointments",
         "Research",
         "AI Activity",
         "Security",
+        "Database Backup",
         "Advanced Stage"
     ])
 
@@ -5584,6 +5586,53 @@ def page_owner_control_center():
             "This dashboard does not replace database-level security, "
             "Supabase RLS policies, server-side authorization or security audits."
         )
+
+    with tab_backup:
+        st.subheader("Verified Database Backup")
+        st.warning(
+            "This downloads the local SQLite database only. It does not back up "
+            "Streamlit Secrets or any separately configured Supabase project. "
+            "Streamlit Community Cloud does not guarantee persistence of local "
+            "files, so keep a verified copy in secure external storage."
+        )
+        st.caption(
+            "Only the authenticated Owner can access this section. The backup "
+            "snapshot reads the source database without writing to it. "
+            "Do not treat the app's local filesystem as permanent storage."
+        )
+
+        if st.button("Create & Verify Database Backup", key="owner_create_db_backup"):
+            try:
+                payload = create_sqlite_backup(DB_PATH)
+                checksum = backup_sha256(payload)
+                st.session_state["owner_db_backup_payload"] = payload
+                st.session_state["owner_db_backup_checksum"] = checksum
+                st.session_state["owner_db_backup_created_at"] = datetime.now().isoformat()
+                st.success("SQLite integrity check passed. Download the backup and store it securely.")
+            except BackupError as error:
+                st.session_state.pop("owner_db_backup_payload", None)
+                st.session_state.pop("owner_db_backup_checksum", None)
+                st.error(str(error))
+
+        payload = st.session_state.get("owner_db_backup_payload")
+        checksum = st.session_state.get("owner_db_backup_checksum")
+        if payload and checksum:
+            st.write("Created:", st.session_state.get("owner_db_backup_created_at", ""))
+            st.code(f"SHA-256: {checksum}")
+            st.download_button(
+                "Download verified database backup",
+                data=payload,
+                file_name=f"neurolens_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3",
+                mime="application/vnd.sqlite3",
+                key="owner_download_db_backup",
+                use_container_width=True,
+            )
+            st.caption(
+                "This file contains sensitive user data. Keep it private and "
+                "do not commit or upload it to a public repository."
+            )
+        else:
+            st.info("Create a backup to enable the download.")
 
     with tab_roadmap:
         st.subheader("Advanced Stage — Preview")
