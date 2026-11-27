@@ -18,6 +18,23 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 
+from modules.ai_chat_crypto import (
+    AIChatCryptoError,
+    decrypt_ai_message,
+    encrypt_ai_message,
+)
+
+from modules.db_backup import create_sqlite_backup, backup_sha256, BackupError
+
+from modules.staff_access import (
+    can_manage_staff,
+    can_create_staff_task,
+    can_update_staff_task,
+    can_view_staff_tasks,
+    can_view_staff_directory,
+    can_view_research_projects,
+)
+
 from PIL import (
     Image,
     ImageEnhance,
@@ -410,6 +427,8 @@ def initialize_database():
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        content_version INTEGER NOT NULL DEFAULT 0,
+        encryption_nonce TEXT,
         FOREIGN KEY(conversation_id)
             REFERENCES ai_conversations(id),
         FOREIGN KEY(user_id)
@@ -463,6 +482,23 @@ def initialize_database():
         created_at TEXT NOT NULL
     );
     """)
+
+    # Additive, idempotent migration for existing AI message tables.
+    # Legacy rows remain content_version=0 and are not rewritten.
+    message_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(ai_messages)"
+        ).fetchall()
+    }
+    if "content_version" not in message_columns:
+        connection.execute(
+            "ALTER TABLE ai_messages ADD COLUMN content_version "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if "encryption_nonce" not in message_columns:
+        connection.execute(
+            "ALTER TABLE ai_messages ADD COLUMN encryption_nonce TEXT"
+        )
 
     connection.commit()
     connection.close()
@@ -1064,6 +1100,7 @@ def render_neural_animation():
 INITIAL_STAGE_PAGES = [
     "Welcome",
     "Account",
+    "NeuroSocial",
     "Brain Explorer",
     "CSTC Learning",
     "Interactive Lab",
@@ -1338,6 +1375,9 @@ def render_current_page():
     elif page == "Account":
         page_account()
 
+    elif page == "NeuroSocial":
+        page_neurosocial()
+
     else:
         st.info(
             f"{page} module will be connected in its "
@@ -1355,8 +1395,7 @@ def render_current_page():
 def run_neurolens():
     render_sidebar()
     render_current_page()
-if __name__ == "__main__":
-    run_neurolens()
+# Startup is intentionally deferred until every page/module definition is loaded.
 # ============================================================
 # PART 4 — BRAIN EXPLORER
 # ============================================================
@@ -4736,6 +4775,20 @@ Rules:
 """
 
 
+def safe_provider_error(error, api_key=""):
+    """Return a bounded provider error with credentials and control chars redacted."""
+    message = str(error or "Unknown provider error")
+    if api_key:
+        message = message.replace(api_key, "[REDACTED_API_KEY]")
+    message = re.sub(
+        r"AIza[0-9A-Za-z_-]{20,}",
+        "[REDACTED_API_KEY]",
+        message,
+    )
+    message = re.sub(r"[\\r\\n\\t]+", " ", message)
+    return message[:500]
+
+
 def ayna_generate_response(user_message, conversation_history=None):
     if genai is None or not GEMINI_API_KEY:
         return (
@@ -4800,10 +4853,16 @@ when relevant. Do not pretend that an abstract is a full paper.
 
         return answer
 
-    except Exception:
+    except Exception as error:
+        # Log only sanitized provider diagnostics; never log prompts or credentials.
+        print(
+            "NeuroLens Gemini text error "
+            f"({type(error).__name__}): "
+            f"{safe_provider_error(error, GEMINI_API_KEY)}"
+        )
         return (
-            "Ayna is temporarily unavailable. Please check your "
-            "Gemini API key, model settings and internet connection."
+            "Ayna is temporarily unavailable. The connection error has been "
+            "recorded safely. Please try again later."
         )
 
 
@@ -4847,69 +4906,136 @@ def ayna_speak_button(text_value, label="🔊 Listen to Ayna"):
     )
 
 
-def ayna_save_message(conversation_id, role, content):
+def ayna_save_message(conversation_id, user_id, role, content):
+    """Persist only authenticated ciphertext; never fall back to plaintext."""
+    if not conversation_id or not user_id or role not in ("user", "assistant"):
+        return False
+
     try:
-        db_execute(
+        owner = db_fetch_one(
+            """
+            SELECT id
+            FROM ai_conversations
+            WHERE id = ? AND user_id = ?
+            """,
+            (conversation_id, user_id)
+        )
+        if not owner:
+            return False
+
+        master_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+        message_id = secrets.token_hex(16)
+        encrypted_content, nonce, content_version = encrypt_ai_message(
+            master_secret, message_id, conversation_id, user_id, role, content
+        )
+        now = datetime.now().isoformat()
+        return db_execute(
             """
             INSERT INTO ai_messages
-            (conversation_id, role, content, created_at)
-            VALUES (?, ?, ?, ?)
+            (id, conversation_id, user_id, role, content, created_at,
+             content_version, encryption_nonce)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                conversation_id,
-                role,
-                content,
-                datetime.now().isoformat()
+                message_id, conversation_id, user_id, role,
+                encrypted_content, now, content_version, nonce
             )
         )
-        return True
+    except AIChatCryptoError:
+        return False
     except Exception:
         return False
 
 
-def ayna_load_messages(conversation_id):
+def ayna_conversation_belongs_to_user(conversation_id, user_id):
+    """Return True only when the requested conversation belongs to this user."""
+    if not conversation_id or not user_id:
+        return False
     try:
-        return db_fetch_all(
+        row = db_fetch_one(
             """
-            SELECT role, content, created_at
-            FROM ai_messages
-            WHERE conversation_id = ?
-            ORDER BY created_at ASC
+            SELECT id
+            FROM ai_conversations
+            WHERE id = ? AND user_id = ?
             """,
-            (conversation_id,)
+            (conversation_id, user_id)
         )
+        return bool(row)
+    except Exception:
+        return False
+
+
+def ayna_load_messages(conversation_id, user_id):
+    """Load owned messages; decrypt v1 and retain an explicit v0 legacy path."""
+    if not conversation_id or not user_id:
+        return []
+
+    try:
+        rows = db_fetch_all(
+            """
+            SELECT m.id, m.conversation_id, m.user_id, m.role, m.content,
+                   m.created_at, m.content_version, m.encryption_nonce
+            FROM ai_messages AS m
+            INNER JOIN ai_conversations AS c
+                ON c.id = m.conversation_id
+            WHERE m.conversation_id = ?
+              AND c.user_id = ?
+              AND m.user_id = ?
+            ORDER BY m.created_at ASC
+            """,
+            (conversation_id, user_id, user_id)
+        )
+        messages = []
+        master_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+        for row in rows:
+            version = row.get("content_version", 0)
+            if version == 0:
+                # Explicit compatibility for rows created before encryption.
+                content = row["content"]
+            elif version == 1:
+                content = decrypt_ai_message(
+                    master_secret, row["id"], row["conversation_id"],
+                    row["user_id"], row["role"], row["content"],
+                    row.get("encryption_nonce"), version
+                )
+            else:
+                # Unknown versions are never treated as plaintext.
+                continue
+            messages.append({
+                "role": row["role"],
+                "content": content,
+                "created_at": row["created_at"]
+            })
+        return messages
+    except AIChatCryptoError:
+        return []
     except Exception:
         return []
 
 
 def ayna_create_conversation(user_id, title):
+    """Create a conversation with explicit IDs and required timestamps."""
+    if not user_id:
+        return None
+
     try:
-        db_execute(
+        conversation_id = secrets.token_hex(16)
+        now = datetime.now().isoformat()
+        success = db_execute(
             """
             INSERT INTO ai_conversations
-            (user_id, title, created_at)
-            VALUES (?, ?, ?)
+            (id, user_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
+                conversation_id,
                 user_id,
-                title[:100],
-                datetime.now().isoformat()
+                "Ask Ayna conversation",
+                now,
+                now
             )
         )
-
-        row = db_fetch_one(
-            """
-            SELECT id
-            FROM ai_conversations
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (user_id,)
-        )
-
-        return row["id"] if row else None
-
+        return conversation_id if success else None
     except Exception:
         return None
 
@@ -4927,6 +5053,22 @@ def page_ayna_ai():
         return
 
     user_id = user.get("id")
+    chat_encryption_secret = get_secret("AI_CHAT_ENCRYPTION_KEY")
+    chat_encryption_ready = len(chat_encryption_secret.encode("utf-8")) >= 32
+
+    if chat_encryption_ready:
+        st.caption(
+            "AI chat history is encrypted at rest. NeuroLens servers can decrypt "
+            "it to display your history; messages sent to the AI provider are "
+            "processed under that provider's terms."
+        )
+    else:
+        st.warning(
+            "AI chat encryption is not configured. You can use this chat for "
+            "this session, but messages will NOT be saved to your account. "
+            "The owner must add AI_CHAT_ENCRYPTION_KEY (at least 32 characters) "
+            "to Streamlit Secrets before encrypted history can be stored."
+        )
 
     if "ayna_conversation_id" not in st.session_state:
         st.session_state.ayna_conversation_id = None
@@ -4960,9 +5102,23 @@ def page_ayna_ai():
     conversation_id = st.session_state.ayna_conversation_id
 
     if conversation_id:
-        saved_messages = ayna_load_messages(conversation_id)
-
-        if saved_messages:
+        if not ayna_conversation_belongs_to_user(
+            conversation_id,
+            user_id
+        ):
+            # Never keep another account's conversation in session state.
+            st.session_state.ayna_conversation_id = None
+            st.session_state.ayna_chat_messages = []
+            conversation_id = None
+            st.warning(
+                "This conversation is unavailable for your account. "
+                "A new private conversation can be started."
+            )
+        else:
+            saved_messages = ayna_load_messages(
+                conversation_id,
+                user_id
+            )
             st.session_state.ayna_chat_messages = [
                 {
                     "role": row["role"],
@@ -4999,11 +5155,17 @@ def page_ayna_ai():
         })
 
         if conversation_id:
-            ayna_save_message(
+            saved_user_message = ayna_save_message(
                 conversation_id,
+                user_id,
                 "user",
                 user_message
             )
+            if not saved_user_message:
+                st.warning(
+                    "Your message could not be saved securely. It remains "
+                    "available in this session only."
+                )
 
         with st.chat_message("user"):
             st.markdown(user_message)
@@ -5025,11 +5187,17 @@ def page_ayna_ai():
         })
 
         if conversation_id:
-            ayna_save_message(
+            saved_assistant_message = ayna_save_message(
                 conversation_id,
+                user_id,
                 "assistant",
                 answer
             )
+            if not saved_assistant_message:
+                st.warning(
+                    "Ayna's answer was not saved securely and will remain "
+                    "available in this session only."
+                )
 
         st.rerun()
 
@@ -5090,10 +5258,15 @@ def page_ayna_ai():
                     else:
                         st.warning("No answer was returned.")
 
-                except Exception:
+                except Exception as error:
+                    print(
+                        "NeuroLens Gemini voice error "
+                        f"({type(error).__name__}): "
+                        f"{safe_provider_error(error, GEMINI_API_KEY)}"
+                    )
                     st.error(
-                        "Voice processing failed. Try a shorter recording "
-                        "or check your Gemini configuration."
+                        "Voice processing failed. A safe diagnostic was "
+                        "recorded; please try again later."
                     )
 
     st.caption(
@@ -5447,6 +5620,43 @@ def owner_recent_records(table_name, limit=10):
         return []
 
 
+def owner_staff_records():
+    """Return limited staff account metadata for the Owner dashboard only."""
+    if not is_neurolens_owner():
+        return []
+
+    initialize_staff_tables()
+    return db_fetch_all(
+        """
+        SELECT staff_members.user_id, users.email,
+               staff_members.role, staff_members.status,
+               staff_members.created_at
+        FROM staff_members
+        JOIN users ON users.id = staff_members.user_id
+        WHERE staff_members.status = 'active'
+        ORDER BY staff_members.created_at DESC
+        """
+    ) or []
+
+
+def owner_staff_candidates():
+    """List registered accounts eligible for Owner-controlled staff assignment."""
+    if not is_neurolens_owner():
+        return []
+
+    owner_email = get_owner_email()
+    return db_fetch_all(
+        """
+        SELECT id, email
+        FROM users
+        WHERE LOWER(email) != LOWER(?)
+        ORDER BY email
+        LIMIT 200
+        """,
+        (owner_email,)
+    ) or []
+
+
 def page_owner_control_center():
 
     st.title("🛡️ NeuroLens Owner Control Center")
@@ -5484,14 +5694,108 @@ def page_owner_control_center():
 
     st.divider()
 
-    tab_users, tab_appointments, tab_research, tab_ai, tab_security, tab_roadmap = st.tabs([
+    tab_users, tab_staff, tab_appointments, tab_research, tab_ai, tab_security, tab_backup, tab_roadmap = st.tabs([
         "Users",
+        "Staff Management",
         "Appointments",
         "Research",
         "AI Activity",
         "Security",
+        "Database Backup",
         "Advanced Stage"
     ])
+
+    with tab_staff:
+        st.subheader("Staff Management")
+        st.caption(
+            "Only the authenticated Owner can grant or revoke staff access. "
+            "Staff permissions are enforced again by server-side helpers."
+        )
+
+        staff_records = owner_staff_records()
+        if staff_records:
+            st.dataframe(
+                pd.DataFrame(staff_records),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No active staff accounts are assigned yet.")
+
+        st.markdown("#### Assign staff access")
+        candidates = owner_staff_candidates()
+        if candidates:
+            candidate_labels = {
+                str(item["id"]): f'{item["email"]} (ID: {item["id"]})'
+                for item in candidates
+            }
+            selected_user_id = st.selectbox(
+                "Choose an existing registered account",
+                options=list(candidate_labels.keys()),
+                format_func=lambda value: candidate_labels.get(str(value), str(value)),
+                key="owner_staff_user"
+            )
+            selected_role = st.selectbox(
+                "Assign staff role",
+                options=list(STAFF_ROLES.keys()),
+                key="owner_staff_role"
+            )
+            if st.button(
+                "Grant / Update Staff Access",
+                key="owner_grant_staff",
+                use_container_width=True
+            ):
+                if create_staff_member(selected_user_id, selected_role):
+                    create_audit_log(
+                        st.session_state.user_id,
+                        "staff_access_granted_or_updated"
+                    )
+                    st.success("Staff access updated.")
+                    st.rerun()
+                else:
+                    st.error(
+                        "Staff access could not be updated. Verify the account "
+                        "and Owner permissions."
+                    )
+        else:
+            st.info(
+                "No eligible registered accounts are available. Create the "
+                "person's normal NeuroLens account first."
+            )
+
+        active_staff = owner_staff_records()
+        if active_staff:
+            st.markdown("#### Revoke staff access")
+            active_ids = [str(item["user_id"]) for item in active_staff]
+            staff_labels = {
+                str(item["user_id"]): f'{item["email"]} — {item["role"]}'
+                for item in active_staff
+            }
+            revoke_user_id = st.selectbox(
+                "Select staff account",
+                options=active_ids,
+                format_func=lambda value: staff_labels.get(str(value), str(value)),
+                key="owner_revoke_staff_user"
+            )
+            if st.button(
+                "Revoke Staff Access",
+                key="owner_revoke_staff",
+                use_container_width=True
+            ):
+                if deactivate_staff_member(revoke_user_id):
+                    create_audit_log(
+                        st.session_state.user_id,
+                        "staff_access_revoked"
+                    )
+                    st.success("Staff access revoked.")
+                    st.rerun()
+                else:
+                    st.error("Staff access could not be revoked.")
+
+        st.warning(
+            "Revoking staff access prevents future active-role lookups. "
+            "It does not delete the person's normal user account or task history."
+        )
 
     with tab_users:
         st.subheader("Registered Users")
@@ -5584,6 +5888,53 @@ def page_owner_control_center():
             "This dashboard does not replace database-level security, "
             "Supabase RLS policies, server-side authorization or security audits."
         )
+
+    with tab_backup:
+        st.subheader("Verified Database Backup")
+        st.warning(
+            "This creates a downloadable snapshot of the local SQLite database "
+            "used by this app. It does not back up Streamlit Secrets, source code, "
+            "or any separately configured Supabase project."
+        )
+        st.caption(
+            "Only the authenticated Owner can create this backup. "
+            "The source database is opened read-only; no user records are changed."
+        )
+
+        if st.button("Create & Verify Database Backup", key="owner_create_db_backup"):
+            try:
+                backup_payload = create_sqlite_backup(DB_PATH)
+                backup_checksum = backup_sha256(backup_payload)
+                st.session_state["owner_db_backup_payload"] = backup_payload
+                st.session_state["owner_db_backup_checksum"] = backup_checksum
+                st.session_state["owner_db_backup_created_at"] = datetime.now().isoformat()
+                create_audit_log(st.session_state.user_id, "owner_database_backup_created")
+                st.success("Database snapshot passed SQLite integrity verification.")
+            except BackupError as error:
+                st.session_state.pop("owner_db_backup_payload", None)
+                st.session_state.pop("owner_db_backup_checksum", None)
+                st.error(str(error))
+
+        backup_payload = st.session_state.get("owner_db_backup_payload")
+        backup_checksum = st.session_state.get("owner_db_backup_checksum")
+        if backup_payload and backup_checksum:
+            created_at = st.session_state.get("owner_db_backup_created_at", "")
+            st.write(f"**Created:** {created_at}")
+            st.code(f"SHA-256: {backup_checksum}")
+            st.download_button(
+                "Download verified SQLite backup",
+                data=backup_payload,
+                file_name=f"neurolens_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3",
+                mime="application/vnd.sqlite3",
+                key="owner_download_db_backup",
+                use_container_width=True,
+            )
+            st.caption(
+                "Store this file securely and do not upload it to a public repository. "
+                "A restore test in a separate staging database is still required."
+            )
+        else:
+            st.info("Create a backup to enable the secure download.")
 
     with tab_roadmap:
         st.subheader("Advanced Stage — Preview")
@@ -5717,12 +6068,24 @@ def staff_has_permission(user_id, permission):
 
 
 def create_staff_member(user_id, role):
-    if role not in STAFF_ROLES:
+    # Staff provisioning is an Owner-only operation. UI visibility is not
+    # an authorization boundary; enforce the rule in this data helper too.
+    if not can_manage_staff(is_neurolens_owner()):
+        return False
+
+    if role not in STAFF_ROLES or not user_id:
         return False
 
     initialize_staff_tables()
 
-    db_execute(
+    target_user = db_fetch_one(
+        "SELECT id FROM users WHERE id = ?",
+        (user_id,)
+    )
+    if not target_user:
+        return False
+
+    result = db_execute(
         """
         INSERT INTO staff_members
         (user_id, role, status, created_at)
@@ -5733,13 +6096,35 @@ def create_staff_member(user_id, role):
         (user_id, role, datetime.now().isoformat())
     )
 
-    return True
+    return bool(result)
+
+
+def deactivate_staff_member(user_id):
+    # Revocation is also Owner-only and immediately disables active lookup.
+    if not can_manage_staff(is_neurolens_owner()) or not user_id:
+        return False
+
+    initialize_staff_tables()
+    return bool(db_execute(
+        "UPDATE staff_members SET status = 'revoked' WHERE user_id = ?",
+        (user_id,)
+    ))
 
 
 def create_staff_task(title, description, category, assigned_to, created_by):
-    initialize_staff_tables()
+    if not can_create_staff_task(is_neurolens_owner()):
+        return False
 
-    db_execute(
+    if not title or not assigned_to or not created_by:
+        return False
+
+    initialize_staff_tables()
+    assignee = get_staff_record(assigned_to)
+    if not assignee:
+        return False
+
+    now = datetime.now().isoformat()
+    return bool(db_execute(
         """
         INSERT INTO staff_tasks
         (title, description, category, assigned_to,
@@ -5747,21 +6132,32 @@ def create_staff_task(title, description, category, assigned_to, created_by):
         VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?)
         """,
         (
-            title,
-            description,
-            category,
+            title.strip()[:160],
+            str(description or "")[:4000],
+            str(category or "General")[:80],
             assigned_to,
             created_by,
-            datetime.now().isoformat(),
-            datetime.now().isoformat(),
+            now,
+            now,
         )
-    )
+    ))
 
 
-def get_staff_tasks(user_id, role):
+def get_staff_tasks(user_id, role=None):
+    # Resolve identity and role from the authenticated session/database.
+    # The caller-supplied role is intentionally ignored.
+    user = st.session_state.get("user")
+    if not isinstance(user, dict) or str(user.get("id")) != str(user_id):
+        return []
+
+    is_owner = is_neurolens_owner()
+    active_role = get_staff_role(user_id)
+    if not can_view_staff_tasks(is_owner, active_role):
+        return []
+
     initialize_staff_tables()
 
-    if role == "Admin":
+    if is_owner or active_role == "Admin":
         return db_fetch_all(
             """
             SELECT staff_tasks.*, users.email AS assigned_email
@@ -5782,44 +6178,50 @@ def get_staff_tasks(user_id, role):
     ) or []
 
 
-def update_staff_task(task_id, status, user_id, role):
-    allowed_statuses = [
-        "Pending",
-        "In Progress",
-        "Completed",
-        "On Hold",
-    ]
+def update_staff_task(task_id, status, user_id, role=None):
+    # Never trust the role supplied by the UI/caller. Resolve the active role
+    # from the database and bind the action to the logged-in account.
+    user = st.session_state.get("user")
+    if not isinstance(user, dict) or str(user.get("id")) != str(user_id):
+        return False
 
-    if status not in allowed_statuses:
+    is_owner = is_neurolens_owner()
+    active_role = get_staff_role(user_id)
+    if not can_update_staff_task(
+        is_owner=is_owner,
+        active_role=active_role,
+        actor_id=user_id,
+        assigned_to=user_id,
+        status=status,
+    ):
         return False
 
     initialize_staff_tables()
+    task = db_fetch_one(
+        "SELECT id, assigned_to FROM staff_tasks WHERE id = ?",
+        (task_id,)
+    )
+    if not task:
+        return False
 
-    if role == "Admin":
-        db_execute(
-            """
-            UPDATE staff_tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (status, datetime.now().isoformat(), task_id)
-        )
-    else:
-        db_execute(
-            """
-            UPDATE staff_tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ? AND assigned_to = ?
-            """,
-            (
-                status,
-                datetime.now().isoformat(),
-                task_id,
-                user_id,
-            )
-        )
+    assigned_to = task.get("assigned_to") if isinstance(task, dict) else None
+    if not can_update_staff_task(
+        is_owner=is_owner,
+        active_role=active_role,
+        actor_id=user_id,
+        assigned_to=assigned_to,
+        status=status,
+    ):
+        return False
 
-    return True
+    return bool(db_execute(
+        """
+        UPDATE staff_tasks
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, datetime.now().isoformat(), task_id)
+    ))
 
 
 def page_staff_workspace():
@@ -5910,14 +6312,19 @@ def page_staff_workspace():
                         key=f"save_staff_task_{task.get('id')}"
                     ):
                         if staff_has_permission(user_id, "update_tasks"):
-                            update_staff_task(
+                            if update_staff_task(
                                 task.get("id"),
                                 selected_status,
                                 user_id,
                                 role
-                            )
-                            st.success("Task status updated.")
-                            st.rerun()
+                            ):
+                                st.success("Task status updated.")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "Task update was denied. Check your active "
+                                    "staff access and task assignment."
+                                )
                         else:
                             st.error("You do not have permission.")
         else:
@@ -5926,7 +6333,9 @@ def page_staff_workspace():
     with tab_projects:
         st.subheader("Research Projects")
 
-        if "view_projects" in permissions:
+        if can_view_research_projects(
+            is_neurolens_owner(), get_staff_role(user_id)
+        ):
             projects = db_fetch_all(
                 """
                 SELECT id, title, description, status, created_at
@@ -5949,7 +6358,9 @@ def page_staff_workspace():
     with tab_team:
         st.subheader("Team Directory")
 
-        if "view_staff" in permissions:
+        if can_view_staff_directory(
+            is_neurolens_owner(), get_staff_role(user_id)
+        ):
             members = db_fetch_all(
                 """
                 SELECT staff_members.id,
@@ -5959,6 +6370,7 @@ def page_staff_workspace():
                        staff_members.created_at
                 FROM staff_members
                 JOIN users ON users.id = staff_members.user_id
+                WHERE staff_members.status = 'active'
                 ORDER BY staff_members.id DESC
                 """
             ) or []
@@ -6374,6 +6786,7 @@ def neurolens_initialize_modules():
         "initialize_database",
         "initialize_appointment_table",
         "initialize_staff_tables",
+        "initialize_neurosocial_tables",
         "initialize_extension_registry",
     ]
 
@@ -6486,6 +6899,163 @@ def neurolens_render_current_page():
 
         with st.expander("Technical error details"):
             st.code(str(error))
+
+
+
+# ============================================================
+# NEUROSOCIAL — FRIENDS AND SAFETY
+# ============================================================
+
+def _neurosocial_call(function, *args):
+    connection = get_local_db()
+    try:
+        return function(connection, *args)
+    finally:
+        connection.close()
+
+
+def initialize_neurosocial_tables():
+    connection = get_local_db()
+    try:
+        from modules.neurosocial import initialize_neurosocial
+        initialize_neurosocial(connection)
+    finally:
+        connection.close()
+
+
+def page_neurosocial():
+    from modules.neurosocial import (
+        send_friend_request, respond_to_friend_request, list_friend_requests,
+        list_friends, search_people, remove_friend, block_user, unblock_user,
+        set_friend_request_privacy, report_user,
+    )
+
+    if not require_login():
+        st.info("NeuroSocial use karne ke liye pehle account mein login karein.")
+        return
+
+    user_id = str(st.session_state.user_id)
+    initialize_neurosocial_tables()
+    st.title("NeuroSocial")
+    st.caption("Connect with friends. You control your requests, privacy and safety.")
+    st.info("Friend requests aur friend list ab database se connected hain. Private journal aur Ask Ayna conversations yahan share nahi hoti.")
+
+    tabs = st.tabs(["Find People", "Requests", "My Friends", "Privacy & Safety"])
+
+    with tabs[0]:
+        query = st.text_input("Search by username or display name", key="social_search")
+        if len(query.strip()) >= 2:
+            people = _neurosocial_call(search_people, user_id, query)
+            if not people:
+                st.caption("No available accounts found.")
+            for person in people:
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"**{person['display_name']}** (@{person['username']})")
+                if c2.button("Add Friend", key=f"social_add_{person['id']}"):
+                    result = _neurosocial_call(send_friend_request, user_id, person["id"])
+                    messages = {
+                        "sent": ("success", "Friend request sent."),
+                        "already_pending": ("info", "Request already pending."),
+                        "incoming_pending": ("info", "They already sent you a request. Check Requests."),
+                        "already_friends": ("info", "You are already friends."),
+                        "not_accepting": ("warning", "This person is not accepting friend requests."),
+                    }
+                    kind, message = messages.get(result, ("warning", "This account is unavailable or cannot receive a request."))
+                    getattr(st, kind)(message)
+                    st.rerun()
+        else:
+            st.caption("Enter at least 2 characters to search.")
+
+    with tabs[1]:
+        st.markdown("**Incoming requests**")
+        incoming = _neurosocial_call(list_friend_requests, user_id, "incoming")
+        if not incoming:
+            st.caption("No incoming requests.")
+        for req in incoming:
+            c1, c2, c3 = st.columns([3, 1, 1])
+            c1.write(f"**{req['display_name']}** (@{req['username']})")
+            if c2.button("Accept", key=f"social_accept_{req['id']}"):
+                if _neurosocial_call(respond_to_friend_request, user_id, req["id"], True):
+                    create_audit_log(user_id, "neurosocial_friend_request_accepted")
+                    st.success("You are now friends.")
+                st.rerun()
+            if c3.button("Decline", key=f"social_decline_{req['id']}"):
+                _neurosocial_call(respond_to_friend_request, user_id, req["id"], False)
+                st.rerun()
+        st.divider()
+        st.markdown("**Outgoing requests**")
+        outgoing = _neurosocial_call(list_friend_requests, user_id, "outgoing")
+        for req in outgoing:
+            st.write(f"{req['display_name']} (@{req['username']}) — Pending")
+
+    with tabs[2]:
+        friends = _neurosocial_call(list_friends, user_id)
+        st.metric("Friends", len(friends))
+        if not friends:
+            st.caption("Your accepted friends will appear here.")
+        for friend in friends:
+            c1, c2, c3 = st.columns([3, 1, 1])
+            c1.write(f"**{friend['display_name']}** (@{friend['username']})")
+            if c2.button("Remove", key=f"social_remove_{friend['id']}"):
+                _neurosocial_call(remove_friend, user_id, friend["id"])
+                create_audit_log(user_id, "neurosocial_friend_removed")
+                st.rerun()
+            if c3.button("Block", key=f"social_block_friend_{friend['id']}"):
+                _neurosocial_call(block_user, user_id, friend["id"])
+                create_audit_log(user_id, "neurosocial_user_blocked")
+                st.rerun()
+
+    with tabs[3]:
+        st.markdown("**Friend request privacy**")
+        current_privacy = db_fetch_one(
+            "SELECT allow_friend_requests FROM social_privacy WHERE user_id=?",
+            (user_id,)
+        )
+        allow_requests = st.toggle(
+            "Allow people to send me friend requests",
+            value=bool(current_privacy["allow_friend_requests"]) if current_privacy else True,
+            key="social_allow_requests",
+        )
+        if st.button("Save privacy setting", key="social_save_privacy"):
+            _neurosocial_call(set_friend_request_privacy, user_id, allow_requests)
+            create_audit_log(user_id, "neurosocial_privacy_updated")
+            st.success("Privacy setting saved.")
+        st.divider()
+        blocked = db_fetch_all(
+            """SELECT b.blocked_id, u.username, u.display_name
+               FROM social_blocks b JOIN users u ON u.id=b.blocked_id
+               WHERE b.blocker_id=? ORDER BY b.created_at DESC""",
+            (user_id,)
+        )
+        st.markdown("**Blocked accounts**")
+        if not blocked:
+            st.caption("You have not blocked anyone.")
+        for person in blocked:
+            c1, c2 = st.columns([3, 1])
+            c1.write(f"{person['display_name']} (@{person['username']})")
+            if c2.button("Unblock", key=f"social_unblock_{person['blocked_id']}"):
+                _neurosocial_call(unblock_user, user_id, person["blocked_id"])
+                st.rerun()
+        st.divider()
+        st.markdown("**Report an account**")
+        report_target = st.text_input("Account username", key="social_report_username")
+        report_category = st.selectbox(
+            "Reason",
+            ["harassment", "spam", "impersonation", "inappropriate_content", "other"],
+            key="social_report_category",
+        )
+        report_details = st.text_area("Optional details (do not include private information)", max_chars=1000, key="social_report_details")
+        if st.button("Submit report", key="social_submit_report"):
+            target = db_fetch_one(
+                "SELECT id FROM users WHERE username=? AND active=1",
+                (report_target.strip(),)
+            ) if report_target.strip() else None
+            if target and _neurosocial_call(report_user, user_id, target["id"], report_category, report_details):
+                create_audit_log(user_id, "neurosocial_user_reported")
+                st.success("Report submitted for review.")
+            else:
+                st.error("Account not found or report could not be submitted.")
+
 
 
 def run_neurolens():
