@@ -16,5 +16,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Compile application and backup helper
+        run: python -m py_compile app.py modules/db_backup.py
       - name: Run backup unit tests
         run: python -m unittest discover -s tests -p 'test_db_backup.py' -v
