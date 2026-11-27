@@ -28,6 +28,9 @@ from modules.staff_access import (
     can_manage_staff,
     can_create_staff_task,
     can_update_staff_task,
+    can_view_staff_tasks,
+    can_view_staff_directory,
+    can_view_research_projects,
 )
 
 from PIL import (
@@ -6086,10 +6089,21 @@ def create_staff_task(title, description, category, assigned_to, created_by):
     ))
 
 
-def get_staff_tasks(user_id, role):
+def get_staff_tasks(user_id, role=None):
+    # Resolve identity and role from the authenticated session/database.
+    # The caller-supplied role is intentionally ignored.
+    user = st.session_state.get("user")
+    if not isinstance(user, dict) or str(user.get("id")) != str(user_id):
+        return []
+
+    is_owner = is_neurolens_owner()
+    active_role = get_staff_role(user_id)
+    if not can_view_staff_tasks(is_owner, active_role):
+        return []
+
     initialize_staff_tables()
 
-    if role == "Admin":
+    if is_owner or active_role == "Admin":
         return db_fetch_all(
             """
             SELECT staff_tasks.*, users.email AS assigned_email
@@ -6244,14 +6258,19 @@ def page_staff_workspace():
                         key=f"save_staff_task_{task.get('id')}"
                     ):
                         if staff_has_permission(user_id, "update_tasks"):
-                            update_staff_task(
+                            if update_staff_task(
                                 task.get("id"),
                                 selected_status,
                                 user_id,
                                 role
-                            )
-                            st.success("Task status updated.")
-                            st.rerun()
+                            ):
+                                st.success("Task status updated.")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "Task update was denied. Check your active "
+                                    "staff access and task assignment."
+                                )
                         else:
                             st.error("You do not have permission.")
         else:
@@ -6260,7 +6279,9 @@ def page_staff_workspace():
     with tab_projects:
         st.subheader("Research Projects")
 
-        if "view_projects" in permissions:
+        if can_view_research_projects(
+            is_neurolens_owner(), get_staff_role(user_id)
+        ):
             projects = db_fetch_all(
                 """
                 SELECT id, title, description, status, created_at
@@ -6283,7 +6304,9 @@ def page_staff_workspace():
     with tab_team:
         st.subheader("Team Directory")
 
-        if "view_staff" in permissions:
+        if can_view_staff_directory(
+            is_neurolens_owner(), get_staff_role(user_id)
+        ):
             members = db_fetch_all(
                 """
                 SELECT staff_members.id,
@@ -6293,6 +6316,7 @@ def page_staff_workspace():
                        staff_members.created_at
                 FROM staff_members
                 JOIN users ON users.id = staff_members.user_id
+                WHERE staff_members.status = 'active'
                 ORDER BY staff_members.id DESC
                 """
             ) or []
