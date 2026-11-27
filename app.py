@@ -1098,6 +1098,7 @@ def render_neural_animation():
 INITIAL_STAGE_PAGES = [
     "Welcome",
     "Account",
+    "NeuroSocial",
     "Brain Explorer",
     "CSTC Learning",
     "Interactive Lab",
@@ -1371,6 +1372,9 @@ def render_current_page():
 
     elif page == "Account":
         page_account()
+
+    elif page == "NeuroSocial":
+        page_neurosocial()
 
     else:
         st.info(
