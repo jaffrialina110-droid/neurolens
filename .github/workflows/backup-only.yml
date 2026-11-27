@@ -16,7 +16,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install application dependencies
+        run: python -m pip install -r requirements.txt
       - name: Compile application and backup helper
         run: python -m py_compile app.py modules/db_backup.py
       - name: Run backup unit tests
         run: python -m unittest discover -s tests -p 'test_db_backup.py' -v
+      - name: Run Streamlit app startup smoke test
+        run: python -c "from streamlit.testing.v1 import AppTest; app = AppTest.from_file('app.py', default_timeout=45).run(); assert not app.exception, app.exception"
