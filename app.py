@@ -5993,7 +5993,7 @@ def update_staff_task(task_id, status, user_id, role=None):
         is_owner=is_owner,
         active_role=active_role,
         actor_id=user_id,
-        assigned_to=None,
+        assigned_to=user_id,
         status=status,
     ):
         return False
