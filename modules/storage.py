@@ -130,3 +130,32 @@ def get_user_by_id(user_id):
                FROM users WHERE id = ?""",
             (user_id,),
         ).fetchone()
+
+def _require_user_id(user_id):
+    """Reject ambiguous IDs before applying a user-scoped data query."""
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise ValueError("A positive authenticated Phase 1 user ID is required.")
+    return user_id
+
+
+def get_posts_for_user(user_id):
+    """Return only posts owned by the supplied authenticated Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, content, created_at
+               FROM posts WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_activity_for_user(user_id):
+    """Return only activity rows owned by the supplied authenticated Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, activity_type, points, details, created_at
+               FROM activity_log WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
