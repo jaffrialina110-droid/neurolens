@@ -102,3 +102,22 @@ If the mapping operation cannot be completed atomically across the participating
 - No production or staging database has been accessed.
 - No change has been made to `app.py`, existing login, passwords, sessions, or live data.
 - This document does not authorize PR merge or deployment.
+
+
+## Offline mapping snapshot validation (isolated)
+
+Added `modules/identity_mapping_validation.py` to validate a proposed mapping
+snapshot before any future staging migration:
+
+- Requires non-empty legacy text IDs and positive integer Phase 1 IDs.
+- Rejects duplicate legacy IDs and duplicate Phase 1 IDs, enforcing one-to-one
+  uniqueness within the supplied snapshot.
+- Preserves legacy IDs exactly; it does not normalize or coerce them.
+- Returns immutable identity pairs for deterministic downstream checks.
+- Does not read/write a database, create mappings, match profile attributes,
+  authenticate users, or grant access.
+
+Unit tests cover duplicate IDs on both sides, malformed values, exact legacy
+ID preservation, invalid row structures, and an empty snapshot. This is an
+offline validation helper only; database-level UNIQUE/FK constraints and
+transactional migration checks remain mandatory in approved staging.
