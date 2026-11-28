@@ -52,6 +52,40 @@ class LegacyAccountAdapterTests(unittest.TestCase):
         with self.assertRaises(AccountContextError):
             from_legacy_session_user(user)
 
+    def test_rejects_whitespace_only_legacy_id(self):
+        user = dict(self.user)
+        user["id"] = "   "
+        with self.assertRaises(AccountContextError):
+            from_legacy_session_user(user)
+
+    def test_rejects_non_string_profile_values(self):
+        user = dict(self.user)
+        user["email"] = 123
+        with self.assertRaises(AccountContextError):
+            from_legacy_session_user(user)
+
+    def test_trims_profile_fields_but_preserves_legacy_id_exactly(self):
+        user = dict(self.user)
+        user["id"] = " legacy-id "
+        user["username"] = "  ayna_user  "
+        context = from_legacy_session_user(user)
+        self.assertEqual(context["legacy_user_id"], " legacy-id ")
+        self.assertEqual(context["username"], "ayna_user")
+
+    def test_does_not_return_password_or_secret_fields(self):
+        user = dict(self.user)
+        user.update({
+            "password": "never-return-this",
+            "password_hash": "hash",
+            "password_salt": "salt",
+            "access_token": "token",
+        })
+        context = from_legacy_session_user(user)
+        self.assertNotIn("password", context)
+        self.assertNotIn("password_hash", context)
+        self.assertNotIn("password_salt", context)
+        self.assertNotIn("access_token", context)
+
 
 if __name__ == "__main__":
     unittest.main()
