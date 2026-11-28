@@ -4,7 +4,7 @@ import tempfile
 import threading
 import unittest
 
-from modules.private_lock import PrivateLockError
+from modules.private_lock import PrivateLockError, hash_pin
 from modules.private_lock_store import (
     PrivateLockStoreError,
     SqlitePrivateLockAttemptStore,
@@ -120,6 +120,74 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         self.assertEqual(
             columns, {"user_id", "failed_attempts", "locked_until"}
         )
+
+
+    def test_atomic_verification_rejects_wrong_pin_and_persists_failure(self):
+        encoded = hash_pin("123456")
+        result = self.store.verify_and_record_attempt(
+            12, "000000", encoded, now=100
+        )
+        self.assertFalse(result["verified"])
+        self.assertFalse(result["locked"])
+        self.assertEqual(result["failed_attempts"], 1)
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 1)
+
+    def test_atomic_verification_success_resets_failure_counter(self):
+        encoded = hash_pin("123456")
+        self.store.record_attempt(12, success=False, now=100)
+        result = self.store.verify_and_record_attempt(
+            12, "123456", encoded, now=101
+        )
+        self.assertTrue(result["verified"])
+        self.assertFalse(result["locked"])
+        self.assertEqual(result["failed_attempts"], 0)
+        self.assertEqual(result["locked_until"], 0.0)
+
+    def test_active_lockout_blocks_even_a_correct_pin(self):
+        encoded = hash_pin("123456")
+        for now in range(100, 105):
+            self.store.verify_and_record_attempt(
+                12, "000000", encoded, now=now,
+                max_attempts=5, lockout_seconds=60,
+            )
+        result = self.store.verify_and_record_attempt(
+            12, "123456", encoded, now=120,
+            max_attempts=5, lockout_seconds=60,
+        )
+        self.assertFalse(result["verified"])
+        self.assertTrue(result["locked"])
+        self.assertEqual(result["failed_attempts"], 5)
+        self.assertEqual(result["locked_until"], 164.0)
+
+    def test_atomic_verification_rejects_malformed_hash(self):
+        result = self.store.verify_and_record_attempt(
+            12, "123456", "not-a-valid-hash", now=100
+        )
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["failed_attempts"], 1)
+
+    def test_parallel_wrong_pin_verifications_are_serialized(self):
+        encoded = hash_pin("123456")
+        errors = []
+        barrier = threading.Barrier(6)
+
+        def fail_once():
+            try:
+                barrier.wait()
+                self.store.verify_and_record_attempt(
+                    55, "000000", encoded, max_attempts=20, now=500
+                )
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=fail_once) for _ in range(6)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(self.store.get_state(55)["failed_attempts"], 6)
 
 
 if __name__ == "__main__":
