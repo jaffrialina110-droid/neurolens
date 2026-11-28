@@ -44,7 +44,7 @@ def hash_pin(pin, *, salt=None, iterations=PIN_HASH_ITERATIONS):
     elif isinstance(salt, bytes) and 16 <= len(salt) <= 64:
         salt_bytes = salt
     else:
-        raise PrivateLockError("PIN salt must contain at least 16 random bytes.")
+        raise PrivateLockError("PIN salt must contain 16 to 64 random bytes.")
 
     digest = hashlib.pbkdf2_hmac(
         "sha256", pin.encode("ascii"), salt_bytes, iterations
