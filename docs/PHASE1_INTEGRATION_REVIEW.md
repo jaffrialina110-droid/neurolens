@@ -68,3 +68,31 @@ The isolated test suite now also checks case-insensitive username/email login an
 - [ ] Explicit approval before any merge or production deployment.
 
 **Release decision: HOLD.** This branch is a tested foundation, not a production-ready account migration. Main branch and live deployment must remain unchanged until every release gate above is addressed.
+
+
+## Private-space PIN security review (isolated primitives)
+
+A separate, framework-independent helper now exists in
+`modules/private_lock.py`:
+
+- PINs must be 6–12 ASCII digits.
+- PIN hashes use PBKDF2-HMAC-SHA256 with a per-PIN random 16-byte salt and
+  600,000 iterations; the encoded value contains the algorithm, iteration
+  count, salt, and digest, never the raw PIN.
+- Verification uses constant-time digest comparison and fails closed on
+  malformed encodings.
+- Attempt-state helpers support a five-failure, five-minute timed lockout.
+- A private-session timeout helper supports a 15-minute inactivity deadline.
+
+The helper is not yet wired into the existing Private Ask Ayna / Personal
+Healing interface. The current `modules/security.py` prototype still has a
+hard-coded default PIN and unsalted SHA-256, so it must not be treated as
+production protection or used to protect real private content. Do not enable
+or rely on that prototype until it is replaced through a separately reviewed
+integration.
+
+Attempt counters and unlock timestamps must be stored and checked in trusted
+server-side state; client-controlled values are not authoritative. A future
+implementation also needs account re-authentication for PIN reset, secure
+recovery, encrypted private-content storage, session invalidation, and
+cross-device behavior. These helpers alone do not provide those controls.
