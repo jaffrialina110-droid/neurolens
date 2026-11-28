@@ -90,6 +90,14 @@ def verify_pin(pin, encoded_hash):
         return False
 
 
+def _calculate_lockout_deadline(current, lockout_seconds):
+    """Calculate a finite deadline or reject timestamp overflow."""
+    try:
+        return _validate_timestamp(current + lockout_seconds)
+    except (OverflowError, PrivateLockError) as exc:
+        raise PrivateLockError("Calculated lockout deadline is invalid.") from exc
+
+
 def new_attempt_state():
     """Create a fresh in-memory attempt state for one locked session."""
     return {"failed_attempts": 0, "locked_until": 0.0}
@@ -126,7 +134,7 @@ def record_pin_attempt(state, *, success, now=None, max_attempts=DEFAULT_MAX_ATT
         return new_attempt_state()
 
     failures = state["failed_attempts"] + 1
-    locked_until = current + lockout_seconds if failures >= max_attempts else 0.0
+    locked_until = _calculate_lockout_deadline(current, lockout_seconds) if failures >= max_attempts else 0.0
     return {"failed_attempts": failures, "locked_until": locked_until}
 
 
