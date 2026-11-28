@@ -30,6 +30,8 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
         with self.assertRaises(PrivateLockError):
             hash_pin("123456", salt=b"short", iterations=100_000)
         with self.assertRaises(PrivateLockError):
+            hash_pin("123456", salt=b"s" * 65, iterations=100_000)
+        with self.assertRaises(PrivateLockError):
             hash_pin("123456", iterations=99_999)
 
     def test_malformed_hash_fails_closed(self):
