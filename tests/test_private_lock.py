@@ -71,9 +71,18 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
                 with self.assertRaises(PrivateLockError):
                     is_rate_limited(invalid, now=10)
 
-    def test_private_session_timeout(self):
-        self.assertFalse(private_session_expired(100, now=999, timeout_seconds=900))
-        self.assertTrue(private_session_expired(100, now=1000, timeout_seconds=900))
+    def test_private_session_inactivity_timeout(self):
+        # The caller supplies last_activity_at, not the original unlock time.
+        self.assertFalse(private_session_expired(200, now=1099, timeout_seconds=900))
+        self.assertTrue(private_session_expired(200, now=1100, timeout_seconds=900))
+
+    def test_non_finite_timestamps_are_rejected(self):
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(timestamp=invalid):
+                with self.assertRaises(PrivateLockError):
+                    private_session_expired(invalid, now=1000)
+                with self.assertRaises(PrivateLockError):
+                    is_rate_limited({"failed_attempts": 0, "locked_until": invalid}, now=1000)
 
 
 if __name__ == "__main__":
