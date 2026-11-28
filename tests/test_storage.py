@@ -133,5 +133,76 @@ class StorageTests(unittest.TestCase):
                 )
 
 
+    def test_owner_scoped_reads_cover_profile_comments_reactions_appointments_and_notes(self):
+        first_user = self.create_user("owner_first")
+        second_user = self.create_user("owner_second")
+        with storage.get_connection() as conn:
+            conn.execute("UPDATE user_profiles SET bio = ? WHERE user_id = ?",
+                         ("first bio", first_user))
+            conn.execute("UPDATE user_profiles SET bio = ? WHERE user_id = ?",
+                         ("second bio", second_user))
+            first_post = conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)",
+                (first_user, "first post"),
+            ).lastrowid
+            second_post = conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)",
+                (second_user, "second post"),
+            ).lastrowid
+            conn.execute("INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)",
+                         (first_post, first_user, "first comment"))
+            conn.execute("INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)",
+                         (second_post, second_user, "second comment"))
+            conn.execute("INSERT INTO reactions (post_id, user_id, emoji) VALUES (?, ?, ?)",
+                         (first_post, first_user, "🧠"))
+            conn.execute("INSERT INTO reactions (post_id, user_id, emoji) VALUES (?, ?, ?)",
+                         (second_post, second_user, "❤️"))
+            conn.execute("""INSERT INTO appointments
+                         (user_id, appointment_type, preferred_date, preferred_time, purpose)
+                         VALUES (?, ?, ?, ?, ?)""",
+                         (first_user, "consultation", "2026-12-01", "10:00", "first purpose"))
+            conn.execute("""INSERT INTO appointments
+                         (user_id, appointment_type, preferred_date, preferred_time, purpose)
+                         VALUES (?, ?, ?, ?, ?)""",
+                         (second_user, "consultation", "2026-12-02", "11:00", "second purpose"))
+            conn.execute("INSERT INTO research_notes (user_id, title, content) VALUES (?, ?, ?)",
+                         (first_user, "first note", "first content"))
+            conn.execute("INSERT INTO research_notes (user_id, title, content) VALUES (?, ?, ?)",
+                         (second_user, "second note", "second content"))
+
+        self.assertEqual(storage.get_profile_for_user(first_user)["bio"], "first bio")
+        self.assertEqual(storage.get_profile_for_user(second_user)["bio"], "second bio")
+        self.assertEqual([r["content"] for r in storage.get_comments_for_user(first_user)],
+                         ["first comment"])
+        self.assertEqual([r["content"] for r in storage.get_comments_for_user(second_user)],
+                         ["second comment"])
+        self.assertEqual([r["emoji"] for r in storage.get_reactions_for_user(first_user)],
+                         ["🧠"])
+        self.assertEqual([r["emoji"] for r in storage.get_reactions_for_user(second_user)],
+                         ["❤️"])
+        self.assertEqual([r["purpose"] for r in storage.get_appointments_for_user(first_user)],
+                         ["first purpose"])
+        self.assertEqual([r["purpose"] for r in storage.get_appointments_for_user(second_user)],
+                         ["second purpose"])
+        self.assertEqual([r["title"] for r in storage.get_research_notes_for_user(first_user)],
+                         ["first note"])
+        self.assertEqual([r["title"] for r in storage.get_research_notes_for_user(second_user)],
+                         ["second note"])
+
+    def test_all_owner_scoped_read_helpers_reject_invalid_ids(self):
+        helpers = (
+            storage.get_posts_for_user, storage.get_activity_for_user,
+            storage.get_profile_for_user, storage.get_comments_for_user,
+            storage.get_reactions_for_user, storage.get_appointments_for_user,
+            storage.get_research_notes_for_user,
+        )
+        for helper in helpers:
+            for invalid_id in (0, -1, True, "1", None):
+                with self.subTest(helper=helper.__name__, user_id=invalid_id):
+                    with self.assertRaises(ValueError):
+                        helper(invalid_id)
+
+
+
 if __name__ == "__main__":
     unittest.main()
