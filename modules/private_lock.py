@@ -7,6 +7,7 @@ or access control by themselves.
 
 import hashlib
 import hmac
+import math
 import secrets
 import time
 
@@ -117,20 +118,20 @@ def record_pin_attempt(state, *, success, now=None, max_attempts=DEFAULT_MAX_ATT
     return {"failed_attempts": failures, "locked_until": locked_until}
 
 
-def private_session_expired(unlocked_at, *, now=None, timeout_seconds=900):
-    """Check a private-session inactivity deadline supplied by trusted server code."""
+def private_session_expired(last_activity_at, *, now=None, timeout_seconds=900):
+    """Check inactivity since the last trusted server-side activity timestamp."""
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
         raise PrivateLockError("timeout_seconds must be a positive integer.")
-    started = _validate_timestamp(unlocked_at)
+    last_activity = _validate_timestamp(last_activity_at)
     current = time.time() if now is None else _validate_timestamp(now)
-    return current - started >= timeout_seconds
+    return current - last_activity >= timeout_seconds
 
 
 def _validate_timestamp(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PrivateLockError("Timestamp must be numeric.")
-    if value < 0:
-        raise PrivateLockError("Timestamp cannot be negative.")
+    if not math.isfinite(value) or value < 0:
+        raise PrivateLockError("Timestamp must be finite and non-negative.")
     return float(value)
 
 
