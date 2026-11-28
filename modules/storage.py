@@ -130,3 +130,232 @@ def get_user_by_id(user_id):
                FROM users WHERE id = ?""",
             (user_id,),
         ).fetchone()
+
+def _require_user_id(user_id):
+    """Reject ambiguous IDs before applying a user-scoped data query."""
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise ValueError("A positive authenticated Phase 1 user ID is required.")
+    return user_id
+
+
+def get_posts_for_user(user_id):
+    """Return only posts owned by the supplied authenticated Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, content, created_at
+               FROM posts WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_activity_for_user(user_id):
+    """Return only activity rows owned by the supplied authenticated Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, activity_type, points, details, created_at
+               FROM activity_log WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+
+def get_profile_for_user(user_id):
+    """Return the profile belonging only to the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT user_id, bio, is_public
+               FROM user_profiles WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+
+
+def get_comments_for_user(user_id):
+    """Return comments authored only by the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, post_id, user_id, content, created_at
+               FROM comments WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_reactions_for_user(user_id):
+    """Return reactions created only by the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, post_id, user_id, emoji, created_at
+               FROM reactions WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_appointments_for_user(user_id):
+    """Return appointment requests belonging only to the supplied user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, appointment_type, preferred_date,
+                      preferred_time, purpose, status, created_at
+               FROM appointments WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_research_notes_for_user(user_id):
+    """Return research notes belonging only to the supplied user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, title, content, created_at
+               FROM research_notes WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def _require_record_id(record_id):
+    """Reject invalid row IDs before an owner-scoped mutation."""
+    if isinstance(record_id, bool) or not isinstance(record_id, int) or record_id <= 0:
+        raise ValueError("A positive record ID is required.")
+    return record_id
+
+
+def update_profile_for_user(user_id, bio, is_public):
+    user_id = _require_user_id(user_id)
+    if not isinstance(bio, str) or not isinstance(is_public, bool):
+        raise ValueError("Profile bio must be text and is_public must be boolean.")
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE user_profiles SET bio = ?, is_public = ? WHERE user_id = ?",
+            (bio, int(is_public), user_id),
+        )
+        return result.rowcount == 1
+
+
+def update_post_for_user(user_id, post_id, content):
+    user_id = _require_user_id(user_id)
+    post_id = _require_record_id(post_id)
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Post content must be non-empty text.")
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE posts SET content = ? WHERE id = ? AND user_id = ?",
+            (content, post_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def delete_post_for_user(user_id, post_id):
+    user_id = _require_user_id(user_id)
+    post_id = _require_record_id(post_id)
+    with get_connection() as conn:
+        result = conn.execute(
+            "DELETE FROM posts WHERE id = ? AND user_id = ?",
+            (post_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def update_comment_for_user(user_id, comment_id, content):
+    user_id = _require_user_id(user_id)
+    comment_id = _require_record_id(comment_id)
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Comment content must be non-empty text.")
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE comments SET content = ? WHERE id = ? AND user_id = ?",
+            (content, comment_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def delete_comment_for_user(user_id, comment_id):
+    user_id = _require_user_id(user_id)
+    comment_id = _require_record_id(comment_id)
+    with get_connection() as conn:
+        result = conn.execute(
+            "DELETE FROM comments WHERE id = ? AND user_id = ?",
+            (comment_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def update_reaction_for_user(user_id, reaction_id, emoji):
+    user_id = _require_user_id(user_id)
+    reaction_id = _require_record_id(reaction_id)
+    if not isinstance(emoji, str) or not emoji.strip():
+        raise ValueError("Reaction emoji must be non-empty text.")
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE reactions SET emoji = ? WHERE id = ? AND user_id = ?",
+            (emoji, reaction_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def delete_reaction_for_user(user_id, reaction_id):
+    user_id = _require_user_id(user_id)
+    reaction_id = _require_record_id(reaction_id)
+    with get_connection() as conn:
+        result = conn.execute(
+            "DELETE FROM reactions WHERE id = ? AND user_id = ?",
+            (reaction_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def update_appointment_for_user(user_id, appointment_id, appointment_type,
+                                preferred_date, preferred_time, purpose):
+    user_id = _require_user_id(user_id)
+    appointment_id = _require_record_id(appointment_id)
+    values = (appointment_type, preferred_date, preferred_time, purpose)
+    if any(not isinstance(value, str) or not value.strip() for value in values):
+        raise ValueError("Appointment fields must be non-empty text.")
+    with get_connection() as conn:
+        result = conn.execute(
+            """UPDATE appointments
+               SET appointment_type = ?, preferred_date = ?,
+                   preferred_time = ?, purpose = ?
+               WHERE id = ? AND user_id = ? AND status = 'Pending'""",
+            (*values, appointment_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def delete_appointment_for_user(user_id, appointment_id):
+    user_id = _require_user_id(user_id)
+    appointment_id = _require_record_id(appointment_id)
+    with get_connection() as conn:
+        result = conn.execute(
+            "DELETE FROM appointments WHERE id = ? AND user_id = ? AND status = 'Pending'",
+            (appointment_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def update_research_note_for_user(user_id, note_id, title, content):
+    user_id = _require_user_id(user_id)
+    note_id = _require_record_id(note_id)
+    if not isinstance(title, str) or not title.strip() or not isinstance(content, str):
+        raise ValueError("Research note title must be non-empty text and content must be text.")
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE research_notes SET title = ?, content = ? WHERE id = ? AND user_id = ?",
+            (title, content, note_id, user_id),
+        )
+        return result.rowcount == 1
+
+
+def delete_research_note_for_user(user_id, note_id):
+    user_id = _require_user_id(user_id)
+    note_id = _require_record_id(note_id)
+    with get_connection() as conn:
+        result = conn.execute(
+            "DELETE FROM research_notes WHERE id = ? AND user_id = ?",
+            (note_id, user_id),
+        )
+        return result.rowcount == 1
