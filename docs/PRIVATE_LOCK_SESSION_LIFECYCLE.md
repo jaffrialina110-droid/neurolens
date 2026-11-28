@@ -30,6 +30,12 @@ account system.
 The helper rejects malformed auth-session references: they must be non-empty,
 printable strings without whitespace and no longer than 256 characters.
 
+Session validation accepts only a plain server-created dictionary record;
+custom dictionary subclasses are rejected to prevent custom lookup behavior.
+When a record is refreshed, only the four approved fields (`unlocked`,
+`user_id`, `auth_session_id`, and `last_activity_at`) are retained. Unknown
+fields are discarded rather than propagated into trusted session state.
+
 ## Atomic PIN verification boundary
 
 For a production PIN attempt, the intended persistence entry point is
