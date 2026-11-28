@@ -144,7 +144,7 @@ def private_session_expired(last_activity_at, *, now=None, timeout_seconds=900):
         raise PrivateLockError("timeout_seconds must be a positive integer.")
     last_activity = _validate_timestamp(last_activity_at)
     current = time.time() if now is None else _validate_timestamp(now)
-    return current - last_activity >= timeout_seconds
+    return current < last_activity or current - last_activity >= timeout_seconds
 
 
 def _validate_timestamp(value):
