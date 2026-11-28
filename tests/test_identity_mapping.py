@@ -43,6 +43,14 @@ class ReadOnlyIdentityMappingTests(unittest.TestCase):
                 with self.assertRaises(IdentityMappingError):
                     resolve_phase1_user_id(invalid, lambda legacy_id: 42)
 
+    def test_mapping_lookup_errors_fail_closed_without_leaking_details(self):
+        def fail(legacy_id):
+            raise OSError("private mapping table details")
+
+        with self.assertRaises(IdentityMappingError) as raised:
+            resolve_phase1_user_id(self.context, fail)
+        self.assertNotIn("private mapping table", str(raised.exception))
+
     def test_rejects_missing_lookup(self):
         with self.assertRaises(IdentityMappingError):
             resolve_phase1_user_id(self.context, None)
