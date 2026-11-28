@@ -41,7 +41,7 @@ def hash_pin(pin, *, salt=None, iterations=PIN_HASH_ITERATIONS):
         raise PrivateLockError("PIN hash iteration count is invalid.")
     if salt is None:
         salt_bytes = secrets.token_bytes(16)
-    elif isinstance(salt, bytes) and len(salt) >= 16:
+    elif isinstance(salt, bytes) and 16 <= len(salt) <= 64:
         salt_bytes = salt
     else:
         raise PrivateLockError("PIN salt must contain at least 16 random bytes.")
@@ -66,8 +66,9 @@ def verify_pin(pin, encoded_hash):
         if not iterations_text.isascii() or not iterations_text.isdigit():
             return False
         if (
-            not salt_hex
-            or not digest_hex
+            not (32 <= len(salt_hex) <= 128)
+            or len(salt_hex) % 2 != 0
+            or len(digest_hex) != 64
             or any(character not in "0123456789abcdef" for character in salt_hex)
             or any(character not in "0123456789abcdef" for character in digest_hex)
         ):
