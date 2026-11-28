@@ -42,9 +42,20 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
             "pbkdf2_sha256$100000$" + "A" * 32 + "$" + "b" * 64,
             "pbkdf2_sha256$100000$" + "a" * 130 + "$" + "b" * 64,
             "pbkdf2_sha256$100000$" + "a" * 32 + "$" + "b" * 65,
+            "pbkdf2_sha256$99999$" + "a" * 32 + "$" + "b" * 64,
+            "pbkdf2_sha256$5000001$" + "a" * 32 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "a" * 31 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "a" * 34 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "g" * 32 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "a" * 32 + "$" + "b" * 63,
+            "pbkdf2_sha256$100000$" + "a" * 32 + "$" + "g" * 64,
         ):
             with self.subTest(value=malformed):
                 self.assertFalse(verify_pin("123456", malformed))
+
+    def test_valid_hash_accepts_maximum_supported_salt_size(self):
+        encoded = hash_pin("739152", salt=b"s" * 64, iterations=100_000)
+        self.assertTrue(verify_pin("739152", encoded))
 
     def test_attempt_counter_and_timed_lockout(self):
         state = new_attempt_state()
