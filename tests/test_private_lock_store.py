@@ -333,6 +333,18 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         with self.assertRaises(PrivateLockStoreError):
             store.get_state(12)
 
+    def test_connection_factory_rejects_custom_sqlite_subclasses(self):
+        class HostileConnection(sqlite3.Connection):
+            def execute(self, sql, parameters=()):
+                raise AssertionError("custom execute must never run")
+
+        connection = sqlite3.connect(":memory:", factory=HostileConnection)
+        store = SqlitePrivateLockAttemptStore(lambda: connection)
+        with self.assertRaises(PrivateLockStoreError):
+            store.get_state(12)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
+
     def test_connection_factory_must_return_open_sqlite_connection(self):
         closed = sqlite3.connect(":memory:")
         closed.close()
