@@ -53,6 +53,36 @@ class AuthTests(unittest.TestCase):
         )
         self.assertFalse(ok)
 
+    def test_login_is_case_insensitive_for_username_and_email(self):
+        ok, message = register_user(
+            "Ayna_Test", "Ayna@Example.Test", "Ayna Test",
+            "safe-test-password-123"
+        )
+        self.assertTrue(ok, message)
+        by_username = authenticate_user("AYNA_TEST", "safe-test-password-123")
+        by_email = authenticate_user("AYNA@EXAMPLE.TEST", "safe-test-password-123")
+        self.assertIsNotNone(by_username)
+        self.assertIsNotNone(by_email)
+        self.assertEqual(by_username["id"], by_email["id"])
+
+    def test_corrupted_password_hash_fails_closed(self):
+        from modules.storage import get_connection, init_db
+
+        ok, message = register_user(
+            "corrupt_user", "corrupt@example.test", "Corrupt User",
+            "safe-test-password-123"
+        )
+        self.assertTrue(ok, message)
+        init_db()
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE username = ?",
+                ("not-a-valid-hash", "corrupt_user"),
+            )
+        self.assertIsNone(
+            authenticate_user("corrupt_user", "safe-test-password-123")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
