@@ -40,6 +40,8 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
             "pbkdf2_sha256$+100000$" + "a" * 32 + "$" + "b" * 64,
             "pbkdf2_sha256$100000$" + ("aa " * 16) + "$" + "b" * 64,
             "pbkdf2_sha256$100000$" + "A" * 32 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "a" * 130 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "a" * 32 + "$" + "b" * 65,
         ):
             with self.subTest(value=malformed):
                 self.assertFalse(verify_pin("123456", malformed))
