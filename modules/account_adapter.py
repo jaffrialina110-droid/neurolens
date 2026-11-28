@@ -20,7 +20,7 @@ def from_legacy_session_user(user):
         raise AccountContextError("An authenticated legacy user is required.")
 
     user_id = user.get("id")
-    if not isinstance(user_id, str) or not user_id.strip():
+    if type(user_id) is not str or not user_id.strip():
         raise AccountContextError("Legacy user ID is missing or invalid.")
 
     username = user.get("username")
@@ -34,7 +34,7 @@ def from_legacy_session_user(user):
         ("display_name", display_name),
         ("role", role),
     ):
-        if not isinstance(value, str) or not value.strip():
+        if type(value) is not str or not value.strip():
             raise AccountContextError(f"Legacy user {field} is missing.")
 
     # Preserve the legacy ID exactly. Never coerce it to the Phase 1 integer ID.
