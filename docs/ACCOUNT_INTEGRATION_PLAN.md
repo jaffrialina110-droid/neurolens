@@ -65,5 +65,9 @@ These artifacts are preparation only. No staging project, deployment, credential
 
 - GitHub Actions passed on commit `bf66673adf9f408918b9fa25b05a136903975144` for both push and pull-request workflows.
 - GitHub Actions passed on commit `4717c031e5a7460ca05dad301df91733e382eef3` for both push and pull-request workflows.
-- Later documentation/configuration commits must each receive their own CI result before they are described as verified.
+- GitHub Actions passed on commit `5ccf0f36e1c62a8e234335b996ce7cfcaa320c3d` for both push and pull-request workflows.
+- GitHub Actions passed on commit `f3f1ac83241efc7e27fd84e13028295933653b80` for both push and pull-request workflows.
+- GitHub Actions passed on commit `e45d85846ea91f76aa3c0e784ab48a75e42b7023` for both push and pull-request workflows.
+- GitHub Actions passed on the latest branch commit `f764a427c0029c9cfac9d19f54e5146ab7572c2e` (push run #43).
+- These checks validate only the isolated Phase 1 scope; they do not verify staging, production integration, data migration, or the live Streamlit app.
 - The PR remains a draft and must not be merged or deployed on the strength of isolated unit tests alone.
