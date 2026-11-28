@@ -21,7 +21,8 @@ No production database path or credentials are configured here.
 - Only user ID, failed-attempt count, and lockout deadline are stored. PINs,
   hashes, recovery codes, and private content are not stored in this table.
 - A successful already-verified attempt resets the counter. Attempts received
-  during an active lockout do not extend the deadline.
+  during an active lockout do not extend the deadline. The lockout ends at the
+  exact deadline (`now >= locked_until`), when a new verification may proceed.
 - Persisted counters and lockout deadlines are validated when read. Invalid
   or corrupted rows raise a storage error and fail closed; they are never
   treated as a fresh state or used to verify a PIN.
