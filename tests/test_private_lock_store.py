@@ -48,6 +48,23 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         self.assertEqual(state, {"failed_attempts": 1, "locked_until": 0.0})
         self.assertEqual(self.store.get_state(12), state)
 
+    def test_record_attempt_rejects_lockout_deadline_overflow_without_writing(self):
+        with self.assertRaises(PrivateLockError):
+            self.store.record_attempt(
+                12, success=False, now=1e308, max_attempts=1,
+                lockout_seconds=10**308,
+            )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
+    def test_atomic_verification_rejects_lockout_deadline_overflow_without_writing(self):
+        encoded = hash_pin("123456")
+        with self.assertRaises(PrivateLockError):
+            self.store.verify_and_record_attempt(
+                12, "000000", encoded, now=1e308, max_attempts=1,
+                lockout_seconds=10**308,
+            )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
     def test_lockout_is_persisted_and_enforced(self):
         state = {"failed_attempts": 0, "locked_until": 0.0}
         for now in (100, 101, 102, 103):
