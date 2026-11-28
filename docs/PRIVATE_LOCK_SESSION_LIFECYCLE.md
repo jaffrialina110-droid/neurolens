@@ -27,6 +27,9 @@ account system.
 - The helper is a local session gate only. It does not revoke other devices,
   invalidate database grants, or provide distributed session revocation.
 
+The helper rejects malformed auth-session references: they must be non-empty,
+printable strings without whitespace and no longer than 256 characters.
+
 ## Atomic PIN verification boundary
 
 For a production PIN attempt, the intended persistence entry point is
