@@ -16,7 +16,7 @@ def from_legacy_session_user(user):
     login flow. This function does not authenticate the user or trust arbitrary
     client-supplied identifiers.
     """
-    if not isinstance(user, dict):
+    if type(user) is not dict:
         raise AccountContextError("An authenticated legacy user is required.")
 
     user_id = user.get("id")
