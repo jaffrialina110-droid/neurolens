@@ -9,8 +9,6 @@ on:
       - "modules/auth.py"
       - "modules/storage.py"
       - "modules/config.py"
-      - "modules/ai.py"
-      - "modules/i18n.py"
       - "tests/**"
       - ".github/workflows/phase1-checks.yml"
 
@@ -28,7 +26,14 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Verify required Phase 1 files exist
+        run: |
+          test -f modules/auth.py
+          test -f modules/storage.py
+          test -f modules/config.py
+          test -f tests/test_auth.py
+          test -f tests/test_config.py
       - name: Compile Phase 1 modules
-        run: python -m compileall -q modules/auth.py modules/storage.py modules/config.py modules/ai.py modules/i18n.py tests
+        run: python -m py_compile modules/auth.py modules/storage.py modules/config.py tests/test_auth.py tests/test_config.py
       - name: Run isolated unit tests
         run: python -m unittest discover -s tests -v
