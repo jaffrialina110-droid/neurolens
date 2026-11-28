@@ -110,7 +110,7 @@ class SqlitePrivateLockAttemptStore:
             failures, locked_until = _state_from_row(row)
             return {"failed_attempts": failures, "locked_until": locked_until}
         finally:
-            connection.close()
+            _close_quietly(connection)
 
     def record_attempt(
         self,
@@ -183,10 +183,10 @@ class SqlitePrivateLockAttemptStore:
                 "locked_until": next_locked_until,
             }
         except Exception:
-            connection.rollback()
+            _rollback_quietly(connection)
             raise
         finally:
-            connection.close()
+            _close_quietly(connection)
 
     def verify_and_record_attempt(
         self,
@@ -269,10 +269,10 @@ class SqlitePrivateLockAttemptStore:
             connection.commit()
             return result
         except Exception:
-            connection.rollback()
+            _rollback_quietly(connection)
             raise
         finally:
-            connection.close()
+            _close_quietly(connection)
 
     def _connect(self):
         try:
@@ -285,7 +285,7 @@ class SqlitePrivateLockAttemptStore:
             connection.execute("SELECT 1")
         except sqlite3.Error as exc:
             try:
-                connection.close()
+                _close_quietly(connection)
             except sqlite3.Error:
                 pass
             raise PrivateLockStoreError("Connection factory returned an unusable SQLite connection.") from exc
