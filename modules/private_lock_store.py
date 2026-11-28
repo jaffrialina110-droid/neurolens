@@ -207,17 +207,9 @@ class SqlitePrivateLockAttemptStore:
         user IDs, hashes, timestamps, or database connections.
         """
         user_id = _validate_user_id(user_id)
-        if (
-            isinstance(max_attempts, bool)
-            or not isinstance(max_attempts, int)
-            or max_attempts < 1
-        ):
+        if type(max_attempts) is not int or max_attempts < 1:
             raise PrivateLockError("max_attempts must be a positive integer.")
-        if (
-            isinstance(lockout_seconds, bool)
-            or not isinstance(lockout_seconds, int)
-            or lockout_seconds < 1
-        ):
+        if type(lockout_seconds) is not int or lockout_seconds < 1:
             raise PrivateLockError("lockout_seconds must be a positive integer.")
         current = time.time() if now is None else _validate_timestamp(now)
 
