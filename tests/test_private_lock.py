@@ -110,6 +110,17 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
         # A backwards clock jump must not preserve an unlocked private session.
         self.assertTrue(private_session_expired(200, now=199, timeout_seconds=900))
 
+    def test_oversized_integer_timestamps_are_rejected_cleanly(self):
+        oversized = 10 ** 10000
+        with self.assertRaises(PrivateLockError):
+            private_session_expired(oversized, now=1000)
+        with self.assertRaises(PrivateLockError):
+            private_session_expired(100, now=oversized)
+        with self.assertRaises(PrivateLockError):
+            is_rate_limited(
+                {"failed_attempts": 0, "locked_until": oversized}, now=1000
+            )
+
     def test_non_finite_timestamps_are_rejected(self):
         for invalid in (float("nan"), float("inf"), float("-inf")):
             with self.subTest(timestamp=invalid):
