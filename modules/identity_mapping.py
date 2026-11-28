@@ -20,7 +20,7 @@ def resolve_phase1_user_id(authenticated_context, mapping_lookup):
     or None when no mapping exists. No username/email matching or auto-linking
     is performed. The result is an identifier only; it grants no privileges.
     """
-    if not isinstance(authenticated_context, AuthenticatedLegacyContext):
+    if type(authenticated_context) is not AuthenticatedLegacyContext:
         raise IdentityMappingError(
             "A server-session authenticated legacy context is required."
         )
