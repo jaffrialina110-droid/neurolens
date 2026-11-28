@@ -62,6 +62,48 @@ class ReadOnlyIdentityMappingTests(unittest.TestCase):
             resolve_phase1_user_id(self.context, fail)
         self.assertNotIn("private mapping table", str(raised.exception))
 
+    def test_rejects_malformed_identifier_inside_exact_context(self):
+        malformed_context = AuthenticatedLegacyContext(
+            legacy_user_id=" " * 2,
+            username="member",
+            email="member@example.test",
+            display_name="Member",
+            role="user",
+        )
+        called = []
+        with self.assertRaises(IdentityMappingError):
+            resolve_phase1_user_id(
+                malformed_context,
+                lambda legacy_id: called.append(legacy_id) or 42,
+            )
+        self.assertEqual(called, [])
+
+    def test_rejects_custom_string_identifier_inside_exact_context(self):
+        class HostileString(str):
+            def strip(self, *args, **kwargs):
+                raise RuntimeError("hostile legacy identifier")
+
+        malformed_context = AuthenticatedLegacyContext(
+            legacy_user_id=HostileString("legacy-id"),
+            username="member",
+            email="member@example.test",
+            display_name="Member",
+            role="user",
+        )
+        with self.assertRaises(IdentityMappingError):
+            resolve_phase1_user_id(malformed_context, lambda legacy_id: 42)
+
+    def test_rejects_oversized_identifier_inside_exact_context(self):
+        malformed_context = AuthenticatedLegacyContext(
+            legacy_user_id="x" * 129,
+            username="member",
+            email="member@example.test",
+            display_name="Member",
+            role="user",
+        )
+        with self.assertRaises(IdentityMappingError):
+            resolve_phase1_user_id(malformed_context, lambda legacy_id: 42)
+
     def test_rejects_authenticated_context_subclasses(self):
         class HostileContext(AuthenticatedLegacyContext):
             def __getattribute__(self, name):
