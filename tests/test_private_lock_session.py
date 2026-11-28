@@ -104,6 +104,25 @@ class PrivateLockSessionTests(unittest.TestCase):
                 now=100, timeout_seconds=0,
             )
 
+    def test_scalar_subclasses_are_rejected_at_private_session_boundary(self):
+        class HostileInt(int):
+            def __lt__(self, other):
+                raise RuntimeError("hostile integer comparison")
+
+        class HostileString(str):
+            def isprintable(self):
+                raise RuntimeError("hostile string method")
+
+        with self.assertRaises(ValueError):
+            unlock_private_session(HostileInt(7), "auth-session-A", now=100)
+        with self.assertRaises(ValueError):
+            unlock_private_session(7, HostileString("auth-session-A"), now=100)
+        with self.assertRaises(ValueError):
+            validate_private_session(
+                self.record, user_id=7, auth_session_id="auth-session-A",
+                now=100, timeout_seconds=HostileInt(900),
+            )
+
     def test_malformed_auth_session_references_are_rejected(self):
         for value in (None, "", "   ", "bad\nreference", "x" * 257, 123):
             with self.subTest(value=value):
