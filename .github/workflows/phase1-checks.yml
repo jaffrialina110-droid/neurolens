@@ -33,7 +33,8 @@ jobs:
           test -f modules/config.py
           test -f tests/test_auth.py
           test -f tests/test_config.py
+          test -f tests/test_storage.py
       - name: Compile Phase 1 modules
-        run: python -m py_compile modules/auth.py modules/storage.py modules/config.py tests/test_auth.py tests/test_config.py
+        run: python -m py_compile modules/auth.py modules/storage.py modules/config.py tests/test_auth.py tests/test_config.py tests/test_storage.py
       - name: Run isolated unit tests
         run: python -m unittest discover -s tests -v
