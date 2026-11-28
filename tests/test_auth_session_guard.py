@@ -55,6 +55,15 @@ class AuthSessionGuardTests(unittest.TestCase):
         with self.assertRaises(AuthSessionError):
             self.resolve()
 
+    def test_custom_user_dict_subclass_fails_closed_before_field_access(self):
+        class HostileUserDict(dict):
+            def get(self, key, default=None):
+                raise RuntimeError("custom mapping behavior")
+
+        self.user = HostileUserDict(id="legacy-42")
+        with self.assertRaises(AuthSessionError):
+            self.resolve()
+
     def test_missing_or_invalid_session_reference_fails_closed(self):
         for value in (None, "", "   ", "bad\nreference", 123, "x" * 257):
             with self.subTest(value=value):
