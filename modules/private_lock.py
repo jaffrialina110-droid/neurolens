@@ -150,9 +150,13 @@ def private_session_expired(last_activity_at, *, now=None, timeout_seconds=900):
 def _validate_timestamp(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PrivateLockError("Timestamp must be numeric.")
-    if not math.isfinite(value) or value < 0:
-        raise PrivateLockError("Timestamp must be finite and non-negative.")
-    return float(value)
+    try:
+        finite = math.isfinite(value)
+        if not finite or value < 0:
+            raise PrivateLockError("Timestamp must be finite and non-negative.")
+        return float(value)
+    except OverflowError as exc:
+        raise PrivateLockError("Timestamp must be finite and non-negative.") from exc
 
 
 def _validate_attempt_state(state):
