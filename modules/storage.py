@@ -159,3 +159,59 @@ def get_activity_for_user(user_id):
             (user_id,),
         ).fetchall()
 
+
+
+def get_profile_for_user(user_id):
+    """Return the profile belonging only to the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT user_id, bio, is_public
+               FROM user_profiles WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+
+
+def get_comments_for_user(user_id):
+    """Return comments authored only by the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, post_id, user_id, content, created_at
+               FROM comments WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_reactions_for_user(user_id):
+    """Return reactions created only by the supplied Phase 1 user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, post_id, user_id, emoji, created_at
+               FROM reactions WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_appointments_for_user(user_id):
+    """Return appointment requests belonging only to the supplied user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, appointment_type, preferred_date,
+                      preferred_time, purpose, status, created_at
+               FROM appointments WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
+
+
+def get_research_notes_for_user(user_id):
+    """Return research notes belonging only to the supplied user ID."""
+    user_id = _require_user_id(user_id)
+    with get_connection() as conn:
+        return conn.execute(
+            """SELECT id, user_id, title, content, created_at
+               FROM research_notes WHERE user_id = ? ORDER BY id""",
+            (user_id,),
+        ).fetchall()
