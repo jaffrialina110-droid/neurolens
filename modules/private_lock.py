@@ -63,6 +63,15 @@ def verify_pin(pin, encoded_hash):
         algorithm, iterations_text, salt_hex, digest_hex = encoded_hash.split("$")
         if algorithm != PIN_HASH_ALGORITHM:
             return False
+        if not iterations_text.isascii() or not iterations_text.isdigit():
+            return False
+        if (
+            not salt_hex
+            or not digest_hex
+            or any(character not in "0123456789abcdef" for character in salt_hex)
+            or any(character not in "0123456789abcdef" for character in digest_hex)
+        ):
+            return False
         iterations = int(iterations_text)
         if iterations < 100_000 or iterations > 5_000_000:
             return False
