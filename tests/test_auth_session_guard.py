@@ -4,6 +4,7 @@ from modules.auth_session_guard import (
     ActiveAuthSession,
     AuthSessionError,
     resolve_active_auth_session,
+    session_generation_matches,
 )
 
 
@@ -75,6 +76,20 @@ class AuthSessionGuardTests(unittest.TestCase):
                 with self.assertRaises(AuthSessionError):
                     self.resolve()
 
+    def test_invalid_user_ids_fail_closed(self):
+        for value in (None, True, "", "   ", "x" * 129, [], {}):
+            with self.subTest(value=value):
+                self.user = {"id": value}
+                with self.assertRaises(AuthSessionError):
+                    self.resolve()
+
+    def test_verified_context_is_immutable(self):
+        from dataclasses import FrozenInstanceError
+
+        result = self.resolve()
+        with self.assertRaises(FrozenInstanceError):
+            result.legacy_user_id = "different-user"
+
     def test_missing_trusted_callback_fails_closed(self):
         with self.assertRaises(AuthSessionError):
             resolve_active_auth_session(
@@ -85,19 +100,14 @@ class AuthSessionGuardTests(unittest.TestCase):
             )
 
     def test_login_generation_must_match_current_server_generation(self):
-        from modules.auth_session_guard import session_generation_matches
-
         self.assertTrue(session_generation_matches(7, 7))
         self.assertFalse(session_generation_matches(7, 8))
 
     def test_invalid_generation_values_never_match(self):
-        from modules.auth_session_guard import session_generation_matches
-
         for value in (None, True, -1, "7", 7.0):
             with self.subTest(value=value):
                 self.assertFalse(session_generation_matches(value, 7))
                 self.assertFalse(session_generation_matches(7, value))
-
 
 
 if __name__ == "__main__":
