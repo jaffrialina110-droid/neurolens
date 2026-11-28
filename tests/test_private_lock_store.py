@@ -1,0 +1,126 @@
+import os
+import sqlite3
+import tempfile
+import threading
+import unittest
+
+from modules.private_lock import PrivateLockError
+from modules.private_lock_store import (
+    PrivateLockStoreError,
+    SqlitePrivateLockAttemptStore,
+)
+
+
+class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "private-lock-test.sqlite3")
+
+        def connect():
+            return sqlite3.connect(self.db_path, timeout=10)
+
+        self.store = SqlitePrivateLockAttemptStore(connect)
+        self.store.initialize_schema()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_requires_trusted_connection_factory(self):
+        with self.assertRaises(PrivateLockStoreError):
+            SqlitePrivateLockAttemptStore(None)
+
+    def test_schema_is_not_created_until_explicit_initialization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "lazy.sqlite3")
+            store = SqlitePrivateLockAttemptStore(lambda: sqlite3.connect(path))
+            self.assertFalse(os.path.exists(path))
+            store.initialize_schema()
+            self.assertTrue(os.path.exists(path))
+
+    def test_new_user_has_fresh_state(self):
+        self.assertEqual(
+            self.store.get_state(12),
+            {"failed_attempts": 0, "locked_until": 0.0},
+        )
+
+    def test_failed_attempts_persist_across_connections(self):
+        state = self.store.record_attempt(12, success=False, now=100)
+        self.assertEqual(state, {"failed_attempts": 1, "locked_until": 0.0})
+        self.assertEqual(self.store.get_state(12), state)
+
+    def test_lockout_is_persisted_and_enforced(self):
+        state = {"failed_attempts": 0, "locked_until": 0.0}
+        for now in (100, 101, 102, 103):
+            state = self.store.record_attempt(
+                12, success=False, now=now, max_attempts=5, lockout_seconds=60
+            )
+        state = self.store.record_attempt(
+            12, success=False, now=104, max_attempts=5, lockout_seconds=60
+        )
+        self.assertEqual(state, {"failed_attempts": 5, "locked_until": 164.0})
+        self.assertEqual(self.store.get_state(12), state)
+        self.assertEqual(
+            self.store.record_attempt(12, success=False, now=120),
+            state,
+        )
+
+    def test_success_resets_persisted_counter(self):
+        self.store.record_attempt(12, success=False, now=100)
+        self.assertEqual(
+            self.store.record_attempt(12, success=True, now=101),
+            {"failed_attempts": 0, "locked_until": 0.0},
+        )
+
+    def test_users_have_separate_attempt_states(self):
+        self.store.record_attempt(12, success=False, now=100)
+        self.store.record_attempt(13, success=False, now=100)
+        self.store.record_attempt(13, success=False, now=101)
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 1)
+        self.assertEqual(self.store.get_state(13)["failed_attempts"], 2)
+
+    def test_invalid_user_ids_and_attempt_arguments_are_rejected(self):
+        for user_id in (0, -1, True, "12", 12.0):
+            with self.subTest(user_id=user_id):
+                with self.assertRaises(PrivateLockError):
+                    self.store.get_state(user_id)
+        with self.assertRaises(PrivateLockError):
+            self.store.record_attempt(12, success=1, now=100)
+
+    def test_parallel_failures_are_not_lost(self):
+        errors = []
+        barrier = threading.Barrier(8)
+
+        def fail_once():
+            try:
+                barrier.wait()
+                self.store.record_attempt(44, success=False, max_attempts=100, now=500)
+            except Exception as exc:  # surfaced in the parent test
+                errors.append(exc)
+
+        threads = [threading.Thread(target=fail_once) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(self.store.get_state(44)["failed_attempts"], 8)
+
+    def test_no_raw_pin_or_secret_fields_are_stored(self):
+        self.store.record_attempt(12, success=False, now=100)
+        connection = sqlite3.connect(self.db_path)
+        try:
+            columns = {
+                row[1] for row in connection.execute(
+                    "PRAGMA table_info(private_lock_attempts)"
+                )
+            }
+        finally:
+            connection.close()
+        self.assertEqual(
+            columns, {"user_id", "failed_attempts", "locked_until"}
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
