@@ -16,6 +16,7 @@ from modules.private_lock import (
     DEFAULT_LOCKOUT_SECONDS,
     DEFAULT_MAX_ATTEMPTS,
     PrivateLockError,
+    _calculate_lockout_deadline,
     _validate_timestamp,
     verify_pin,
 )
@@ -144,7 +145,7 @@ class SqlitePrivateLockAttemptStore:
             else:
                 next_failures = failures + 1
                 next_locked_until = (
-                    current + lockout_seconds
+                    _calculate_lockout_deadline(current, lockout_seconds)
                     if next_failures >= max_attempts
                     else 0.0
                 )
@@ -228,7 +229,7 @@ class SqlitePrivateLockAttemptStore:
                 else:
                     failures += 1
                     locked_until = (
-                        current + lockout_seconds
+                        _calculate_lockout_deadline(current, lockout_seconds)
                         if failures >= max_attempts
                         else 0.0
                     )
