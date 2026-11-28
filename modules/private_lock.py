@@ -14,6 +14,8 @@ import time
 
 PIN_HASH_ALGORITHM = "pbkdf2_sha256"
 PIN_HASH_ITERATIONS = 600_000
+PIN_HASH_MIN_ITERATIONS = 100_000
+PIN_HASH_MAX_ITERATIONS = 5_000_000
 PIN_MIN_LENGTH = 6
 PIN_MAX_LENGTH = 12
 DEFAULT_MAX_ATTEMPTS = 5
@@ -37,7 +39,7 @@ def _validate_pin(pin):
 def hash_pin(pin, *, salt=None, iterations=PIN_HASH_ITERATIONS):
     """Return a salted PBKDF2 hash string; never store the raw PIN."""
     pin = _validate_pin(pin)
-    if isinstance(iterations, bool) or not isinstance(iterations, int) or iterations < 100_000:
+    if isinstance(iterations, bool) or not isinstance(iterations, int) or not (PIN_HASH_MIN_ITERATIONS <= iterations <= PIN_HASH_MAX_ITERATIONS):
         raise PrivateLockError("PIN hash iteration count is invalid.")
     if salt is None:
         salt_bytes = secrets.token_bytes(16)
@@ -74,7 +76,7 @@ def verify_pin(pin, encoded_hash):
         ):
             return False
         iterations = int(iterations_text)
-        if iterations < 100_000 or iterations > 5_000_000:
+        if iterations < PIN_HASH_MIN_ITERATIONS or iterations > PIN_HASH_MAX_ITERATIONS:
             return False
         salt = bytes.fromhex(salt_hex)
         expected = bytes.fromhex(digest_hex)
