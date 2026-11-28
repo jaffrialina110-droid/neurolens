@@ -51,7 +51,10 @@ def resolve_active_auth_session(
     legacy_user_id = user.get("id")
     if type(legacy_user_id) not in (str, int):
         raise AuthSessionError("A valid authenticated user ID is required.")
-    legacy_user_id = str(legacy_user_id).strip()
+    try:
+        legacy_user_id = str(legacy_user_id).strip()
+    except (ValueError, OverflowError):
+        raise AuthSessionError("A valid authenticated user ID is required.") from None
     if not legacy_user_id or len(legacy_user_id) > 128:
         raise AuthSessionError("A valid authenticated user ID is required.")
 
