@@ -69,3 +69,17 @@ def resolve_active_auth_session(
         auth_session_id=session_id,
         session_generation=generation,
     )
+
+
+def session_generation_matches(authenticated_generation, current_generation):
+    """Return true only when the login-time generation still matches server state.
+
+    authenticated_generation must be the generation captured in trusted
+    server-side session state at login. current_generation must be freshly
+    read from the authoritative account store. A mismatch invalidates the
+    authentication session and any private unlock bound to it.
+    """
+    for value in (authenticated_generation, current_generation):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return False
+    return authenticated_generation == current_generation
