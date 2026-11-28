@@ -40,7 +40,10 @@ def validate_private_session(
     identity and must never be accepted from browser/client input.
     """
     _validate_user_id(user_id)
-    _validate_auth_session_id(auth_session_id)
+    try:
+        _validate_auth_session_id(auth_session_id)
+    except PrivateLockError:
+        return False, locked_private_session()
     if (
         isinstance(timeout_seconds, bool)
         or not isinstance(timeout_seconds, int)
