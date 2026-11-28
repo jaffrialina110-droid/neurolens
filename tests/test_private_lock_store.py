@@ -114,11 +114,20 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
                 "INSERT INTO private_lock_attempts "
                 "(user_id, failed_attempts, locked_until) VALUES (77, -1, 0)"
             )
+            connection.execute(
+                "INSERT INTO private_lock_attempts "
+                "(user_id, failed_attempts, locked_until) VALUES (78, 1, ?)",
+                (float("inf"),),
+            )
             connection.commit()
         finally:
             connection.close()
         with self.assertRaises(PrivateLockStoreError):
             self.store.get_state(77)
+        with self.assertRaises(PrivateLockStoreError):
+            self.store.get_state(78)
+        with self.assertRaises(PrivateLockStoreError):
+            self.store.verify_and_record_attempt(78, "123456", "invalid", now=100)
         with self.assertRaises(PrivateLockStoreError):
             self.store.verify_and_record_attempt(77, "123456", "invalid", now=100)
 
