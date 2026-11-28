@@ -53,7 +53,13 @@ def resolve_active_auth_session(
         raise AuthSessionError("A valid authenticated user ID is required.")
 
     session_id = auth_session_id_fn()
-    if not isinstance(session_id, str) or not session_id or len(session_id) > 256:
+    if (
+        not isinstance(session_id, str)
+        or not session_id
+        or len(session_id) > 256
+        or not session_id.isprintable()
+        or any(character.isspace() for character in session_id)
+    ):
         raise AuthSessionError("A server-controlled authentication session ID is required.")
 
     active = account_is_active_fn(legacy_user_id)
