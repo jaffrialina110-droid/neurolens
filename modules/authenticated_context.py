@@ -38,6 +38,11 @@ def from_server_current_user(current_user_fn):
             "A trusted server-side current_user function is required."
         )
 
-    user = current_user_fn()
+    try:
+        user = current_user_fn()
+    except Exception as exc:
+        raise AccountContextError(
+            "Trusted authenticated account state could not be verified."
+        ) from exc
     values = from_legacy_session_user(user)
     return AuthenticatedLegacyContext(**values)
