@@ -27,7 +27,12 @@ def resolve_phase1_user_id(authenticated_context, mapping_lookup):
     if not callable(mapping_lookup):
         raise IdentityMappingError("An authoritative mapping lookup is required.")
 
-    phase1_user_id = mapping_lookup(authenticated_context.legacy_user_id)
+    try:
+        phase1_user_id = mapping_lookup(authenticated_context.legacy_user_id)
+    except Exception as exc:
+        raise IdentityMappingError(
+            "The authoritative account mapping could not be verified."
+        ) from exc
     if phase1_user_id is None:
         raise IdentityMappingError("No verified account mapping exists.")
     if (
