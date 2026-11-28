@@ -52,7 +52,9 @@ def validate_private_session(
         raise PrivateLockError("timeout_seconds must be a positive integer.")
     current = time.time() if now is None else _validate_timestamp(now)
 
-    if not isinstance(record, dict) or record.get("unlocked") is not True:
+    # Accept only the plain server-created record shape; custom mapping
+    # subclasses can execute arbitrary code from get()/iteration methods.
+    if type(record) is not dict or record.get("unlocked") is not True:
         return False, locked_private_session()
     try:
         record_user_id = _validate_user_id(record.get("user_id"))
@@ -68,8 +70,14 @@ def validate_private_session(
     if current < last_activity or current - last_activity >= timeout_seconds:
         return False, locked_private_session()
 
-    refreshed = dict(record)
-    refreshed["last_activity_at"] = current
+    # Rebuild only the approved fields instead of carrying unknown keys into
+    # refreshed session state.
+    refreshed = {
+        "unlocked": True,
+        "user_id": record_user_id,
+        "auth_session_id": record_auth_session_id,
+        "last_activity_at": current,
+    }
     return True, refreshed
 
 
