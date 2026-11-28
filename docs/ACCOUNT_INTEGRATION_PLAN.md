@@ -94,3 +94,19 @@ These artifacts are preparation only. No staging project, deployment, credential
 - GitHub Actions passed on the latest branch commit `f764a427c0029c9cfac9d19f54e5146ab7572c2e` (push run #43).
 - These checks validate only the isolated Phase 1 scope; they do not verify staging, production integration, data migration, or the live Streamlit app.
 - The PR remains a draft and must not be merged or deployed on the strength of isolated unit tests alone.
+
+
+## Follow-up source audit: legacy session lifecycle gaps
+
+A read-only inspection of the existing `app.py` confirmed two additional
+integration blockers, recorded in `docs/LEGACY_AUTH_SESSION_GAP_AUDIT.md`:
+
+- The account's `active` flag is checked during password authentication, but
+  the cached `current_user()` accessor does not re-query account status.
+  Deactivation after login may therefore leave an existing session active.
+- The current session accessor exposes no dedicated stable session ID or
+  session version. A user ID alone cannot distinguish separate sessions.
+
+These findings must be addressed in a separately reviewed, isolated session
+lifecycle design before Private Lock is wired into the app. No changes were
+made to `app.py`, the live session flow, database, or deployment.
