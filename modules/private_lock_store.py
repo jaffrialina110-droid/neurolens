@@ -272,6 +272,8 @@ class SqlitePrivateLockAttemptStore:
         except Exception as exc:
             raise PrivateLockStoreError("Could not open trusted lock-state storage.") from exc
         if type(connection) is not sqlite3.Connection:
+            if isinstance(connection, sqlite3.Connection):
+                _close_quietly(connection)
             raise PrivateLockStoreError("Connection factory must return a plain sqlite3.Connection.")
         try:
             connection.execute("SELECT 1")
