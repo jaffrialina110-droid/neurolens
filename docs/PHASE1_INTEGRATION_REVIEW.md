@@ -23,7 +23,7 @@ These schemas and identity formats are not interchangeable. Calling the new `ren
 
 ## Credential configuration finding
 
-The existing `app.py` reads `SUPABASE_KEY` and uses it to initialize a Supabase client when the URL and key are present. The key name does not prove whether the value is an anon/publishable key or a privileged service-role key. Treat it as potentially privileged until verified in the Supabase dashboard.
+The existing `app.py` reads `SUPABASE_KEY` and uses it only in the inspected code path to initialize a Supabase client; the current account and data helpers inspected here use local SQLite. The key name does not prove whether the value is an anon/publishable key or a privileged service-role key. Treat it as potentially privileged until verified in the Supabase dashboard. The source contains no other direct `SUPABASE_KEY` references beyond secret loading, client initialization, and the client-status helper.
 
 The new `modules/config.py` intentionally reads only `SUPABASE_ANON_KEY` and never falls back to `SUPABASE_KEY`. Keep that separation. Do not print, log, commit, or request secret values in chat. If the existing value is a service-role key, it must remain server-side only and must never be exposed to browser/client code.
 
@@ -50,6 +50,10 @@ The new `modules/config.py` intentionally reads only `SUPABASE_ANON_KEY` and nev
 | AI history | Conversation + message tables | Not present | Define retention, export, deletion, and access controls |
 | Private journal | Encrypted content field | Plain `content` column in new storage schema | Do not migrate into plaintext storage |
 | Audit trail | `audit_logs` | `activity_log` | Define event mapping and retention |
+
+## Additional authentication test coverage
+
+The isolated test suite now also checks case-insensitive username/email login and verifies that a corrupted stored password hash fails closed (login returns no user). These tests exercise the standalone helper only; they do not validate the existing `app.py` account flow or production authentication.
 
 ## Current release gate
 
