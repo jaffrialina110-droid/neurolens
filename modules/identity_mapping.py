@@ -35,11 +35,9 @@ def resolve_phase1_user_id(authenticated_context, mapping_lookup):
         ) from exc
     if phase1_user_id is None:
         raise IdentityMappingError("No verified account mapping exists.")
-    if (
-        isinstance(phase1_user_id, bool)
-        or not isinstance(phase1_user_id, int)
-        or phase1_user_id <= 0
-    ):
+    # Accept only a built-in integer, not an int subclass with custom
+    # comparison/conversion behavior supplied by an untrusted mapping layer.
+    if type(phase1_user_id) is not int or phase1_user_id <= 0:
         raise IdentityMappingError("The stored Phase 1 mapping is invalid.")
 
     return phase1_user_id
