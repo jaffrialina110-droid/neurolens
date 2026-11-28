@@ -242,5 +242,29 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         with self.assertRaises(PrivateLockStoreError):
             store.get_state(12)
 
+    def test_record_attempt_rejects_invalid_lockout_parameters_without_writing(self):
+        for kwargs in (
+            {"max_attempts": 0},
+            {"max_attempts": True},
+            {"lockout_seconds": 0},
+            {"lockout_seconds": True},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(PrivateLockError):
+                    self.store.record_attempt(
+                        12, success=False, now=100, **kwargs
+                    )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
+    def test_atomic_verification_rejects_invalid_user_ids_before_storage_access(self):
+        encoded = hash_pin("123456")
+        for user_id in (0, -1, True, "12", 12.0):
+            with self.subTest(user_id=user_id):
+                with self.assertRaises(PrivateLockError):
+                    self.store.verify_and_record_attempt(
+                        user_id, "000000", encoded, now=100
+                    )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
 if __name__ == "__main__":
     unittest.main()
