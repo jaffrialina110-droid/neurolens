@@ -61,6 +61,14 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
         encoded = hash_pin("739152", salt=b"s" * 64, iterations=100_000)
         self.assertTrue(verify_pin("739152", encoded))
 
+    def test_lockout_deadline_overflow_is_rejected(self):
+        state = {"failed_attempts": 4, "locked_until": 0.0}
+        with self.assertRaises(PrivateLockError):
+            record_pin_attempt(
+                state, success=False, now=1e308,
+                max_attempts=5, lockout_seconds=10**308,
+            )
+
     def test_attempt_counter_and_timed_lockout(self):
         state = new_attempt_state()
         for now in (100, 101, 102, 103):
