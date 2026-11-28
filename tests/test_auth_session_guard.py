@@ -90,6 +90,26 @@ class AuthSessionGuardTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             result.legacy_user_id = "different-user"
 
+    def test_trusted_callback_errors_fail_closed_without_exposing_details(self):
+        callbacks = (
+            {"current_user_fn": lambda: (_ for _ in ()).throw(OSError("secret db path"))},
+            {"auth_session_id_fn": lambda: (_ for _ in ()).throw(OSError("secret session"))},
+            {"account_is_active_fn": lambda user_id: (_ for _ in ()).throw(OSError("secret account"))},
+            {"session_generation_fn": lambda user_id: (_ for _ in ()).throw(OSError("secret generation"))},
+        )
+        for override in callbacks:
+            with self.subTest(override=tuple(override)):
+                args = {
+                    "current_user_fn": lambda: self.user,
+                    "auth_session_id_fn": lambda: self.session_id,
+                    "account_is_active_fn": lambda user_id: True,
+                    "session_generation_fn": lambda user_id: self.generation,
+                }
+                args.update(override)
+                with self.assertRaises(AuthSessionError) as raised:
+                    resolve_active_auth_session(**args)
+                self.assertNotIn("secret", str(raised.exception))
+
     def test_missing_trusted_callback_fails_closed(self):
         with self.assertRaises(AuthSessionError):
             resolve_active_auth_session(
