@@ -22,6 +22,19 @@ class LegacyAccountAdapterTests(unittest.TestCase):
         self.assertIsInstance(context["legacy_user_id"], str)
         self.assertEqual(context["identity_source"], "legacy_app")
 
+    def test_accepts_the_existing_app_current_user_shape(self):
+        # Mirrors app.py current_user(): id plus authenticated profile fields.
+        legacy_session_user = {
+            "id": "legacy-text-id-001",
+            "username": "existing_member",
+            "email": "member@example.test",
+            "display_name": "Existing Member",
+            "role": "user",
+        }
+        context = from_legacy_session_user(legacy_session_user)
+        self.assertEqual(context["legacy_user_id"], "legacy-text-id-001")
+        self.assertEqual(context["display_name"], "Existing Member")
+
     def test_returns_only_minimal_account_context(self):
         context = from_legacy_session_user(self.user)
         self.assertEqual(
