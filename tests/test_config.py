@@ -18,10 +18,28 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.supabase_anon_key, "public-anon-key")
         self.assertNotEqual(settings.supabase_anon_key, values["SUPABASE_KEY"])
 
-    def test_legacy_supabase_key_environment_variable_is_not_a_fallback(self):
+    def test_environment_anon_key_is_read_without_privileged_fallback(self):
         # Exercise the real _secret/get_settings path, not a mocked _secret.
+        env = {
+            "SUPABASE_URL": "https://staging.supabase.co",
+            "SUPABASE_ANON_KEY": "staging-public-anon",
+            "SUPABASE_KEY": "legacy-privileged-key",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role-secret",
+        }
         with patch("modules.config.st.secrets", {}):
-            with patch.dict(os.environ, {"SUPABASE_KEY": "privileged-key"}, clear=True):
+            with patch.dict(os.environ, env, clear=True):
+                settings = get_settings()
+        self.assertEqual(settings.supabase_url, "https://staging.supabase.co")
+        self.assertEqual(settings.supabase_anon_key, "staging-public-anon")
+
+    def test_legacy_or_service_role_keys_are_never_anon_fallbacks(self):
+        # Neither privileged-looking variable can satisfy the anon-key setting.
+        env = {
+            "SUPABASE_KEY": "legacy-privileged-key",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role-secret",
+        }
+        with patch("modules.config.st.secrets", {}):
+            with patch.dict(os.environ, env, clear=True):
                 settings = get_settings()
         self.assertEqual(settings.supabase_url, "")
         self.assertEqual(settings.supabase_anon_key, "")
