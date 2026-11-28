@@ -204,5 +204,136 @@ class StorageTests(unittest.TestCase):
 
 
 
+    def test_cross_user_updates_and_deletes_are_rejected(self):
+        owner = self.create_user("mutation_owner")
+        other = self.create_user("mutation_other")
+        with storage.get_connection() as conn:
+            owner_post = conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)", (owner, "owner post")
+            ).lastrowid
+            other_post = conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)", (other, "other post")
+            ).lastrowid
+            owner_comment = conn.execute(
+                "INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)",
+                (owner_post, owner, "owner comment"),
+            ).lastrowid
+            other_comment = conn.execute(
+                "INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)",
+                (other_post, other, "other comment"),
+            ).lastrowid
+            owner_reaction = conn.execute(
+                "INSERT INTO reactions (post_id, user_id, emoji) VALUES (?, ?, ?)",
+                (owner_post, owner, "🧠"),
+            ).lastrowid
+            other_reaction = conn.execute(
+                "INSERT INTO reactions (post_id, user_id, emoji) VALUES (?, ?, ?)",
+                (other_post, other, "❤️"),
+            ).lastrowid
+            owner_appointment = conn.execute(
+                """INSERT INTO appointments
+                   (user_id, appointment_type, preferred_date, preferred_time, purpose)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (owner, "consultation", "2026-12-10", "10:00", "owner purpose"),
+            ).lastrowid
+            other_appointment = conn.execute(
+                """INSERT INTO appointments
+                   (user_id, appointment_type, preferred_date, preferred_time, purpose)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (other, "consultation", "2026-12-11", "11:00", "other purpose"),
+            ).lastrowid
+            owner_note = conn.execute(
+                "INSERT INTO research_notes (user_id, title, content) VALUES (?, ?, ?)",
+                (owner, "owner note", "owner text"),
+            ).lastrowid
+            other_note = conn.execute(
+                "INSERT INTO research_notes (user_id, title, content) VALUES (?, ?, ?)",
+                (other, "other note", "other text"),
+            ).lastrowid
+
+        self.assertFalse(storage.update_profile_for_user(owner, "hacked", False) is False
+                         if owner == other else False)
+        self.assertFalse(storage.update_post_for_user(owner, other_post, "hacked"))
+        self.assertFalse(storage.delete_post_for_user(owner, other_post))
+        self.assertFalse(storage.update_comment_for_user(owner, other_comment, "hacked"))
+        self.assertFalse(storage.delete_comment_for_user(owner, other_comment))
+        self.assertFalse(storage.update_reaction_for_user(owner, other_reaction, "🔥"))
+        self.assertFalse(storage.delete_reaction_for_user(owner, other_reaction))
+        self.assertFalse(storage.update_appointment_for_user(
+            owner, other_appointment, "changed", "2026-12-20", "12:00", "hacked"
+        ))
+        self.assertFalse(storage.delete_appointment_for_user(owner, other_appointment))
+        self.assertFalse(storage.update_research_note_for_user(
+            owner, other_note, "hacked", "hacked"
+        ))
+        self.assertFalse(storage.delete_research_note_for_user(owner, other_note))
+
+        with storage.get_connection() as conn:
+            self.assertEqual(conn.execute("SELECT content FROM posts WHERE id = ?",
+                                          (other_post,)).fetchone()["content"], "other post")
+            self.assertEqual(conn.execute("SELECT content FROM comments WHERE id = ?",
+                                          (other_comment,)).fetchone()["content"], "other comment")
+            self.assertEqual(conn.execute("SELECT emoji FROM reactions WHERE id = ?",
+                                          (other_reaction,)).fetchone()["emoji"], "❤️")
+            self.assertEqual(conn.execute("SELECT purpose FROM appointments WHERE id = ?",
+                                          (other_appointment,)).fetchone()["purpose"], "other purpose")
+            self.assertEqual(conn.execute("SELECT title FROM research_notes WHERE id = ?",
+                                          (other_note,)).fetchone()["title"], "other note")
+
+    def test_owner_can_update_and_delete_own_records(self):
+        user = self.create_user("own_mutations")
+        with storage.get_connection() as conn:
+            post = conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)", (user, "old post")
+            ).lastrowid
+            comment = conn.execute(
+                "INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)",
+                (post, user, "old comment"),
+            ).lastrowid
+            reaction = conn.execute(
+                "INSERT INTO reactions (post_id, user_id, emoji) VALUES (?, ?, ?)",
+                (post, user, "🧠"),
+            ).lastrowid
+            appointment = conn.execute(
+                """INSERT INTO appointments
+                   (user_id, appointment_type, preferred_date, preferred_time, purpose)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user, "consultation", "2026-12-12", "09:00", "old purpose"),
+            ).lastrowid
+            note = conn.execute(
+                "INSERT INTO research_notes (user_id, title, content) VALUES (?, ?, ?)",
+                (user, "old title", "old content"),
+            ).lastrowid
+
+        self.assertTrue(storage.update_profile_for_user(user, "new bio", False))
+        self.assertTrue(storage.update_post_for_user(user, post, "new post"))
+        self.assertTrue(storage.update_comment_for_user(user, comment, "new comment"))
+        self.assertTrue(storage.update_reaction_for_user(user, reaction, "🔥"))
+        self.assertTrue(storage.update_appointment_for_user(
+            user, appointment, "follow-up", "2026-12-13", "10:30", "new purpose"
+        ))
+        self.assertTrue(storage.update_research_note_for_user(user, note, "new title", "new content"))
+        self.assertTrue(storage.delete_comment_for_user(user, comment))
+        self.assertTrue(storage.delete_reaction_for_user(user, reaction))
+        self.assertTrue(storage.delete_appointment_for_user(user, appointment))
+        self.assertTrue(storage.delete_research_note_for_user(user, note))
+        self.assertTrue(storage.delete_post_for_user(user, post))
+        self.assertEqual(storage.get_profile_for_user(user)["bio"], "new bio")
+
+    def test_mutation_helpers_reject_invalid_ids_and_fields(self):
+        user = self.create_user("invalid_mutations")
+        for invalid in (0, -1, True, "1", None):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    storage.update_post_for_user(user, invalid, "text")
+                with self.assertRaises(ValueError):
+                    storage.delete_post_for_user(user, invalid)
+        with self.assertRaises(ValueError):
+            storage.update_post_for_user(user, 1, "  ")
+        with self.assertRaises(ValueError):
+            storage.update_profile_for_user(user, "bio", 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
