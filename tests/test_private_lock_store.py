@@ -311,6 +311,23 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
                     )
         self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
 
+    def test_atomic_verification_rejects_integer_subclasses(self):
+        class HostileInt(int):
+            def __lt__(self, other):
+                raise AssertionError("hostile comparison must not run")
+
+        encoded = hash_pin("123456")
+        for kwargs in (
+            {"max_attempts": HostileInt(5)},
+            {"lockout_seconds": HostileInt(60)},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(PrivateLockError):
+                    self.store.verify_and_record_attempt(
+                        12, "000000", encoded, now=100, **kwargs
+                    )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
     def test_connection_factory_must_return_sqlite_connection(self):
         store = SqlitePrivateLockAttemptStore(lambda: object())
         with self.assertRaises(PrivateLockStoreError):
