@@ -41,7 +41,10 @@ def resolve_active_auth_session(
     if not all(callable(callback) for callback in callbacks):
         raise AuthSessionError("All trusted server-side callbacks are required.")
 
-    user = current_user_fn()
+    try:
+        user = current_user_fn()
+    except Exception as exc:
+        raise AuthSessionError("Trusted authentication state could not be verified.") from exc
     if not isinstance(user, dict):
         raise AuthSessionError("No authenticated server-side user is available.")
 
@@ -52,7 +55,10 @@ def resolve_active_auth_session(
     if not legacy_user_id or len(legacy_user_id) > 128:
         raise AuthSessionError("A valid authenticated user ID is required.")
 
-    session_id = auth_session_id_fn()
+    try:
+        session_id = auth_session_id_fn()
+    except Exception as exc:
+        raise AuthSessionError("Trusted authentication state could not be verified.") from exc
     if (
         not isinstance(session_id, str)
         or not session_id
@@ -62,11 +68,17 @@ def resolve_active_auth_session(
     ):
         raise AuthSessionError("A server-controlled authentication session ID is required.")
 
-    active = account_is_active_fn(legacy_user_id)
+    try:
+        active = account_is_active_fn(legacy_user_id)
+    except Exception as exc:
+        raise AuthSessionError("Trusted authentication state could not be verified.") from exc
     if active is not True:
         raise AuthSessionError("The account is inactive or could not be verified.")
 
-    generation = session_generation_fn(legacy_user_id)
+    try:
+        generation = session_generation_fn(legacy_user_id)
+    except Exception as exc:
+        raise AuthSessionError("Trusted authentication state could not be verified.") from exc
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
         raise AuthSessionError("A valid server-controlled session generation is required.")
 
