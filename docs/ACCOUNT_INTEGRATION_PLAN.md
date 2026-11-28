@@ -53,6 +53,29 @@ Implemented on the Phase 1 branch as a standalone, read-only adapter in `modules
 
 The adapter is intentionally not imported or called by `app.py`. Existing authentication and data ownership remain untouched. Unit tests cover the legacy session contract, invalid/missing values, exact ID preservation, minimal output, and exclusion of secret fields.
 
+## Trusted server-session context wrapper (isolated test boundary)
+
+Added `modules/authenticated_context.py` as a narrow, read-only wrapper around
+the existing server-side `current_user` accessor:
+
+- It accepts a callable and invokes it once; it does not accept a user dictionary
+  supplied directly by a form, URL, request payload, or browser.
+- It validates the returned session user through the existing read-only adapter.
+- It returns a frozen context containing the exact legacy text ID and minimal
+  profile fields; no password/hash/salt/token fields are copied.
+- It does not authenticate, check active status independently, authorize roles,
+  create a Phase 1 ID, resolve an identity mapping, or grant access to storage.
+- The caller must supply the actual trusted `app.py` `current_user` function
+  after the existing login flow. A callable passed by arbitrary code is not
+  inherently trusted; this wrapper is not a security boundary by itself.
+- It is not wired into `app.py` and must not be used to call integer-ID storage
+  helpers. The legacy text ID and Phase 1 integer ID remain distinct until an
+  approved mapping and verified linking flow exist.
+
+Unit tests cover one-time accessor invocation, immutable context, missing or
+incomplete sessions, rejection of direct dictionary input, secret-field
+exclusion, and preservation of the legacy text ID.
+
 ## Staging preparation artifacts
 
 - `docs/STAGING_TEST_RUNBOOK.md` describes a staging-only test procedure and its preconditions.
