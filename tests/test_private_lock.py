@@ -38,6 +38,32 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
         with self.assertRaises(PrivateLockError):
             hash_pin("123456", iterations=True)
 
+    def test_rejects_hostile_scalar_and_container_subclasses(self):
+        class HostileInt(int):
+            def __lt__(self, other):
+                raise RuntimeError("hostile integer comparison")
+
+        class HostileString(str):
+            def isascii(self):
+                raise RuntimeError("hostile string method")
+
+        class HostileBytes(bytes):
+            pass
+
+        class HostileDict(dict):
+            def get(self, key, default=None):
+                raise RuntimeError("hostile dictionary method")
+
+        with self.assertRaises(PrivateLockError):
+            hash_pin("123456", iterations=HostileInt(600_000))
+        with self.assertRaises(PrivateLockError):
+            hash_pin("123456", salt=HostileBytes(b"s" * 16))
+        self.assertFalse(verify_pin("123456", HostileString("malformed")))
+        with self.assertRaises(PrivateLockError):
+            record_pin_attempt(new_attempt_state(), success=False, max_attempts=HostileInt(5))
+        with self.assertRaises(PrivateLockError):
+            is_rate_limited(HostileDict(failed_attempts=0, locked_until=0.0), now=1)
+
     def test_malformed_hash_fails_closed(self):
         for malformed in (
             None, "", "sha256$1$aa$bb", "pbkdf2_sha256$bad$aa$bb",
