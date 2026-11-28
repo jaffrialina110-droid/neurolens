@@ -27,9 +27,11 @@ The future app integration must supply four trusted server-side callbacks:
    invalidate prior sessions.
 
 The returned `ActiveAuthSession` binds legacy identity to the session ID and
-generation. The caller must then resolve the verified Phase 1 account mapping
-and bind Private Lock state to all three values. A generation mismatch must
-invalidate the private unlock record.
+current generation. The caller must compare that current generation with the
+login-time generation stored in trusted server-side session state using
+`session_generation_matches()`. A mismatch must invalidate the authentication
+session and private unlock record. The caller must then resolve the verified
+Phase 1 account mapping and bind Private Lock state to all three values.
 
 ## Security boundaries
 
