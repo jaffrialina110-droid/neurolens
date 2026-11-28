@@ -45,7 +45,7 @@ def resolve_active_auth_session(
         user = current_user_fn()
     except Exception as exc:
         raise AuthSessionError("Trusted authentication state could not be verified.") from exc
-    if not isinstance(user, dict):
+    if type(user) is not dict:
         raise AuthSessionError("No authenticated server-side user is available.")
 
     legacy_user_id = user.get("id")
