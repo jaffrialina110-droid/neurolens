@@ -27,8 +27,14 @@ def resolve_phase1_user_id(authenticated_context, mapping_lookup):
     if not callable(mapping_lookup):
         raise IdentityMappingError("An authoritative mapping lookup is required.")
 
+    # The context type alone is not sufficient: callers can construct this
+    # dataclass directly. Validate the identifier before passing it to storage.
+    legacy_user_id = authenticated_context.legacy_user_id
+    if type(legacy_user_id) is not str or not legacy_user_id.strip() or len(legacy_user_id) > 128:
+        raise IdentityMappingError("The authenticated legacy account ID is invalid.")
+
     try:
-        phase1_user_id = mapping_lookup(authenticated_context.legacy_user_id)
+        phase1_user_id = mapping_lookup(legacy_user_id)
     except Exception as exc:
         raise IdentityMappingError(
             "The authoritative account mapping could not be verified."
