@@ -106,6 +106,22 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(self.store.get_state(44)["failed_attempts"], 8)
 
+    def test_corrupt_persisted_attempt_state_fails_closed(self):
+        connection = sqlite3.connect(self.db_path)
+        try:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                "INSERT INTO private_lock_attempts "
+                "(user_id, failed_attempts, locked_until) VALUES (77, -1, 0)"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        with self.assertRaises(PrivateLockStoreError):
+            self.store.get_state(77)
+        with self.assertRaises(PrivateLockStoreError):
+            self.store.verify_and_record_attempt(77, "123456", "invalid", now=100)
+
     def test_no_raw_pin_or_secret_fields_are_stored(self):
         self.store.record_attempt(12, success=False, now=100)
         connection = sqlite3.connect(self.db_path)
