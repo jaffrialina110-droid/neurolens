@@ -49,7 +49,7 @@ def resolve_active_auth_session(
         raise AuthSessionError("No authenticated server-side user is available.")
 
     legacy_user_id = user.get("id")
-    if not isinstance(legacy_user_id, (str, int)) or isinstance(legacy_user_id, bool):
+    if type(legacy_user_id) not in (str, int):
         raise AuthSessionError("A valid authenticated user ID is required.")
     legacy_user_id = str(legacy_user_id).strip()
     if not legacy_user_id or len(legacy_user_id) > 128:
@@ -60,7 +60,7 @@ def resolve_active_auth_session(
     except Exception as exc:
         raise AuthSessionError("Trusted authentication state could not be verified.") from exc
     if (
-        not isinstance(session_id, str)
+        type(session_id) is not str
         or not session_id
         or len(session_id) > 256
         or not session_id.isprintable()
@@ -79,7 +79,7 @@ def resolve_active_auth_session(
         generation = session_generation_fn(legacy_user_id)
     except Exception as exc:
         raise AuthSessionError("Trusted authentication state could not be verified.") from exc
-    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
+    if type(generation) is not int or generation < 0:
         raise AuthSessionError("A valid server-controlled session generation is required.")
 
     return ActiveAuthSession(
@@ -98,6 +98,6 @@ def session_generation_matches(authenticated_generation, current_generation):
     authentication session and any private unlock bound to it.
     """
     for value in (authenticated_generation, current_generation):
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        if type(value) is not int or value < 0:
             return False
     return authenticated_generation == current_generation
