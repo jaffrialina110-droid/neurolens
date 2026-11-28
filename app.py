@@ -1352,11 +1352,7 @@ def render_current_page():
 # MAIN APPLICATION ENTRY
 # ============================================================
 
-def run_neurolens():
-    render_sidebar()
-    render_current_page()
-if __name__ == "__main__":
-    run_neurolens()
+# The application starts only once, at the final entry point below.
 # ============================================================
 # PART 4 — BRAIN EXPLORER
 # ============================================================
