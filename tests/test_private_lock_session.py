@@ -81,6 +81,17 @@ class PrivateLockSessionTests(unittest.TestCase):
                 now=100, timeout_seconds=0,
             )
 
+    def test_malformed_auth_session_references_are_rejected(self):
+        for value in (None, "", "   ", "bad\nreference", "x" * 257, 123):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    unlock_private_session(7, value, now=100)
+                valid, locked = validate_private_session(
+                    self.record, user_id=7, auth_session_id=value, now=110,
+                )
+                self.assertFalse(valid)
+                self.assertEqual(locked, locked_private_session())
+
     def test_locked_state_does_not_retain_identity(self):
         self.assertEqual(
             locked_private_session(),
