@@ -27,7 +27,7 @@ class PrivateLockError(ValueError):
 
 
 def _validate_pin(pin):
-    if not isinstance(pin, str):
+    if type(pin) is not str:
         raise PrivateLockError("PIN must be text.")
     if not (PIN_MIN_LENGTH <= len(pin) <= PIN_MAX_LENGTH):
         raise PrivateLockError("PIN must contain 6 to 12 digits.")
@@ -39,11 +39,11 @@ def _validate_pin(pin):
 def hash_pin(pin, *, salt=None, iterations=PIN_HASH_ITERATIONS):
     """Return a salted PBKDF2 hash string; never store the raw PIN."""
     pin = _validate_pin(pin)
-    if isinstance(iterations, bool) or not isinstance(iterations, int) or not (PIN_HASH_MIN_ITERATIONS <= iterations <= PIN_HASH_MAX_ITERATIONS):
+    if type(iterations) is not int or not (PIN_HASH_MIN_ITERATIONS <= iterations <= PIN_HASH_MAX_ITERATIONS):
         raise PrivateLockError("PIN hash iteration count is invalid.")
     if salt is None:
         salt_bytes = secrets.token_bytes(16)
-    elif isinstance(salt, bytes) and 16 <= len(salt) <= 64:
+    elif type(salt) is bytes and 16 <= len(salt) <= 64:
         salt_bytes = salt
     else:
         raise PrivateLockError("PIN salt must contain 16 to 64 random bytes.")
@@ -60,7 +60,7 @@ def verify_pin(pin, encoded_hash):
     """Verify a PIN against the encoded salted hash without raising on bad input."""
     try:
         pin = _validate_pin(pin)
-        if not isinstance(encoded_hash, str):
+        if type(encoded_hash) is not str:
             return False
         algorithm, iterations_text, salt_hex, digest_hex = encoded_hash.split("$")
         if algorithm != PIN_HASH_ALGORITHM:
@@ -121,9 +121,9 @@ def record_pin_attempt(state, *, success, now=None, max_attempts=DEFAULT_MAX_ATT
     _validate_attempt_state(state)
     if not isinstance(success, bool):
         raise PrivateLockError("success must be boolean.")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
+    if type(max_attempts) is not int or max_attempts < 1:
         raise PrivateLockError("max_attempts must be a positive integer.")
-    if isinstance(lockout_seconds, bool) or not isinstance(lockout_seconds, int) or lockout_seconds < 1:
+    if type(lockout_seconds) is not int or lockout_seconds < 1:
         raise PrivateLockError("lockout_seconds must be a positive integer.")
 
     current = time.time() if now is None else _validate_timestamp(now)
@@ -140,7 +140,7 @@ def record_pin_attempt(state, *, success, now=None, max_attempts=DEFAULT_MAX_ATT
 
 def private_session_expired(last_activity_at, *, now=None, timeout_seconds=900):
     """Check inactivity since the last trusted server-side activity timestamp."""
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
+    if type(timeout_seconds) is not int or timeout_seconds < 1:
         raise PrivateLockError("timeout_seconds must be a positive integer.")
     last_activity = _validate_timestamp(last_activity_at)
     current = time.time() if now is None else _validate_timestamp(now)
@@ -148,7 +148,7 @@ def private_session_expired(last_activity_at, *, now=None, timeout_seconds=900):
 
 
 def _validate_timestamp(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if type(value) not in (int, float):
         raise PrivateLockError("Timestamp must be numeric.")
     try:
         finite = math.isfinite(value)
@@ -160,10 +160,10 @@ def _validate_timestamp(value):
 
 
 def _validate_attempt_state(state):
-    if not isinstance(state, dict):
+    if type(state) is not dict:
         raise PrivateLockError("Attempt state must be a server-side dictionary.")
     failures = state.get("failed_attempts")
     locked_until = state.get("locked_until")
-    if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+    if type(failures) is not int or failures < 0:
         raise PrivateLockError("Attempt counter is invalid.")
     _validate_timestamp(locked_until)
