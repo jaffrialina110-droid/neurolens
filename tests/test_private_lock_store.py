@@ -8,6 +8,8 @@ from modules.private_lock import PrivateLockError, hash_pin
 from modules.private_lock_store import (
     PrivateLockStoreError,
     SqlitePrivateLockAttemptStore,
+    _close_quietly,
+    _rollback_quietly,
 )
 
 
@@ -28,6 +30,18 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
     def test_requires_trusted_connection_factory(self):
         with self.assertRaises(PrivateLockStoreError):
             SqlitePrivateLockAttemptStore(None)
+
+    def test_cleanup_helpers_do_not_mask_primary_failures(self):
+        class BrokenCleanupConnection:
+            def rollback(self):
+                raise OSError("rollback cleanup failure")
+
+            def close(self):
+                raise OSError("close cleanup failure")
+
+        connection = BrokenCleanupConnection()
+        _rollback_quietly(connection)
+        _close_quietly(connection)
 
     def test_schema_is_not_created_until_explicit_initialization(self):
         with tempfile.TemporaryDirectory() as directory:
