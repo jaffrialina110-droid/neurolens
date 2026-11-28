@@ -57,6 +57,18 @@ class LegacyAccountAdapterTests(unittest.TestCase):
         with self.assertRaises(AccountContextError):
             from_legacy_session_user(HostileUserDict(self.user))
 
+    def test_rejects_string_subclasses_in_identity_fields(self):
+        class HostileString(str):
+            def strip(self, *args, **kwargs):
+                raise RuntimeError("hostile string behavior")
+
+        for field in ("id", "username", "email", "display_name", "role"):
+            with self.subTest(field=field):
+                user = dict(self.user)
+                user[field] = HostileString(user[field])
+                with self.assertRaises(AccountContextError):
+                    from_legacy_session_user(user)
+
     def test_rejects_missing_user(self):
         with self.assertRaises(AccountContextError):
             from_legacy_session_user(None)
