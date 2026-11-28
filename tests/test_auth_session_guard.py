@@ -56,7 +56,7 @@ class AuthSessionGuardTests(unittest.TestCase):
             self.resolve()
 
     def test_missing_or_invalid_session_reference_fails_closed(self):
-        for value in (None, "", 123, "x" * 257):
+        for value in (None, "", "   ", "bad\nreference", 123, "x" * 257):
             with self.subTest(value=value):
                 self.session_id = value
                 with self.assertRaises(AuthSessionError):
