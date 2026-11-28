@@ -99,19 +99,6 @@ class AuthSessionGuardTests(unittest.TestCase):
                 self.assertFalse(session_generation_matches(7, value))
 
 
+
 if __name__ == "__main__":
     unittest.main()
-
-    def test_login_generation_must_match_current_server_generation(self):
-        from modules.auth_session_guard import session_generation_matches
-
-        self.assertTrue(session_generation_matches(7, 7))
-        self.assertFalse(session_generation_matches(7, 8))
-
-    def test_invalid_generation_values_never_match(self):
-        from modules.auth_session_guard import session_generation_matches
-
-        for value in (None, True, -1, "7", 7.0):
-            with self.subTest(value=value):
-                self.assertFalse(session_generation_matches(value, 7))
-                self.assertFalse(session_generation_matches(7, value))
