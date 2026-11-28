@@ -251,8 +251,6 @@ class StorageTests(unittest.TestCase):
                 (other, "other note", "other text"),
             ).lastrowid
 
-        self.assertFalse(storage.update_profile_for_user(owner, "hacked", False) is False
-                         if owner == other else False)
         self.assertFalse(storage.update_post_for_user(owner, other_post, "hacked"))
         self.assertFalse(storage.delete_post_for_user(owner, other_post))
         self.assertFalse(storage.update_comment_for_user(owner, other_comment, "hacked"))
