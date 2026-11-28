@@ -175,6 +175,22 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         self.assertEqual(result["failed_attempts"], 5)
         self.assertEqual(result["locked_until"], 164.0)
 
+    def test_correct_pin_is_allowed_exactly_at_lockout_deadline(self):
+        encoded = hash_pin("123456")
+        for now in range(100, 105):
+            self.store.verify_and_record_attempt(
+                12, "000000", encoded, now=now,
+                max_attempts=5, lockout_seconds=60,
+            )
+        result = self.store.verify_and_record_attempt(
+            12, "123456", encoded, now=164,
+            max_attempts=5, lockout_seconds=60,
+        )
+        self.assertTrue(result["verified"])
+        self.assertFalse(result["locked"])
+        self.assertEqual(result["failed_attempts"], 0)
+        self.assertEqual(result["locked_until"], 0.0)
+
     def test_atomic_verification_rejects_malformed_hash(self):
         result = self.store.verify_and_record_attempt(
             12, "123456", "not-a-valid-hash", now=100
