@@ -51,6 +51,23 @@ class ReadOnlyIdentityMappingTests(unittest.TestCase):
             resolve_phase1_user_id(self.context, fail)
         self.assertNotIn("private mapping table", str(raised.exception))
 
+    def test_rejects_authenticated_context_subclasses(self):
+        class HostileContext(AuthenticatedLegacyContext):
+            def __getattribute__(self, name):
+                if name == "legacy_user_id":
+                    raise RuntimeError("hostile context access")
+                return super().__getattribute__(name)
+
+        hostile = HostileContext(
+            legacy_user_id="legacy-text-007",
+            username="member",
+            email="member@example.test",
+            display_name="Member",
+            role="user",
+        )
+        with self.assertRaises(IdentityMappingError):
+            resolve_phase1_user_id(hostile, lambda legacy_id: 42)
+
     def test_rejects_missing_lookup(self):
         with self.assertRaises(IdentityMappingError):
             resolve_phase1_user_id(self.context, None)
