@@ -6325,38 +6325,25 @@ def page_staging_feature_status():
 
 
 NEUROLENS_NAVIGATION = [
+    # Only pages with a matching implementation are exposed in this build.
     "Welcome",
+    "Staging Feature Status",
     "Account",
     "Lab",
     "Cognitive Challenges",
     "CSTC Circuit Learning",
     "Explore Brain",
-    "Brain Journey",
-    "Brain Puzzle",
     "Personal Healing",
     "Private Journal",
     "Research Library",
-    "Research Book",
     "Personal eBook",
     "Photo Studio",
     "Progress Dashboard",
-    "My Progress",
     "Ayna AI",
-    "Ask Ayna",
-    "Private Ask Ayna",
-    "AI Mood & Behaviour",
-    "NeuroSocial",
-    "Behaviour Decoding Forum",
-    "Eye Tracking",
-    "EEG / Biosignal Lab",
-    "Brain Exercises",
     "Appointments",
-    "Payment Demo",
     "Owner Control Center",
     "Staff Workspace",
     "Advanced Stage",
-    "System Health",
-    "Settings",
 ]
 
 
