@@ -10,6 +10,7 @@ from modules.private_lock_store import (
     SqlitePrivateLockAttemptStore,
     _close_quietly,
     _rollback_quietly,
+    _state_from_row,
 )
 
 
@@ -135,6 +136,20 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
                     self.store.get_state(user_id)
         with self.assertRaises(PrivateLockError):
             self.store.record_attempt(12, success=1, now=100)
+
+    def test_rejects_hostile_integer_subclasses_and_malformed_rows(self):
+        class HostileInt(int):
+            def __lt__(self, other):
+                raise RuntimeError("hostile integer comparison")
+
+        with self.assertRaises(PrivateLockError):
+            self.store.get_state(HostileInt(12))
+        with self.assertRaises(PrivateLockError):
+            self.store.record_attempt(12, success=False, max_attempts=HostileInt(5))
+        with self.assertRaises(PrivateLockStoreError):
+            _state_from_row([1, 0.0])
+        with self.assertRaises(PrivateLockStoreError):
+            _state_from_row((HostileInt(1), 0.0))
 
     def test_parallel_failures_are_not_lost(self):
         errors = []
