@@ -90,6 +90,12 @@ def _validate_user_id(user_id):
 
 
 def _validate_auth_session_id(value):
-    if not isinstance(value, str) or not value or len(value) > 256:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 256
+        or not value.isprintable()
+        or any(character.isspace() for character in value)
+    ):
         raise PrivateLockError("A valid authenticated session reference is required.")
     return value
