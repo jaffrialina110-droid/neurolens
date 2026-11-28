@@ -30,6 +30,29 @@ class PrivateLockSessionTests(unittest.TestCase):
         self.assertTrue(valid)
         self.assertEqual(refreshed["last_activity_at"], 200.0)
 
+    def test_unknown_record_fields_are_not_carried_forward(self):
+        record = dict(self.record, unexpected_private_field="must-not-propagate")
+        valid, refreshed = validate_private_session(
+            record, user_id=7, auth_session_id="auth-session-A", now=110,
+        )
+        self.assertTrue(valid)
+        self.assertEqual(
+            set(refreshed),
+            {"unlocked", "user_id", "auth_session_id", "last_activity_at"},
+        )
+
+    def test_custom_dict_subclasses_fail_closed(self):
+        class UntrustedRecord(dict):
+            def get(self, key, default=None):
+                raise RuntimeError("custom mapping execution")
+
+        valid, locked = validate_private_session(
+            UntrustedRecord(self.record), user_id=7,
+            auth_session_id="auth-session-A", now=110,
+        )
+        self.assertFalse(valid)
+        self.assertEqual(locked, locked_private_session())
+
     def test_logout_or_missing_auth_session_fails_closed(self):
         valid, locked = validate_private_session(
             self.record, user_id=7, auth_session_id="", now=110,
