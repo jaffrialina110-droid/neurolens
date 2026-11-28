@@ -64,6 +64,33 @@ class AuthSessionGuardTests(unittest.TestCase):
         with self.assertRaises(AuthSessionError):
             self.resolve()
 
+    def test_rejects_custom_string_subclass_session_reference(self):
+        class HostileString(str):
+            def isprintable(self):
+                raise RuntimeError("hostile session string")
+
+        self.session_id = HostileString("server-session")
+        with self.assertRaises(AuthSessionError):
+            self.resolve()
+
+    def test_rejects_integer_subclasses_for_generation(self):
+        class HostileInteger(int):
+            def __lt__(self, other):
+                raise RuntimeError("hostile generation comparison")
+
+        self.generation = HostileInteger(7)
+        with self.assertRaises(AuthSessionError):
+            self.resolve()
+
+    def test_rejects_integer_subclass_user_id(self):
+        class HostileInteger(int):
+            def __str__(self):
+                raise RuntimeError("hostile user id conversion")
+
+        self.user = {"id": HostileInteger(42)}
+        with self.assertRaises(AuthSessionError):
+            self.resolve()
+
     def test_missing_or_invalid_session_reference_fails_closed(self):
         for value in (None, "", "   ", "bad\nreference", 123, "x" * 257):
             with self.subTest(value=value):
