@@ -2,7 +2,7 @@ name: NeuroLens Phase 1 checks
 
 on:
   push:
-    branches: [neurolens-platform-phase1]
+    branches: [neurolens-platform-phase1, neurolens-staging-preview]
   pull_request:
     branches: [main]
     paths:
