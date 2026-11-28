@@ -37,6 +37,17 @@ class ReadOnlyIdentityMappingTests(unittest.TestCase):
                 with self.assertRaises(IdentityMappingError):
                     resolve_phase1_user_id(self.context, lambda legacy_id: invalid)
 
+    def test_rejects_integer_subclasses_from_mapping_store(self):
+        class HostileInteger(int):
+            def __le__(self, other):
+                raise RuntimeError("hostile integer comparison")
+
+        with self.assertRaises(IdentityMappingError):
+            resolve_phase1_user_id(
+                self.context,
+                lambda legacy_id: HostileInteger(42),
+            )
+
     def test_rejects_untrusted_or_wrong_context_type(self):
         for invalid in (None, {}, {"legacy_user_id": "legacy-text-007"}, "legacy"):
             with self.subTest(value=invalid):
