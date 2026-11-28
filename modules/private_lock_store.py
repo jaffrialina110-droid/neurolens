@@ -31,6 +31,19 @@ def _validate_user_id(user_id):
     return user_id
 
 
+def _state_from_row(row):
+    if row is None:
+        return 0, 0.0
+    failures, locked_until = row
+    if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+        raise PrivateLockStoreError("Stored PIN attempt counter is invalid.")
+    try:
+        locked_until = _validate_timestamp(locked_until)
+    except PrivateLockError as exc:
+        raise PrivateLockStoreError("Stored PIN lockout deadline is invalid.") from exc
+    return failures, locked_until
+
+
 class SqlitePrivateLockAttemptStore:
     """Persist failed-attempt state using SQLite write transactions.
 
@@ -77,9 +90,8 @@ class SqlitePrivateLockAttemptStore:
                 "FROM private_lock_attempts WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
-            if row is None:
-                return {"failed_attempts": 0, "locked_until": 0.0}
-            return {"failed_attempts": row[0], "locked_until": row[1]}
+            failures, locked_until = _state_from_row(row)
+            return {"failed_attempts": failures, "locked_until": locked_until}
         finally:
             connection.close()
 
@@ -123,7 +135,7 @@ class SqlitePrivateLockAttemptStore:
                 "FROM private_lock_attempts WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
-            failures, locked_until = (0, 0.0) if row is None else row
+            failures, locked_until = _state_from_row(row)
 
             if current < locked_until:
                 next_failures, next_locked_until = failures, locked_until
@@ -200,7 +212,7 @@ class SqlitePrivateLockAttemptStore:
                 "FROM private_lock_attempts WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
-            failures, locked_until = (0, 0.0) if row is None else row
+            failures, locked_until = _state_from_row(row)
 
             if current < locked_until:
                 result = {
