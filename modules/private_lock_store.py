@@ -43,7 +43,7 @@ def _close_quietly(connection):
 
 
 def _validate_user_id(user_id):
-    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+    if type(user_id) is not int or user_id <= 0:
         raise PrivateLockError("A positive Phase 1 integer user ID is required.")
     return user_id
 
@@ -51,8 +51,10 @@ def _validate_user_id(user_id):
 def _state_from_row(row):
     if row is None:
         return 0, 0.0
+    if type(row) is not tuple or len(row) != 2:
+        raise PrivateLockStoreError("Stored PIN attempt state is malformed.")
     failures, locked_until = row
-    if isinstance(failures, bool) or not isinstance(failures, int) or failures < 0:
+    if type(failures) is not int or failures < 0:
         raise PrivateLockStoreError("Stored PIN attempt counter is invalid.")
     try:
         locked_until = _validate_timestamp(locked_until)
@@ -128,17 +130,15 @@ class SqlitePrivateLockAttemptStore:
         omit it so the server clock is used. Never pass client timestamps.
         """
         user_id = _validate_user_id(user_id)
-        if not isinstance(success, bool):
+        if type(success) is not bool:
             raise PrivateLockError("success must be boolean.")
         if (
-            isinstance(max_attempts, bool)
-            or not isinstance(max_attempts, int)
+            type(max_attempts) is not int
             or max_attempts < 1
         ):
             raise PrivateLockError("max_attempts must be a positive integer.")
         if (
-            isinstance(lockout_seconds, bool)
-            or not isinstance(lockout_seconds, int)
+            type(lockout_seconds) is not int
             or lockout_seconds < 1
         ):
             raise PrivateLockError("lockout_seconds must be a positive integer.")
