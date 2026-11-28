@@ -34,6 +34,52 @@ class StorageTests(unittest.TestCase):
             )
             return user_id
 
+
+    def test_user_scoped_reads_do_not_return_another_users_posts_or_activity(self):
+        first_user = self.create_user("scope_first")
+        second_user = self.create_user("scope_second")
+        with storage.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)",
+                (first_user, "first user's private-to-owner post"),
+            )
+            conn.execute(
+                "INSERT INTO posts (user_id, content) VALUES (?, ?)",
+                (second_user, "second user's post"),
+            )
+            conn.execute(
+                """INSERT INTO activity_log (user_id, activity_type, points)
+                   VALUES (?, ?, ?)""",
+                (first_user, "first-only", 3),
+            )
+            conn.execute(
+                """INSERT INTO activity_log (user_id, activity_type, points)
+                   VALUES (?, ?, ?)""",
+                (second_user, "second-only", 5),
+            )
+
+        first_posts = storage.get_posts_for_user(first_user)
+        second_posts = storage.get_posts_for_user(second_user)
+        first_activity = storage.get_activity_for_user(first_user)
+        second_activity = storage.get_activity_for_user(second_user)
+
+        self.assertEqual([row["content"] for row in first_posts],
+                         ["first user's private-to-owner post"])
+        self.assertEqual([row["content"] for row in second_posts],
+                         ["second user's post"])
+        self.assertEqual([row["activity_type"] for row in first_activity],
+                         ["first-only"])
+        self.assertEqual([row["activity_type"] for row in second_activity],
+                         ["second-only"])
+
+    def test_user_scoped_reads_reject_invalid_or_ambiguous_ids(self):
+        for invalid_id in (0, -1, True, "1", None):
+            with self.subTest(user_id=invalid_id):
+                with self.assertRaises(ValueError):
+                    storage.get_posts_for_user(invalid_id)
+                with self.assertRaises(ValueError):
+                    storage.get_activity_for_user(invalid_id)
+
     def test_foreign_keys_reject_orphan_posts(self):
         with self.assertRaises(sqlite3.IntegrityError):
             with storage.get_connection() as conn:
