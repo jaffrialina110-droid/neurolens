@@ -2,18 +2,18 @@
 
 ## Current scope
 
-The Phase 1 SQLite storage module contains user-owned tables and two explicitly scoped read helpers:
+The Phase 1 SQLite storage module contains user-owned tables and seven explicitly scoped read helpers:
 
 - `get_posts_for_user(user_id)`
 - `get_activity_for_user(user_id)`\n- `get_profile_for_user(user_id)`\n- `get_comments_for_user(user_id)`\n- `get_reactions_for_user(user_id)`\n- `get_appointments_for_user(user_id)`\n- `get_research_notes_for_user(user_id)`
 
-Both helpers validate that the supplied ID is a positive integer and include that ID in the SQL `WHERE` clause. Synthetic tests verify that records for two test users are returned separately.
+Each helper validates that the supplied ID is a positive integer and include that ID in the SQL `WHERE` clause. Synthetic tests verify that records for two test users are returned separately.
 
 These helpers are query-scoping utilities. They are **not authentication or authorization** and do not independently prove that the caller owns the supplied ID.
 
 ## Mandatory caller contract
 
-Before calling either helper, application code must:
+Before calling any helper, application code must:
 
 1. Complete authentication through the trusted server-side authentication flow.
 2. Obtain the authenticated account ID from server-controlled session/authentication state.
