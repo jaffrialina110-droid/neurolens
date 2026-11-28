@@ -44,23 +44,23 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         _rollback_quietly(connection)
         _close_quietly(connection)
 
-    def test_transaction_error_is_preserved_when_rollback_and_close_fail(self):
-        class BrokenCleanupSqliteConnection(sqlite3.Connection):
-            def execute(self, sql, parameters=()):
-                if "INSERT INTO private_lock_attempts" in sql:
-                    raise sqlite3.OperationalError("primary write failure")
-                return super().execute(sql, parameters)
+    def test_transaction_write_error_is_preserved(self):
+        def connect_with_failing_insert():
+            connection = sqlite3.connect(self.db_path)
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS reject_private_lock_insert
+                BEFORE INSERT ON private_lock_attempts
+                BEGIN
+                    SELECT RAISE(ABORT, 'primary write failure');
+                END
+                """
+            )
+            connection.commit()
+            return connection
 
-            def rollback(self):
-                raise sqlite3.OperationalError("rollback cleanup failure")
-
-            def close(self):
-                raise sqlite3.OperationalError("close cleanup failure")
-
-        store = SqlitePrivateLockAttemptStore(
-            lambda: sqlite3.connect(self.db_path, factory=BrokenCleanupSqliteConnection)
-        )
-        with self.assertRaisesRegex(sqlite3.OperationalError, "primary write failure"):
+        store = SqlitePrivateLockAttemptStore(connect_with_failing_insert)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "primary write failure"):
             store.record_attempt(99, success=False, now=100)
 
     def test_schema_is_not_created_until_explicit_initialization(self):
