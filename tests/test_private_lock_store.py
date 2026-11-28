@@ -268,6 +268,22 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         with self.assertRaises(PrivateLockStoreError):
             store.get_state(12)
 
+    def test_connection_factory_must_return_open_sqlite_connection(self):
+        closed = sqlite3.connect(":memory:")
+        closed.close()
+        store = SqlitePrivateLockAttemptStore(lambda: closed)
+        with self.assertRaises(PrivateLockStoreError):
+            store.get_state(12)
+
+    def test_connection_factory_errors_are_wrapped(self):
+        def fail_to_connect():
+            raise OSError("private path details")
+
+        store = SqlitePrivateLockAttemptStore(fail_to_connect)
+        with self.assertRaises(PrivateLockStoreError) as raised:
+            store.get_state(12)
+        self.assertNotIn("private path details", str(raised.exception))
+
     def test_record_attempt_rejects_invalid_lockout_parameters_without_writing(self):
         for kwargs in (
             {"max_attempts": 0},
