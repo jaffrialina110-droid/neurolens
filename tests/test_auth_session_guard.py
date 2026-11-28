@@ -91,6 +91,11 @@ class AuthSessionGuardTests(unittest.TestCase):
         with self.assertRaises(AuthSessionError):
             self.resolve()
 
+    def test_oversized_integer_user_id_fails_closed(self):
+        self.user = {"id": 10 ** 5000}
+        with self.assertRaises(AuthSessionError):
+            self.resolve()
+
     def test_missing_or_invalid_session_reference_fails_closed(self):
         for value in (None, "", "   ", "bad\nreference", 123, "x" * 257):
             with self.subTest(value=value):
