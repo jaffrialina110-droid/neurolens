@@ -17,6 +17,7 @@ from modules.private_lock import (
     DEFAULT_MAX_ATTEMPTS,
     PrivateLockError,
     _validate_timestamp,
+    verify_pin,
 )
 
 
@@ -152,6 +153,92 @@ class SqlitePrivateLockAttemptStore:
                 "failed_attempts": next_failures,
                 "locked_until": next_locked_until,
             }
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def verify_and_record_attempt(
+        self,
+        user_id,
+        pin,
+        encoded_hash,
+        *,
+        now=None,
+        max_attempts=DEFAULT_MAX_ATTEMPTS,
+        lockout_seconds=DEFAULT_LOCKOUT_SECONDS,
+    ):
+        """Atomically enforce lockout, verify a PIN, and persist its outcome.
+
+        encoded_hash must be fetched by trusted server code for this user.
+        PIN verification runs while holding SQLite's write reservation so
+        parallel attempts cannot all pass a stale pre-check. Neither the PIN
+        nor its hash is persisted by this method. Never call with client-chosen
+        user IDs, hashes, timestamps, or database connections.
+        """
+        user_id = _validate_user_id(user_id)
+        if (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 1
+        ):
+            raise PrivateLockError("max_attempts must be a positive integer.")
+        if (
+            isinstance(lockout_seconds, bool)
+            or not isinstance(lockout_seconds, int)
+            or lockout_seconds < 1
+        ):
+            raise PrivateLockError("lockout_seconds must be a positive integer.")
+        current = time.time() if now is None else _validate_timestamp(now)
+
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT failed_attempts, locked_until "
+                "FROM private_lock_attempts WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            failures, locked_until = (0, 0.0) if row is None else row
+
+            if current < locked_until:
+                result = {
+                    "verified": False,
+                    "locked": True,
+                    "failed_attempts": failures,
+                    "locked_until": locked_until,
+                }
+            else:
+                verified = verify_pin(pin, encoded_hash)
+                if verified:
+                    failures, locked_until = 0, 0.0
+                else:
+                    failures += 1
+                    locked_until = (
+                        current + lockout_seconds
+                        if failures >= max_attempts
+                        else 0.0
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO private_lock_attempts
+                        (user_id, failed_attempts, locked_until)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        failed_attempts = excluded.failed_attempts,
+                        locked_until = excluded.locked_until
+                    """,
+                    (user_id, failures, locked_until),
+                )
+                result = {
+                    "verified": verified,
+                    "locked": current < locked_until,
+                    "failed_attempts": failures,
+                    "locked_until": locked_until,
+                }
+            connection.commit()
+            return result
         except Exception:
             connection.rollback()
             raise
