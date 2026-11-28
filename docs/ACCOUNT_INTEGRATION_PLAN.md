@@ -42,8 +42,19 @@ These are not interchangeable without a deliberate mapping and migration.
 
 ## First safe implementation slice
 
-The first integration slice should be read-only: resolve the currently authenticated legacy user to a stable account context and prove that existing data ownership remains unchanged. It must not create users, change passwords, migrate rows, or write private content. Only after this read-only adapter passes tests should a separate write-path proposal be considered.
+Implemented on the Phase 1 branch as a standalone, read-only adapter in `modules/account_adapter.py`:
+
+- Accepts the existing app's authenticated `current_user()` dictionary shape.
+- Preserves the legacy text user ID exactly; it does not coerce it to an integer.
+- Returns only the minimum identity/profile context needed by a future integration.
+- Rejects missing or malformed identity/profile fields.
+- Does not access a database, authenticate a user, create an account, change a password, migrate rows, or write private content.
+- Does not return password/hash/salt/token fields even if they appear in the input dictionary.
+
+The adapter is intentionally not imported or called by `app.py`. Existing authentication and data ownership remain untouched. Its unit tests cover the legacy session contract, invalid/missing values, exact ID preservation, minimal output, and exclusion of secret fields.
 
 ## Current status
 
-This document is an implementation plan, not evidence that staging, backup, migration, encryption, or production integration has been completed. The current PR remains a draft and must not be merged or deployed on the strength of isolated unit tests alone.
+The standalone adapter and its tests are committed on the draft Phase 1 branch. GitHub Actions passed for commit `3abe2821c01a21df0b16817157222ac44a503694`; a subsequent test-only commit adds a fixture matching the existing `current_user()` shape and requires its own CI result.
+
+This is not evidence that staging, backup, migration, encryption, or production integration has been completed. The adapter is not wired into the app. The PR remains a draft and must not be merged or deployed on the strength of isolated unit tests alone.
