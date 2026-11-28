@@ -107,6 +107,8 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
         # The caller supplies last_activity_at, not the original unlock time.
         self.assertFalse(private_session_expired(200, now=1099, timeout_seconds=900))
         self.assertTrue(private_session_expired(200, now=1100, timeout_seconds=900))
+        # A backwards clock jump must not preserve an unlocked private session.
+        self.assertTrue(private_session_expired(200, now=199, timeout_seconds=900))
 
     def test_non_finite_timestamps_are_rejected(self):
         for invalid in (float("nan"), float("inf"), float("-inf")):
