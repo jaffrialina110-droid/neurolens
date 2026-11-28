@@ -45,8 +45,7 @@ def validate_private_session(
     except PrivateLockError:
         return False, locked_private_session()
     if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, int)
+        type(timeout_seconds) is not int
         or timeout_seconds < 1
     ):
         raise PrivateLockError("timeout_seconds must be a positive integer.")
@@ -92,14 +91,14 @@ def locked_private_session():
 
 
 def _validate_user_id(user_id):
-    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+    if type(user_id) is not int or user_id <= 0:
         raise PrivateLockError("A positive authenticated user ID is required.")
     return user_id
 
 
 def _validate_auth_session_id(value):
     if (
-        not isinstance(value, str)
+        type(value) is not str
         or not value
         or len(value) > 256
         or not value.isprintable()
