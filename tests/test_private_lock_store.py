@@ -343,7 +343,7 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         with self.assertRaises(PrivateLockStoreError):
             store.get_state(12)
         with self.assertRaises(sqlite3.ProgrammingError):
-            connection.execute("SELECT 1")
+            sqlite3.Connection.execute(connection, "SELECT 1")
 
     def test_connection_factory_must_return_open_sqlite_connection(self):
         closed = sqlite3.connect(":memory:")
