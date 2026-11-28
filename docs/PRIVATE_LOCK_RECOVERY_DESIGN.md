@@ -53,7 +53,9 @@ flow first.
 ## PIN and private-data handling
 
 - Store only a salted, slow password hash for the PIN; never store or log raw
-  PINs. Review the chosen work factor against production hardware before launch.
+  PINs. The isolated primitive bounds salts to 16–64 bytes and validates encoded
+  digest sizes before expensive verification. Review the chosen work factor
+  against production hardware before launch.
 - A PIN lock is an additional privacy gate, not a replacement for account
   authentication or encryption at rest.
 - Encrypt private journal and private AI content with a separately reviewed
