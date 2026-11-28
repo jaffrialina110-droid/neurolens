@@ -42,6 +42,14 @@ class ServerCurrentUserContextTests(unittest.TestCase):
         with self.assertRaises(AccountContextError):
             from_server_current_user(lambda: None)
 
+    def test_trusted_accessor_errors_fail_closed_without_leaking_details(self):
+        def fail():
+            raise OSError("private database connection string")
+
+        with self.assertRaises(AccountContextError) as raised:
+            from_server_current_user(fail)
+        self.assertNotIn("private database", str(raised.exception))
+
     def test_rejects_incomplete_session_user(self):
         with self.assertRaises(AccountContextError):
             from_server_current_user(lambda: {"id": "legacy-only"})
