@@ -46,6 +46,30 @@ This is a design contract, not executable SQL. Exact DDL depends on the approved
 7. Re-check account active/disabled status through the authoritative legacy authentication/session layer before allowing an authenticated context.
 8. Do not accept role or privilege claims from the mapping row; authorization must continue to use the trusted account/role source.
 
+## Read-only mapping resolver (isolated)
+
+Added `modules/identity_mapping.py` as a small resolver for a mapping that
+already exists in an approved store:
+
+- It accepts the immutable legacy-session context and a mapping-lookup
+  callable supplied by the application integration layer.
+- It passes the exact legacy text ID to the lookup; it never searches by
+  username, email, or display name.
+- It accepts only a positive integer Phase 1 ID and fails closed when the
+  mapping is missing or malformed.
+- It creates no mapping, account, table, or database connection and performs
+  no migration.
+- The lookup callable must query an authoritative store and enforce the
+  unique constraints described above. No such mapping store is currently
+  configured or accessed.
+- A resolved ID is not proof of authorization. The caller must still enforce
+  account active status, role policy, and record ownership. The context object
+  is an application contract, not a cryptographic credential or an
+  unforgeable authentication token.
+
+Tests cover exact ID preservation, missing mappings, invalid mapped IDs,
+wrong context inputs, and the absence of profile-field matching.
+
 ## Ownership and privacy
 
 - Every user-owned Phase 1 record must resolve to one verified account identity.
