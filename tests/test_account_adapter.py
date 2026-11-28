@@ -49,6 +49,14 @@ class LegacyAccountAdapterTests(unittest.TestCase):
             },
         )
 
+    def test_rejects_custom_user_dict_subclass_before_field_access(self):
+        class HostileUserDict(dict):
+            def get(self, key, default=None):
+                raise RuntimeError("custom mapping behavior")
+
+        with self.assertRaises(AccountContextError):
+            from_legacy_session_user(HostileUserDict(self.user))
+
     def test_rejects_missing_user(self):
         with self.assertRaises(AccountContextError):
             from_legacy_session_user(None)
