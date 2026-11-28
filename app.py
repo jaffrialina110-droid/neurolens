@@ -1063,6 +1063,7 @@ def render_neural_animation():
 
 INITIAL_STAGE_PAGES = [
     "Welcome",
+    "Staging Feature Status",
     "Account",
     "Brain Explorer",
     "CSTC Learning",
@@ -6276,6 +6277,53 @@ def page_advanced_stage():
 # Replace the OLD sidebar, router and footer section with this.
 # ============================================================
 
+def page_staging_feature_status():
+    st.title("NeuroLens — Staging Feature Status")
+    st.caption("Source-level audit only. These labels do not mean a feature has passed live testing.")
+
+    st.warning(
+        "This is a development preview. Do not enter real personal, health, "
+        "journal, payment, or account information. Staging credentials and a "
+        "separate test database must be configured before live testing."
+    )
+
+    rows = [
+        ("Welcome / creator branding", "Code present", "Page function exists; staging runtime not yet verified."),
+        ("Account login and registration", "Legacy implementation present", "Uses the existing app account schema; new Phase 1 auth is not connected."),
+        ("Cognitive Neuroscience Lab", "Code present", "Page function exists; experiments and device behavior need staging tests."),
+        ("Cognitive Challenges", "Code present", "Page function exists; scores are not brain-activity measurements."),
+        ("CSTC Circuit Learning", "Code present", "Page function exists; scientific content needs review."),
+        ("Explore Brain", "Code present", "Page function exists; runtime not yet verified."),
+        ("Personal Healing / Private Journal", "Security review required", "Hardened Phase 1 PIN module is not integrated; do not use for real private content."),
+        ("Research Library", "Code present", "Page function exists; external API and source coverage need tests."),
+        ("Personal eBook", "Code present", "Page function exists; runtime not yet verified."),
+        ("Photo Studio", "Code present", "Page function exists; camera/device behavior needs tests."),
+        ("Progress Dashboard", "Code present", "Page function exists; data correctness and account isolation need tests."),
+        ("Ayna AI", "Code present", "Page function exists; Gemini key and bilingual behavior need tests."),
+        ("Appointments", "Code present", "Page function exists; booking/payment flow is not verified."),
+        ("Owner Control Center / Staff Workspace", "Access review required", "Role checks and private-data boundaries need security testing."),
+        ("NeuroSocial / Brain Journey / Brain Puzzle / Settings / other mapped pages", "Not implemented in app.py", "No matching page function was found in the current app source."),
+        ("Phase 1 auth, storage and private-lock modules", "Isolated foundation", "Unit-tested modules are not yet safely integrated with the legacy account/database schema."),
+    ]
+
+    st.subheader("Feature audit")
+    for feature, status, detail in rows:
+        with st.container(border=True):
+            st.markdown(f"**{feature}**")
+            st.write(status)
+            st.caption(detail)
+
+    st.divider()
+    st.subheader("Release gates")
+    st.markdown(
+        "- Separate staging secrets and test database: pending\n"
+        "- App startup and page-by-page runtime testing: pending\n"
+        "- Account isolation, private-data and role-access tests: pending\n"
+        "- Backup/restore and migration validation: pending\n"
+        "- Owner approval before production release: required"
+    )
+
+
 NEUROLENS_NAVIGATION = [
     "Welcome",
     "Account",
@@ -6314,6 +6362,7 @@ NEUROLENS_NAVIGATION = [
 
 NEUROLENS_PAGE_FUNCTIONS = {
     "Welcome": ("page_welcome",),
+    "Staging Feature Status": ("page_staging_feature_status",),
     "Account": ("page_account",),
     "Lab": ("page_lab",),
     "Cognitive Challenges": ("page_cognitive_challenges",),
