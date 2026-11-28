@@ -26,6 +26,22 @@ class PrivateLockStoreError(RuntimeError):
     """Raised when the persistence adapter cannot safely perform an operation."""
 
 
+def _rollback_quietly(connection):
+    """Best-effort rollback that never masks the operation failure."""
+    try:
+        connection.rollback()
+    except Exception:
+        pass
+
+
+def _close_quietly(connection):
+    """Best-effort close that never masks the operation result or failure."""
+    try:
+        connection.close()
+    except Exception:
+        pass
+
+
 def _validate_user_id(user_id):
     if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
         raise PrivateLockError("A positive Phase 1 integer user ID is required.")
@@ -76,10 +92,10 @@ class SqlitePrivateLockAttemptStore:
             )
             connection.commit()
         except Exception:
-            connection.rollback()
+            _rollback_quietly(connection)
             raise
         finally:
-            connection.close()
+            _close_quietly(connection)
 
     def get_state(self, user_id):
         """Return persisted state; absent rows are treated as a fresh state."""
