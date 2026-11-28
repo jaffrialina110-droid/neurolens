@@ -222,5 +222,25 @@ class SqlitePrivateLockAttemptStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_state(55)["failed_attempts"], 6)
 
 
+    def test_atomic_verification_rejects_invalid_lockout_parameters(self):
+        encoded = hash_pin("123456")
+        for kwargs in (
+            {"max_attempts": 0},
+            {"max_attempts": True},
+            {"lockout_seconds": 0},
+            {"lockout_seconds": True},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(PrivateLockError):
+                    self.store.verify_and_record_attempt(
+                        12, "000000", encoded, now=100, **kwargs
+                    )
+        self.assertEqual(self.store.get_state(12)["failed_attempts"], 0)
+
+    def test_connection_factory_must_return_sqlite_connection(self):
+        store = SqlitePrivateLockAttemptStore(lambda: object())
+        with self.assertRaises(PrivateLockStoreError):
+            store.get_state(12)
+
 if __name__ == "__main__":
     unittest.main()
