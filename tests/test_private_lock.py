@@ -33,7 +33,12 @@ class PrivateLockPrimitiveTests(unittest.TestCase):
             hash_pin("123456", iterations=99_999)
 
     def test_malformed_hash_fails_closed(self):
-        for malformed in (None, "", "sha256$1$aa$bb", "pbkdf2_sha256$bad$aa$bb"):
+        for malformed in (
+            None, "", "sha256$1$aa$bb", "pbkdf2_sha256$bad$aa$bb",
+            "pbkdf2_sha256$+100000$" + "a" * 32 + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + ("aa " * 16) + "$" + "b" * 64,
+            "pbkdf2_sha256$100000$" + "A" * 32 + "$" + "b" * 64,
+        ):
             with self.subTest(value=malformed):
                 self.assertFalse(verify_pin("123456", malformed))
 
