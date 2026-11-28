@@ -265,4 +265,12 @@ class SqlitePrivateLockAttemptStore:
             raise PrivateLockStoreError("Could not open trusted lock-state storage.") from exc
         if not isinstance(connection, sqlite3.Connection):
             raise PrivateLockStoreError("Connection factory must return sqlite3.Connection.")
+        try:
+            connection.execute("SELECT 1")
+        except sqlite3.Error as exc:
+            try:
+                connection.close()
+            except sqlite3.Error:
+                pass
+            raise PrivateLockStoreError("Connection factory returned an unusable SQLite connection.") from exc
         return connection
